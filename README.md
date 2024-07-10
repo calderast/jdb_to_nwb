@@ -1,2 +1,2 @@
-# hex_maze_to_nwb
-Converts data for the hex maze task to NWB format
+# jdb_to_nwb
+Converts electrophysiology, photometry, and behavioral data for the hex maze task used by the Berke Lab at UCSF to NWB format for sharing and analysis.
