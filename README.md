@@ -11,9 +11,9 @@ pip install -e .
 
 ## Current usage
 
-1. Copy `tests/test_data/metadata_full.yaml` to the root directory of the repository:
+1. Copy `tests/metadata_full.yaml` to the root directory of the repository:
 ```bash
-cp tests/test_data/metadata_full.yaml .
+cp tests/metadata_full.yaml .
 ```
 
 2. Open `metadata_full.yaml` in a text editor. Update the paths to point to your data and update the metadata for your experiment.
