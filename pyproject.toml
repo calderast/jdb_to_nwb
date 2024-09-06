@@ -1,0 +1,112 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jdb_to_nwb"
+authors = [
+  { name="Ryan Ly", email="rly@lbl.gov" },
+  { name="Stephanie Crater", email="stephcrater@berkeley.edu" },
+  { name="Yang-Sun Hwang", email="YangSun.Hwang@ucsf.edu"},
+  { name="Jose Figueroa", email="Jose.Figueroa@ucsf.edu" },
+]
+description = "Converts electrophysiology, photometry, and behavioral data for the hex maze task used by the Berke Lab at UCSF to NWB format for sharing and analysis."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "BSD-3-Clause"}
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: BSD License",
+    "Development Status :: 2 - Pre-Alpha",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "spikeinterface >= 0.101.0",
+    "tqdm",
+    "neuroconv == 0.6.0",
+    "pynwb >= 2.8.1",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "ruff",
+    "codespell",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/calderast/jdb_to_nwb/"
+"Bug Tracker" = "https://github.com/calderast/jdb_to_nwb/issues"
+
+[project.scripts]
+jdb_to_nwb = "jdb_to_nwb.convert:cli"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+# this file is created/updated when the package is installed and used in
+# src/jdb_to_nwb/__init__.py to set `jdb_to_nwb.__version__`
+version-file = "src/jdb_to_nwb/_version.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".git*",
+    ".codecov.yml",
+    ".readthedocs.yaml",
+    ".pre-commit-config.yaml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jdb_to_nwb"]
+exclude = [
+    ".git*",
+    ".codecov.yml",
+    ".readthedocs.yaml",
+    ".pre-commit-config.yaml",
+]
+
+# [tool.interrogate]
+# fail-under = 95
+# verbose = 1
+
+[tool.codespell]
+skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
+ignore-words-list = "datas,assertIn"
+
+[tool.coverage.run]
+branch = true
+source = ["jdb_to_nwb"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "@abstract"
+]
+
+[tool.black]
+line-length = 120
+preview = true
+exclude = ".git|.mypy_cache|.tox|.venv|venv|.ipynb_checkpoints|_build/|dist/|__pypackages__|.ipynb"
+
+[tool.ruff]
+lint.select = ["E", "F", "T100", "T201", "T203"]
+exclude = [
+  ".git",
+  ".tox",
+  "__pycache__",
+  "build/",
+  "dist/",
+  "*.ipynb",
+]
+line-length = 120
+
+[tool.ruff.lint.per-file-ignores]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 17
