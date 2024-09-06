@@ -281,6 +281,8 @@ def get_raw_ephys_data(
             "This is unexpected and may indicate a problem with the filtering settings."
         )
 
+    # TODO: save reference information from settings.xml
+
     # TODO: handle channel map
 
     # TODO: save settings.xml as an associated file using the ndx-franklab-novela extension

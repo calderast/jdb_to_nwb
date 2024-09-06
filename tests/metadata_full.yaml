@@ -2,13 +2,20 @@ impedance_file_path: "../data/ephys/impedance.csv"
 channel_geometry_file_path: "../data/ephys/256Ch_OG_geometry.csv"
 openephys_folder_path: "../data/2022-07-25_15-30-00"
 mountain_sort_output_file_path: "../data/ephys/mntsort_output/firings.mda"
+maze_configuration_file_path: "../data/behavior/maze_configuration.csv"
 sampling_frequency: 30000
 
 # TODO: confirm that all electrodes are in the same group and in the same location
 electrodes_location: "Nucleus Accumbens core"
+
+reference_skull_screw_location: Medial cerebellum, 1.0 mm posterior to lambda
 
 # For now, there is just one device, which is the probe
 device:
   name: "Probe"
   description: "Berke Lab Probe"
   manufacturer: "My Manufacturer"
+
+video:
+  file_path: "../data/video/video.mp4"
+  timestamps_file_path: "../data/photometry/07252022/timestamps.csv"

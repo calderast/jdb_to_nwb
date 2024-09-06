@@ -30,3 +30,6 @@ tag in the git history as the version number. To make a new release, simply tag 
 push to the repository. Use [semantic versioning](https://semver.org/) to set the version number.
 Create a GitHub release using the tag.
 
+## TODO
+
+Rename metadata.yaml to metadata_test.yaml
