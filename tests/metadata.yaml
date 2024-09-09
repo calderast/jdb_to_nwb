@@ -7,6 +7,8 @@ sampling_frequency: 30000
 # TODO: confirm that all electrodes are in the same group and in the same location
 electrodes_location: "Nucleus Accumbens core"
 
+reference_skull_screw_location: Medial cerebellum
+
 # For now, there is just one device, which is the probe
 device:
   name: "Probe"
