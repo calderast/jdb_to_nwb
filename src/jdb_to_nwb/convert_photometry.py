@@ -1,20 +1,75 @@
 from pynwb import NWBFile
+import scipy.io # for loading in signals.mat files
+import pandas as pd # essential functions
+import numpy as np # essential functions
+from scipy.sparse import diags, eye, csc_matrix  # for creating sparse matrices
+from scipy.sparse.linalg import spsolve  # for solving sparse linear systems
+from sklearn.linear_model import Lasso # for Lasso regression
 
+def WhittakerSmooth(x,w,lambda_,differences=1):
+    '''
+    Penalized least squares algorithm for background fitting
+    
+    input
+        x: input data (i.e. chromatogram of spectrum)
+        w: binary masks (value of the mask is zero if a point belongs to peaks and one otherwise)
+        lambda_: parameter that can be adjusted by user. The larger lambda is,  the smoother the resulting background
+        differences: integer indicating the order of the difference of penalties
+    
+    output
+        the fitted background vector
+    '''
+    X=np.matrix(x)
+    m=X.size
+    i=np.arange(0,m)
+    E=eye(m,format='csc')
+    D=E[1:]-E[:-1] # numpy.diff() does not work with sparse matrix. This is a workaround.
+    W=diags(w,0,shape=(m,m))
+    A=csc_matrix(W+(lambda_*D.T*D))
+    B=csc_matrix(W*X.T)
+    background=spsolve(A,B)
+    return np.array(background)
+
+def airPLS(x, lambda_=100, porder=1, itermax=15):
+    '''
+    Adaptive iteratively reweighted penalized least squares for baseline fitting
+    
+    input
+        x: input data (i.e. chromatogram of spectrum)
+        lambda_: parameter that can be adjusted by user. The larger lambda is,  the smoother the resulting background, z
+        porder: adaptive iteratively reweighted penalized least squares for baseline fitting
+    
+    output
+        the fitted background vector
+    '''
+    m=x.shape[0]
+    w=np.ones(m)
+    for i in range(1,itermax+1):
+        z=WhittakerSmooth(x,w,lambda_, porder)
+        d=x-z
+        dssn=np.abs(d[d<0].sum())
+        if(dssn<0.001*(abs(x)).sum() or i==itermax):
+            if(i==itermax): print('WARING max iteration reached!')
+            break
+        w[d>=0]=0 # d>0 means that this point is part of a peak, so its weight is set to 0 in order to ignore it
+        w[d<0]=np.exp(i*np.abs(d[d<0])/dssn)
+        w[0]=np.exp(i*(d[d<0]).max()/dssn) 
+        w[-1]=w[0]
+    return z
 
 
 def add_photometry(nwbfile: NWBFile, metadata: dict):
     print("Adding photometry...")
     # get metadata for photometry from metadata file
     signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
-    photometry_sampling_rate_in_hz = metadata["photometry"]["sampling_rate"]
+    # photometry_sampling_rate_in_hz = metadata["photometry"]["sampling_rate"] Commented out to use the old sampling rate variable
 
     # TODO: extract photometry signals
-# Jose:
-# I copied over the code most relevant to the TODO from Python scripts, assuming MATLAB is already convered the binary data. 
-    filepath =  'T:\\ACh Rats\\80B8CE6 (Ceecee)\\'
-    date = '01122024-L'
-    datepath = filepath + date + '\\'
-    signals = scipy.io.loadmat(datepath+'signals.mat',matlab_compatible=True)
+    # Jose:
+    # I copied over the code most relevant to the TODO from Python scripts, assuming MATLAB is already convered the binary data. 
+
+    signals = scipy.io.loadmat(signals_mat_file_path,matlab_compatible=True)
+    # used to be : signals = scipy.io.loadmat(datepath+'signals.mat',matlab_compatible=True) 
 
     # raw signals are saved as ndarrays 
     ref = signals['ref']
@@ -54,60 +109,6 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     red_xvals = np.arange(0,len(signal_red))/Fs/60 # turns your time scale to mintes bc every 250th sample is one second.
 
     #find baseline for sig and ref
-
-    from scipy.sparse import csc_matrix, eye, diags
-    from scipy.sparse.linalg import spsolve
-
-    def WhittakerSmooth(x,w,lambda_,differences=1):
-        '''
-        Penalized least squares algorithm for background fitting
-        
-        input
-            x: input data (i.e. chromatogram of spectrum)
-            w: binary masks (value of the mask is zero if a point belongs to peaks and one otherwise)
-            lambda_: parameter that can be adjusted by user. The larger lambda is,  the smoother the resulting background
-            differences: integer indicating the order of the difference of penalties
-        
-        output
-            the fitted background vector
-        '''
-        X=np.matrix(x)
-        m=X.size
-        i=np.arange(0,m)
-        E=eye(m,format='csc')
-        D=E[1:]-E[:-1] # numpy.diff() does not work with sparse matrix. This is a workaround.
-        W=diags(w,0,shape=(m,m))
-        A=csc_matrix(W+(lambda_*D.T*D))
-        B=csc_matrix(W*X.T)
-        background=spsolve(A,B)
-        return np.array(background)
-
-    def airPLS(x, lambda_=100, porder=1, itermax=15):
-        '''
-        Adaptive iteratively reweighted penalized least squares for baseline fitting
-        
-        input
-            x: input data (i.e. chromatogram of spectrum)
-            lambda_: parameter that can be adjusted by user. The larger lambda is,  the smoother the resulting background, z
-            porder: adaptive iteratively reweighted penalized least squares for baseline fitting
-        
-        output
-            the fitted background vector
-        '''
-        m=x.shape[0]
-        w=np.ones(m)
-        for i in range(1,itermax+1):
-            z=WhittakerSmooth(x,w,lambda_, porder)
-            d=x-z
-            dssn=np.abs(d[d<0].sum())
-            if(dssn<0.001*(abs(x)).sum() or i==itermax):
-                if(i==itermax): print('WARING max iteration reached!')
-                break
-            w[d>=0]=0 # d>0 means that this point is part of a peak, so its weight is set to 0 in order to ignore it
-            w[d<0]=np.exp(i*np.abs(d[d<0])/dssn)
-            w[0]=np.exp(i*(d[d<0]).max()/dssn) 
-            w[-1]=w[0]
-        return z
 
     lambd = 1e8
     porder = 1
@@ -152,40 +153,47 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     rzdFF = (rz_signal - z_reference_fitted)
 
 
-    #Make dataframe with all data organized by sample number
-    visits = np.unique(visits)
-    a = np.tile(0,(len(gzdFF),22)) # each row is a 250Hz time stamp 
-    data = np.full_like(a, np.nan, dtype=np.double) #make a sample number x variable number array of nans
-    #fill in nans with behavioral data. 
-    # columns == x,y,GRAB-ACh,dLight,port,rwd,roi
-    # assigns values to columns that correspond to their signal
-    data[:,0] = z_reference_fitted.T[0] # fitted z-scored reference
-    data[:,1] = gzdFF.T[0] # green z-scored
-    data[:,2] = rzdFF.T[0] # red z-scored
-    data[:,3] = ref.T[0] # raw 405 reference (Should I add another column for0 'z_reference'?)
-    data[:,4] = sig1 # raw green
-    data[:,5] = sig2 # raw red 565
+    # #Make dataframe with all data organized by sample number
+    # a = np.tile(0,(len(gzdFF),6)) # each row is a 250Hz time stamp 
+    # data = np.full_like(a, np.nan, dtype=np.double) #make a sample number x variable number array of nans
+    # #fill in nans with behavioral data. 
+    # # columns == x,y,GRAB-ACh,dLight,port,rwd,roi
+    # # assigns values to columns that correspond to their signal
+    # data[:,0] = z_reference_fitted.T[0] # fitted z-scored reference
+    # data[:,1] = gzdFF.T[0] # green z-scored
+    # data[:,2] = rzdFF.T[0] # red z-scored
+    # data[:,3] = ref.T[0] # raw 405 reference (Should I add another column for0 'z_reference'?)
+    # data[:,4] = sig1 # raw green
+    # data[:,5] = sig2 # raw red 565
 
-    sampledata = pd.DataFrame(data,columns = ['z-ref','green','red','ref','470','565'])
+    # sampledata = pd.DataFrame(data,columns = ['z-ref','green','red','ref','470','565'])
 
-    #z-score and save signal as zscore
-    gzscored = np.divide(np.subtract(sampledata.green,sampledata.green.mean()),sampledata.green.std())
-    sampledata['green_z_scored'] = gzscored
-    rzscored = np.divide(np.subtract(sampledata.red,sampledata.red.mean()),sampledata.red.std())
-    sampledata['red_z_scored'] = rzscored 
-
-    sampledata = reduce_mem_usage(sampledata)
-
-    #save dataframe
-    sampledata.to_csv(savepath+'sampleframe.csv')
+    #z-score and save signal as zscore (this is sz scored twice)
+    # gzscored = np.divide(np.subtract(sampledata.green,sampledata.green.mean()),sampledata.green.std())
+    # sampledata['green_z_scored'] = gzscored
+    # rzscored = np.divide(np.subtract(sampledata.red,sampledata.red.mean()),sampledata.red.std())
+    # sampledata['red_z_scored'] = rzscored 
 
     # Create ndx-fiber-photometry objects
 
     # TODO: extract nosepoke times
 
+    visits = signals['visits'][0] # This contains all the port visits in NON-DOWNSAMPLED timestamps 
+
+    # TODO: make sure these visits correspond or match the number of visits in the behavior file (arduino) (include a sanity check)
+    # shiftVisByN = int(input("adjust visits by removing n indices from start?"+\
+    # " (input n; if 1 is first index, input 1)"))
+    # visits = visits[shiftVisByN:] # @10Khz!!!
+
+    visits = np.divide(visits,SR/Fs) # timestamps of DOWNSAMPED reward port visits 
+    visits = visits.astype(int)
+
+    # TODO: add variables that correspond to signals and visits in NWB
+
+
     # if photometry exists, it serves as the main clock, so we do not need to realign these timestamps
 
-    # TODO: add to NWB file
+    # TODO: add to NWB file !!
 
 
     
