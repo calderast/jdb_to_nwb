@@ -10,7 +10,7 @@ def WhittakerSmooth(data,binary_mask,lambda_):
     '''
     Penalized least squares algorithm for background fitting
 
-    Wittaker smoothing is a method for fitting a smooth background to noisy data, often used in signal processing to remove baseline noise or trends while preserving the main features of the signal. 
+    Whittaker smoothing is a method for fitting a smooth background to noisy data, often used in signal processing to remove baseline noise or trends while preserving the main features of the signal. 
 
     - fits a smooth background to the input data ('data') by minimizaing the sum of squared differences between the data and the background.
     - uses a binary mask ('binary_mask') to identify the signal regions in the data (peaks and troughs) that are not part of the background calculation.  
