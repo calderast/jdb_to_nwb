@@ -18,7 +18,7 @@ def WhittakerSmooth(data,binary_mask,lambda_):
 
     input
         data: input data. 1D array that represents the signal data.
-        bindary_mask: binary mask that defines which points are signals (peaks) and which are background. 0 = Peak / 1 = Background
+        binary_mask: binary mask that defines which points are signals (peaks) and which are background. 0 = Peak / 1 = Background
         lambda_: parameter that can be adjusted by user. The larger lambda is, the smoother the resulting background. Careful: too large can lead to over smoothing.
     output
         the fitted background vector
