@@ -1,5 +1,5 @@
-# NOTE: We could have used NeuroConv to convert the ephys data but we want to use the Frank Lab's 
-# ndx-franklab-novela extension to store the Probe information for maximal integration with Spyglass, 
+# NOTE: We could have used NeuroConv to convert the ephys data but we want to use the Frank Lab's
+# ndx-franklab-novela extension to store the Probe information for maximal integration with Spyglass,
 # so we are doing the conversion manually using PyNWB.
 
 import warnings
