@@ -54,7 +54,7 @@ def airPLS(data, lambda_=100, penalty_order=1, max_iterations=15):
 
     input
         data: input data (i.e. chromatogram of spectrum)
-        lambda_: Parameter that can be adjusted by user. The larger lambda is, the smoother the resulting baseline.
+        lambd: Parameter that can be adjusted by user. The larger lambda is, the smoother the resulting baseline.
         penalty_order: The order of the penalty for the differences in the baseline. Controls how strongly the smoothness constraint is enforced.
         max_iterations: Maximum number of iterations for the algorithm to adjust the weights and fit the baseline.
 
