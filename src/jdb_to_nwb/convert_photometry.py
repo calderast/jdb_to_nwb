@@ -19,7 +19,7 @@ def WhittakerSmooth(data, binary_mask, lambda_):
 
     input
         data: input data. 1D array that represents the signal data.
-        bindary_mask: binary mask that defines which points are signals (peaks) and which are background. 0 = Peak / 1 = Background
+        binary_mask: binary mask that defines which points are signals (peaks) and which are background. 0 = Peak / 1 = Background
         lambda_: parameter that can be adjusted by user. The larger lambda is, the smoother the resulting background. Careful: too large can lead to over smoothing.
     output
         the fitted background vector
@@ -42,7 +42,7 @@ def WhittakerSmooth(data, binary_mask, lambda_):
     return np.array(smoothed_baseline)
 
 
-def airPLS(data, lambda_=100, penalty_order=1, max_iterations=15):
+def airPLS(data, lambda_=100, max_iterations=15):
     """
     Adaptive iteratively reweighted penalized least squares for baseline fitting
     DOI : 10.1039/b922045c
@@ -55,7 +55,6 @@ def airPLS(data, lambda_=100, penalty_order=1, max_iterations=15):
     input
         data: input data (i.e. chromatogram of spectrum)
         lambd: Parameter that can be adjusted by user. The larger lambda is, the smoother the resulting baseline.
-        penalty_order: The order of the penalty for the differences in the baseline. Controls how strongly the smoothness constraint is enforced.
         max_iterations: Maximum number of iterations for the algorithm to adjust the weights and fit the baseline.
 
     output
@@ -66,9 +65,12 @@ def airPLS(data, lambda_=100, penalty_order=1, max_iterations=15):
     weights = np.ones(data_points)  # initial weights set to 1. All points are initially treated equally.
 
     for i in range(1, max_iterations + 1):
+        # loop runs 'max_iterations' times to adjust the weights and fit the baseline
         baseline = WhittakerSmooth(
-            data, weights, lambda_, penalty_order
-        )  # loop runs 'max_iterations' times to adjust the weights and fit the baseline
+            data=data,
+            binary_mask=weights,
+            lambda_=lambda_,
+        )
         delta = (
             data - baseline
         )  # difference between data and baseline to calculate residuals, how much each data point deviates from the baseline. delta > 0 == peak. delta < 0 == background.
@@ -143,13 +145,12 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     # Baseline subtraction using airPLS
 
     lambd = 1e8
-    porder = 1
-    itermax = 50
+    max_iterations = 50
 
     # smoothed background lines
-    ref_base = airPLS(raw_reference.T, lambda_=lambd, porder=porder, itermax=itermax).reshape(len(raw_reference), 1)
-    g_base = airPLS(raw_green.T, lambda_=lambd, porder=porder, itermax=itermax).reshape(len(raw_green), 1)
-    r_base = airPLS(raw_red.T, lambda_=lambd, porder=porder, itermax=itermax).reshape(len(raw_red), 1)
+    ref_base = airPLS(raw_reference.T, lambda_=lambd, max_iterations=max_iterations).reshape(len(raw_reference), 1)
+    g_base = airPLS(raw_green.T, lambda_=lambd, max_iterations=max_iterations).reshape(len(raw_green), 1)
+    r_base = airPLS(raw_red.T, lambda_=lambd, max_iterations=max_iterations).reshape(len(raw_red), 1)
 
     # subtract the respective moving airPLS baseline from the smoothed signal and reference
 
@@ -182,7 +183,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000, positive=True, random_state=9999, selection="random")
 
     lin.fit(z_reference, gz_signal)
-    lin.fit(z_reference, rz_signal)
+    # lin.fit(z_reference, rz_signal)
     z_reference_fitted = lin.predict(z_reference).reshape(len(z_reference), 1)
 
     # _____________________________________________________________________________________
@@ -191,29 +192,6 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
 
     gzdFF = gz_signal - z_reference_fitted
     rzdFF = rz_signal - z_reference_fitted
-
-    # OLD TIM CODE
-
-    # #Make dataframe with all data organized by sample number
-    # a = np.tile(0,(len(gzdFF),6)) # each row is a 250Hz time stamp
-    # data = np.full_like(a, np.nan, dtype=np.double) #make a sample number x variable number array of nans
-    # #fill in nans with behavioral data.
-    # # columns == x,y,GRAB-ACh,dLight,port,rwd,roi
-    # # assigns values to columns that correspond to their signal
-    # data[:,0] = z_reference_fitted.T[0] # fitted z-scored reference
-    # data[:,1] = gzdFF.T[0] # green z-scored
-    # data[:,2] = rzdFF.T[0] # red z-scored
-    # data[:,3] = ref.T[0] # raw 405 reference (Should I add another column for0 'z_reference'?)
-    # data[:,4] = sig1 # raw green
-    # data[:,5] = sig2 # raw red 565
-
-    # sampledata = pd.DataFrame(data,columns = ['z-ref','green','red','ref','470','565'])
-
-    # z-score and save signal as zscore (this is sz scored twice)
-    # gzscored = np.divide(np.subtract(sampledata.green,sampledata.green.mean()),sampledata.green.std())
-    # sampledata['green_z_scored'] = gzscored
-    # rzscored = np.divide(np.subtract(sampledata.red,sampledata.red.mean()),sampledata.red.std())
-    # sampledata['red_z_scored'] = rzscored
 
     # Create ndx-fiber-photometry objects
 
@@ -228,6 +206,8 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
 
     visits = np.divide(visits, SR / Fs)  # timestamps of DOWNSAMPED reward port visits
     visits = visits.astype(int)
+
+    return raw_green, raw_reference, gzdFF, rzdFF, visits, z_reference_fitted
 
     # TODO: add variables that correspond to signals and visits in NWB
 
