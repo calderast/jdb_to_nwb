@@ -6,6 +6,21 @@ from scipy.sparse import diags, eye, csc_matrix  # for creating sparse matrices
 from scipy.sparse.linalg import spsolve  # for solving sparse linear systems
 from sklearn.linear_model import Lasso  # for Lasso regression
 
+# Some of these imports are unused for now but will be used for photometry metadata
+from ndx_fiber_photometry import (
+    Indicator,
+    OpticalFiber,
+    ExcitationSource,
+    Photodetector,
+    DichroicMirror,
+    BandOpticalFilter,
+    EdgeOpticalFilter,
+    FiberPhotometry,
+    FiberPhotometryTable,
+    FiberPhotometryResponseSeries,
+    CommandedVoltageSeries,
+)
+
 
 def whittaker_smooth(data, binary_mask, lambda_):
     """
@@ -16,7 +31,7 @@ def whittaker_smooth(data, binary_mask, lambda_):
     squared differences between the data and the background.
     Uses a binary mask to identify the signal regions in the data
     that are not part of the background calculation.
-    Uses a penalty term (lambda) that discourages rapid changes and enforces smoothness.
+    Uses a penalty term lambda that discourages rapid changes and enforces smoothness.
 
     Args:
     data: 1D array representing the signal data
@@ -50,7 +65,7 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
     DOI: 10.1039/b922045c
 
     This function is used to fit a baseline to the input data using
-    adaptive iteratively reweighted penalized least squares (airPLS).
+    adaptive iteratively reweighted Penalized Least Squares (airPLS).
     The baseline is fitted by minimizing the weighted sum of the squared differences
     between the input data and the baseline using a penalized least squares approach
     (Whittaker smoothing) with a penalty term lambda that encourages smoothness.
@@ -92,10 +107,16 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
     return baseline
 
 
+def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
+    # TODO for Ryan - add photometry metadata to NWB :)
+    # https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
+    pass
+
+
 def add_photometry(nwbfile: NWBFile, metadata: dict):
     print("Adding photometry...")
 
-    # Get path to raw photometry data from metadata file
+    # Get path to signals.mat (photometry data) from metadata file
     signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
     signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
 
@@ -143,10 +164,55 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     # Remove the contribution of the reference signal from the signals using a Lasso regression
     lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000, positive=True, random_state=9999, selection="random")
     lin.fit(z_scored_reference, z_scored_green)
-    z_reference_fitted = lin.predict(z_scored_reference).reshape(len(z_scored_reference), 1)
+    z_scored_reference_fitted = lin.predict(z_scored_reference).reshape(len(z_scored_reference), 1)
 
     # Calculate deltaF/F for the green signal
     print("Calculating deltaF/F...")
-    z_scored_green_dFF = z_scored_green - z_reference_fitted
+    z_scored_green_dFF = z_scored_green - z_scored_reference_fitted
 
-    return z_scored_green_dFF, z_reference_fitted.T[0]
+    # Add photometry metadata to the NWB
+    print("Adding photometry metadata to NWB ...")
+    add_photometry_metadata(NWBFile, metadata)
+
+    # Add actual photometry data to the NWB
+    print("Adding photometry data to NWB ...")
+
+    # Create FiberPhotometryResponseSeries objects for the relevant photometry signals
+    z_scored_green_dFF_response_series = FiberPhotometryResponseSeries(
+        name="z_scored_green_dFF",
+        description="Z-scored green signal dF/F",
+        data=z_scored_green_dFF,
+        unit="dF/F",
+        rate=float(Fs),
+    )
+    z_scored_reference_fitted_response_series = FiberPhotometryResponseSeries(
+        name="z_scored_reference_fitted",
+        description="Fitted Z-scored reference signal",
+        data=z_scored_reference_fitted,
+        unit="F",
+        rate=float(Fs),
+    )
+    raw_green_response_series = FiberPhotometryResponseSeries(
+        name="raw_green",
+        description="Raw green signal",
+        data=raw_green.to_numpy(),
+        unit="F",
+        rate=float(Fs),
+    )
+    raw_reference_response_series = FiberPhotometryResponseSeries(
+        name="raw_reference",
+        description="Raw 405 reference signal",
+        data=raw_reference.to_numpy(),
+        unit="F",
+        rate=float(Fs),
+    )
+    
+    # Add the photometry response series to the NWB
+    nwbfile.add_acquisition(z_scored_green_dFF_response_series)
+    nwbfile.add_acquisition(z_scored_reference_fitted_response_series)
+    nwbfile.add_acquisition(raw_green_response_series)
+    nwbfile.add_acquisition(raw_reference_response_series)
+    
+    # TODO: How to add visit data?? 
+
+    return z_scored_green_dFF, z_scored_reference_fitted.T[0]
