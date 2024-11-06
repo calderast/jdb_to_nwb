@@ -1,6 +1,7 @@
 from pynwb import NWBFile
 import pandas as pd
 import numpy as np
+import warnings
 import scipy.io  # for loading in signals.mat files
 from scipy.sparse import diags, eye, csc_matrix  # for creating sparse matrices
 from scipy.sparse.linalg import spsolve  # for solving sparse linear systems
@@ -95,7 +96,7 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
         # Convergence check: if sum_of_neg_deltas < 0.1% of the total data, or if the maximum number of iterations is reached
         if sum_of_neg_deltas < 0.001 * (abs(data)).sum() or i == max_iterations:
             if i == max_iterations:
-                print("WARING max iteration reached!")
+                warnings.warn("WARING max iteration reached!")
             break
         # Delta >= 0 means that this point is part of a peak, so its weight is set to 0 in order to ignore it
         weights[delta >= 0] = 0
@@ -162,9 +163,16 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     )
 
     # Remove the contribution of the reference signal from the signals using a Lasso regression
-    lin = Lasso(alpha=0.0001, precompute=True, max_iter=1000, positive=True, random_state=9999, selection="random")
+    alpha = 0.0001  # Parameter to control the regularization strength. A larger value means more regularization
+    # Create the Lasso model (Lasso = type of linear regression that uses L1 regularization to prevent overfitting)
+    lin = Lasso(alpha=alpha, precompute=True, max_iter=1000, positive=True, random_state=9999, selection="random")
+    # Fit the model (learn the relationship between the reference signal and green signal)
     lin.fit(z_scored_reference, z_scored_green)
+    # Predict what the values of z_scored_green should be given z_scored_reference
     z_scored_reference_fitted = lin.predict(z_scored_reference).reshape(len(z_scored_reference), 1)
+
+    # NOTE: I think z_scored_reference_fitted should be renamed to accurately reflect
+    # what it actually is - I'm keeping it for now to match Tim's preprocessing
 
     # Calculate deltaF/F for the green signal
     print("Calculating deltaF/F...")
@@ -175,20 +183,20 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     add_photometry_metadata(NWBFile, metadata)
 
     # Add actual photometry data to the NWB
-    print("Adding photometry data to NWB ...")
+    print("Adding photometry signals to NWB ...")
 
-    # Create FiberPhotometryResponseSeries objects for the relevant photometry signals
+    # Create NWB FiberPhotometryResponseSeries objects for the relevant photometry signals
     z_scored_green_dFF_response_series = FiberPhotometryResponseSeries(
         name="z_scored_green_dFF",
         description="Z-scored green signal dF/F",
-        data=z_scored_green_dFF,
+        data=z_scored_green_dFF.T[0],
         unit="dF/F",
         rate=float(Fs),
     )
     z_scored_reference_fitted_response_series = FiberPhotometryResponseSeries(
         name="z_scored_reference_fitted",
         description="Fitted Z-scored reference signal",
-        data=z_scored_reference_fitted,
+        data=z_scored_reference_fitted.T[0],
         unit="F",
         rate=float(Fs),
     )
@@ -201,18 +209,17 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     )
     raw_reference_response_series = FiberPhotometryResponseSeries(
         name="raw_reference",
-        description="Raw 405 reference signal",
+        description="Raw reference signal",
         data=raw_reference.to_numpy(),
         unit="F",
         rate=float(Fs),
     )
-    
-    # Add the photometry response series to the NWB
+
+    # Add the FiberPhotometryResponseSeries objects to the NWB
     nwbfile.add_acquisition(z_scored_green_dFF_response_series)
     nwbfile.add_acquisition(z_scored_reference_fitted_response_series)
     nwbfile.add_acquisition(raw_green_response_series)
     nwbfile.add_acquisition(raw_reference_response_series)
-    
-    # TODO: How to add visit data?? 
 
-    return z_scored_green_dFF, z_scored_reference_fitted.T[0]
+    # Return port visits in downsampled photometry time (250 Hz) to use for alignment
+    return port_visits
