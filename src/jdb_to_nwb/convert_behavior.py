@@ -4,6 +4,7 @@ import itertools
 import numpy as np
 from pathlib import Path
 from pynwb import NWBFile
+from ndx_franklab_novela import AssociatedFiles
 
 
 def load_maze_configurations(maze_configuration_file_path: Path):
@@ -23,7 +24,7 @@ def load_maze_configurations(maze_configuration_file_path: Path):
     except:
        print(f"Could not load maze configurations from {maze_configuration_file_path}")
        return []
-    
+
 
 def adjust_arduino_timestamps(arduino_timestamps: list):
     """ Convert arduino timestamps to corresponding photometry sample number. """
@@ -38,7 +39,27 @@ def adjust_arduino_timestamps(arduino_timestamps: list):
     # (This is named 'ardstamps' in the original conversion code)
     photometry_sample_for_arduino_event = np.round(arduino_timestamps*(250/1000)).astype(int)
     return photometry_sample_for_arduino_event
+
+
+def determine_session_type(block_data: list):
+    """ Determine the session type ("Barrier change" or "Contingency change") based on block data. """
+
+    # This case is rare/hopefully nonexistent - we always expect to have more than one block per session
+    if len(block_data) == 1:
+        return "Single block"
     
+    # Get the reward probabilities at each port for each block in the session
+    reward_probabilities = []
+    for block in block_data:
+        reward_probabilities.append([block["pA"], block["pB"], block["pC"]])
+
+    # If the reward contingencies change with each block, this is a contingency change session
+    if reward_probabilities[0] != reward_probabilities[1]:
+        return "Contingency change"
+    # Otherwise, this must be a barrier change session
+    else:
+        return "Barrier change"
+
 
 def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
     """
@@ -71,10 +92,11 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
             current_block = {
                 'block': int(block_start.group(1)) + 1,
                 'pA': int(arduino_text[i+1].split(":")[1].strip()),
-                'pB': int(arduino_text[i+1].split(":")[1].strip()),
+                'pB': int(arduino_text[i+2].split(":")[1].strip()),
                 'pC': int(arduino_text[i+3].split(":")[1].strip()),
                 'start_time': None, # Set this once we find the end of the beam break that triggered this block
-                'end_time': None  # Set this as the start time of the next block
+                'end_time': None,  # Set this as the start time of the next block
+                'num_trials_in_block': None # Set this once we find the last trial in this block
             }
 
             # If this is the first block, we can use the current time as the start time 
@@ -96,6 +118,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                 current_trial['end_port'] = port
                 current_trial['trial'] = trial_within_block
                 current_trial['trial_within_session'] = trial_within_session
+                current_trial['block'] = current_block.get('block')
 
                 # The line immediately following the beam break start contains reward information
                 current_trial['reward'] = (
@@ -121,6 +144,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                     if not current_block['start_time']:
                         current_block['start_time'] = float(arduino_timestamps[i])
                         previous_block['end_time'] = float(arduino_timestamps[i])
+                        previous_block['num_trials_in_block'] = previous_trial.get('trial')
                         block_data.append(previous_block)
                         previous_block = current_block
                         trial_within_block = 1
@@ -132,6 +156,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
     
     # Append the last block
     current_block['end_time'] = float(previous_trial['end_time'])
+    current_block['num_trials_in_block'] = previous_trial.get('trial')
     block_data.append(current_block)
 
     return trial_data, block_data
@@ -145,11 +170,11 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     arduino_timestamps_file_path = metadata["behavior"]["arduino_timestamps_file_path"]
     maze_configuration_file_path = metadata["behavior"]["maze_configuration_file_path"]
 
-    # Read arduino text file into a list of strings
+    # Read arduino text file into a list of strings to use for parsing
     with open(arduino_text_file_path, 'r') as arduino_text_file:
         arduino_text = arduino_text_file.read().splitlines()
 
-    # Read arduino timestamps from the CSV into a list of floats
+    # Read arduino timestamps from the CSV into a list of floats to use for parsing
     with open(arduino_timestamps_file_path, 'r') as arduino_timestamps_file:
         arduino_timestamps = list(map(float, itertools.chain.from_iterable(csv.reader(arduino_timestamps_file))))
 
@@ -164,43 +189,64 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     # Read through the arduino text and timestamps to get trial and block data
     trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps)
 
+    # Use block data to determine if this is a contingency (probability) change or barrier change session
+    session_type = determine_session_type(block_data)
+
     # Load maze configurations for each block from the maze configuration file  
     maze_configurations = load_maze_configurations(maze_configuration_file_path)
 
     # Make sure the number of blocks matches the number of loaded maze configurations
     if len(block_data) != len(maze_configurations):
-        raise ValueError(f"There are {len(block_data)} in the arduino text file, "
-                         f"but {len(maze_configurations)} in the maze configuration file."
-                         "There should be one maze configuration per block.")
+        # If this is a contingency change session, we may have a single maze configuration
+        # to be used for all blocks. If so, duplicate it so we have one maze per block.
+        if len(maze_configurations) == 1 and session_type == "Contingency change":
+            maze_configurations = maze_configurations * len(block_data)
+        else:
+            raise ValueError(f"There are {len(block_data)} blocks in the arduino text file, "
+                            f"but {len(maze_configurations)} mazes in the maze configuration file. "
+                            "There should be exactly one maze configuration per block, "
+                            "or a single maze configuration if this is a contingency change session.")
     
-    # Add maze_configuration to each block in block_metadata
+    # Add the maze configuration to the metadata for each block
     for block, maze in zip(block_data, maze_configurations):
         block['maze_configuration'] = maze
 
-    # Add columns for block and trial data to the NWB file
-    nwbfile.add_epoch_column(name="block", description="The block number within the session")
-    nwbfile.add_epoch_column(name="maze_configuration", description="The maze configuration for each block")
-    nwbfile.add_epoch_column(name="prob_A", description="The probability of reward at port A for each block")
-    nwbfile.add_epoch_column(name="prob_B", description="The probability of reward at port B for each block")
-    nwbfile.add_epoch_column(name="prob_C", description="The probability of reward at port C for each block")
-    nwbfile.add_trial_column(name="trial_num", description="The trial number within the block")
+    # Add columns for block data to the NWB file
+    block_table = nwbfile.create_time_intervals(name="block", 
+        description="The block within a session. Each block is defined by a maze configuration and set of reward contingencies.")
+    block_table.add_column(name="block", description="The block number within the session")
+    block_table.add_column(name="maze_configuration", description="The maze configuration for each block, "
+                           "defined by the set of hexes in the maze where barriers are placed.")
+    block_table.add_column(name="prob_A", description="The probability of reward at port A for each block")
+    block_table.add_column(name="prob_B", description="The probability of reward at port B for each block")
+    block_table.add_column(name="prob_C", description="The probability of reward at port C for each block")
+    block_table.add_column(name="num_trials_in_block", description="The number of trials in this block")
+
+    # Add columns for trial data to the NWB file
+    nwbfile.add_trial_column(name="duration", description="The duration of the trial")
+    nwbfile.add_trial_column(name="trial", description="The trial number within the block")
     nwbfile.add_trial_column(name="trial_within_session", description="The trial number within the session")
+    nwbfile.add_trial_column(name="block", description="The block this trial is in")
     nwbfile.add_trial_column(name="start_port", description="The reward port the rat started at (A, B, or C)")
     nwbfile.add_trial_column(name="end_port", description="The reward port the rat ended at (A, B, or C)")
     nwbfile.add_trial_column(name="reward", description="If the rat got a reward at the port (1 or 0)")
     nwbfile.add_trial_column(name="beam_break_start", description="The time the rat entered the reward port")
     nwbfile.add_trial_column(name="beam_break_end", description="The time the rat exited the reward port")
 
-    # Add each block to the NWB as a behavioral epoch
+    # Add description with the session type, number of blocks, and number of trials
+    nwbfile.experiment_description = f"{session_type} session for the hex maze task with {len(block_data)} blocks and {len(trial_data)} trials."
+
+    # Add each block to the NWB
     for block in block_data:
-        nwbfile.add_epoch(
+        block_table.add_row(
             block=block['block'],
             start_time=block['start_time'],
             stop_time=block['end_time'], 
-            maze_configuration=block['maze_configuration'],
+            maze_configuration=str(block['maze_configuration']),
             prob_A=block['pA'],
             prob_B=block['pB'],
             prob_C=block['pC'],
+            num_trials_in_block=block['num_trials_in_block']
         )
 
     # Add each trial to the NWB
@@ -208,8 +254,10 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
         nwbfile.add_trial(
             start_time=trial['start_time'],
             stop_time=trial['end_time'],
-            trial_num=trial['trial'], 
+            duration=trial['end_time']-trial['start_time'],
+            trial=trial['trial'], 
             trial_within_session=trial['trial_within_session'],
+            block=trial['block'],
             start_port=trial['start_port'],
             end_port=trial['end_port'],
             reward=trial['reward'],
@@ -217,6 +265,30 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
             beam_break_end=trial['beam_break_end']
         )
 
+    # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects
+    with open(arduino_text_file_path, 'r') as arduino_text_file:
+        raw_arduino_text = arduino_text_file.read()
+    with open(arduino_timestamps_file_path, 'r') as arduino_timestamps_file:
+        raw_arduino_timestamps = arduino_timestamps_file.read()
+    
+    raw_arduino_text_file = AssociatedFiles(
+        name="arduino_text",
+        description="Raw arduino text",
+        content=raw_arduino_text,
+        task_epochs="" # Required but unused 
+    )
+    raw_arduino_timestamps_file = AssociatedFiles(
+        name="arduino_timestamps",
+        description="Raw arduino timestamps",
+        content=raw_arduino_timestamps,
+        task_epochs="" # Required but unused 
+    )
+
+    # Add arduino text and timestamps to the NWB as associated files
+    nwbfile.create_processing_module(name="associated_files", description="Contains all associated files for behavioral data")
+    nwbfile.processing["associated_files"].add(raw_arduino_text_file)
+    nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
+
     # NOTE: the start/end times are in photometry samples, but NWB wants seconds relative to the start of the recording
-    # NOTE: first trial currently starts at block 1 start and has start_port=None, should I change things so time before the first nosepoke is not included in any trial
+    # NOTE: first trial currently starts at block 1 start and has start_port=None, this may be changed later so the time before the first nosepoke is not included in any trial
     # NOTE: time after the last nosepoke is not included in any trial
