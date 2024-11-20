@@ -27,7 +27,7 @@ from ndx_fiber_photometry import (
 
 def read_phot_data(phot_file_path):
     """Parse .phot file from Labview into a dict"""
-    
+
     phot = {}
     with open(phot_file_path, "rb") as fid:
         # Read binary data from the file, specifying the big-endian data format '>'
@@ -91,7 +91,7 @@ def read_phot_data(phot_file_path):
 
 def read_box_data(box_file_path):
     """Parse .box file from Labview into a dict"""
-    
+
     box = {}
     with open(box_file_path, "rb") as fid:
         # Read binary data from the file, specifying the big-endian data format '>'
@@ -214,6 +214,7 @@ def run_lockin_detection(phot):
     )
 
     # Cut off the beginning of the signals to match behavioral data
+    # NOTE: We no longer do this - it will likely be removed in a future PR but keeping it for posterity for now
     remove = 0  # Number of samples to remove from the beginning of the signals
     sig1 = sig1[remove:]
     sig2 = sig2[remove:]
@@ -228,9 +229,9 @@ def run_lockin_detection(phot):
     return signals
 
 
-def do_photometry_preprocessing(phot_file_path, box_file_path):
+def process_raw_photometry_signals(phot_file_path, box_file_path):
     """Process the .phot and .box files from Labview into a "signals" dict, replacing former MATLAB preprocessing code that created signals.mat"""
-    
+
     # Read .phot file from Labview into a dict
     phot_dict = read_phot_data(phot_file_path)
 
@@ -348,7 +349,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, preprocessed: bool = True):
 
     Option to do the initial photometry processing separately in MATLAB (specify preprocessed=True),
     in which case "signals_mat_file_path" must exist in the metadata dict.
-    Alternatively, create "signals" from the raw .phot and .box files returned by Labview (preprocessed=False), 
+    Alternatively, create "signals" from the raw .phot and .box files returned by Labview (preprocessed=False),
     in which case "phot_file_path" and "box_file_path" must exist in the metadata dict.
     Argument "preprocessed" is True by default (starts from existing signals.mat file)
 
@@ -363,7 +364,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, preprocessed: bool = True):
         # Process photometry data from Labview to create dict of relevant photometry signals
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
-        signals = do_photometry_preprocessing(phot_file_path, box_file_path)
+        signals = process_raw_photometry_signals(phot_file_path, box_file_path)
     # If we do have signals.mat, load it and go from there!
     else:
         # Load signals.mat created by external MATLAB photometry processing code
@@ -374,9 +375,10 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, preprocessed: bool = True):
     print("Downsampling raw data to 250 Hz...")
     SR = 10000  # Original sampling rate of the photometry system (Hz)
     Fs = 250  # Target downsample frequency (Hz)
-    raw_reference = pd.Series(signals["ref"][0][:: int(SR / Fs)])
-    raw_green = pd.Series(signals["sig1"][0][:: int(SR / Fs)])
-    port_visits = np.divide(signals["visits"][0], SR / Fs).astype(int)
+    # Use np.squeeze to deal with the fact that signals from our dict are 1D but signals.mat are 2D
+    raw_reference = pd.Series(np.squeeze(signals["ref"])[:: int(SR / Fs)])
+    raw_green = pd.Series(np.squeeze(signals["sig1"])[:: int(SR / Fs)])
+    port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
 
     # Smooth the signals using a rolling mean
     print("Smoothing the photometry signals using a rolling mean...")
