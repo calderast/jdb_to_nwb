@@ -62,7 +62,7 @@ def test_add_photometry():
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
-    This version of the test uses the already created signals.mat at to "signals_mat_file_path" further process and add photometry signals to the NWB.
+    This version of the test uses the already created signals.mat at "signals_mat_file_path" to further process and add photometry signals to the NWB.
     """
 
     # Create a test metadata dictionary

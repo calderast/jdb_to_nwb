@@ -166,4 +166,4 @@ _version.py
 .DS_Store
 .ruff_cache/
 *.nwb
-tests/test_data/*
+tests/test_data/photometry/*

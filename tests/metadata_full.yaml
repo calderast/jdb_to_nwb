@@ -16,6 +16,11 @@ device:
   description: "Berke Lab Probe"
   manufacturer: "My Manufacturer"
 
+photometry:
+  signals_mat_file_path: "tests/test_data/photometry/signals.mat"
+  phot_file_path: "tests/test_data/photometry/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+  box_file_path: "tests/test_data/photometry/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+
 video:
   file_path: "../data/video/video.mp4"
   timestamps_file_path: "../data/photometry/07252022/timestamps.csv"
