@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import warnings
 import scipy.io
-from scipy.signal import butter, filtfilt, lfilter, hilbert
+from scipy.signal import butter, lfilter, hilbert
 from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
@@ -25,148 +25,125 @@ from ndx_fiber_photometry import (
 )
 
 
-def read_phot_data(signals_phot_file_path):
+def read_phot_data(phot_file_path):
+    """Parse .phot file from Labview into a dict"""
+    
     phot = {}
-    phot_file = signals_phot_file_path + '*.phot'
+    with open(phot_file_path, "rb") as fid:
+        # Read binary data from the file, specifying the big-endian data format '>'
+        phot["magic_key"] = struct.unpack(">I", fid.read(4))[0]
+        phot["header_size"] = struct.unpack(">h", fid.read(2))[0]
+        phot["main_version"] = struct.unpack(">h", fid.read(2))[0]
+        phot["secondary_version"] = struct.unpack(">h", fid.read(2))[0]
+        phot["sampling_rate"] = struct.unpack(">h", fid.read(2))[0]
+        phot["bytes_per_sample"] = struct.unpack(">h", fid.read(2))[0]
+        phot["num_channels"] = struct.unpack(">h", fid.read(2))[0]
 
-    with open(phot_file, 'rb') as fid:
-        
-        # read binary data from the file, specifying the big-endian data format '>'
-        phot['magic_key'] = struct.unpack('>I', fid.read(4))[0]
-        phot['header_size'] = struct.unpack('>h', fid.read(2))[0]  
-        phot['main_version'] = struct.unpack('>h', fid.read(2))[0]
-        phot['secondary_version'] = struct.unpack('>h', fid.read(2))[0]
-        phot['sampling_rate'] = struct.unpack('>h', fid.read(2))[0]
-        phot['bytes_per_sample'] = struct.unpack('>h', fid.read(2))[0]
-        phot['num_channels'] = struct.unpack('>h', fid.read(2))[0]    
+        # After reading the character arrays, decode them from utf-8 and stripping the null characters (\x00)
+        phot["file_name"] = fid.read(256).decode("utf-8").strip("\x00")
+        phot["date"] = fid.read(256).decode("utf-8").strip("\x00")
+        phot["time"] = fid.read(256).decode("utf-8").strip("\x00")
 
-       # after reading the character arrays, decode them from utf-8 and stripping the null characters (\x00)
-        phot['file_name'] = fid.read(256).decode('utf-8').strip('\x00')
-        phot['date'] = fid.read(256).decode('utf-8').strip('\x00')
-        phot['time'] = fid.read(256).decode('utf-8').strip('\x00')
-
-        # loop through the four channels and extract the location, signal, frequency, max and min values in the same way
-        phot['channels'] = []
+        # Loop through the four channels and extract the location, signal, frequency, max and min values in the same way
+        phot["channels"] = []
 
         # Initialize a list of empty dictionaries for the channels
         for i in range(4):
-            phot['channels'].append({})
+            phot["channels"].append({})
 
-        # Read and decode the Location for all channels first
+        # Read and decode the location for all channels first
         for i in range(4):
-            phot['channels'][i]['location'] = fid.read(256).decode('utf-8', errors='ignore').strip('\x00')
+            phot["channels"][i]["location"] = fid.read(256).decode("utf-8", errors="ignore").strip("\x00")
 
-        # Read and decode the Signal for all channels
+        # Read and decode the signal for all channels
         for i in range(4):
-            phot['channels'][i]['signal'] = fid.read(256).decode('utf-8', errors='ignore').strip('\x00')
+            phot["channels"][i]["signal"] = fid.read(256).decode("utf-8", errors="ignore").strip("\x00")
 
-        # Read Frequency for all channels
+        # Read frequency for all channels
         for i in range(4):
-            phot['channels'][i]['freq'] = struct.unpack('>h', fid.read(2))[0]
+            phot["channels"][i]["freq"] = struct.unpack(">h", fid.read(2))[0]
 
-        # Read Max Voltage for all channels
+        # Read max voltage for all channels
         for i in range(4):
-            phot['channels'][i]['max_v'] = struct.unpack('>h', fid.read(2))[0] / 32767.0
+            phot["channels"][i]["max_v"] = struct.unpack(">h", fid.read(2))[0] / 32767.0
 
-        # Read Min Voltage for all channels
+        # Read min voltage for all channels
         for i in range(4):
-            phot['channels'][i]['min_v'] = struct.unpack('>h', fid.read(2))[0] / 32767.0
+            phot["channels"][i]["min_v"] = struct.unpack(">h", fid.read(2))[0] / 32767.0
 
-        phot['signal_label'] = []
+        phot["signal_label"] = []
         for signal in range(8):
             # phot['signal_label'].append(fid.read(256).decode('utf-8').strip('\x00'))
-            signal_label = fid.read(256).decode('utf-8').strip('\x00')
-            phot['signal_label'].append(signal_label)
+            signal_label = fid.read(256).decode("utf-8").strip("\x00")
+            phot["signal_label"].append(signal_label)
 
-        # handle the padding by reading until the header size is reached
+        # Handle the padding by reading until the header size is reached
         position = fid.tell()
-        pad_size = phot['header_size'] - position
-        phot['pad'] = fid.read(pad_size)
+        pad_size = phot["header_size"] - position
+        phot["pad"] = fid.read(pad_size)
 
-        # reshape the read data into a 2D array where the number of channels is the first dimension
-        data = np.fromfile(fid, dtype=np.dtype('>i2'))
-        phot['data'] = np.reshape(data, (phot['num_channels'], -1), order='F')
+        # Reshape the read data into a 2D array where the number of channels is the first dimension
+        data = np.fromfile(fid, dtype=np.dtype(">i2"))
+        phot["data"] = np.reshape(data, (phot["num_channels"], -1), order="F")
 
-    print(phot)
     return phot
 
 
-def read_phot_data(signals_box_file_path):
+def read_box_data(box_file_path):
+    """Parse .box file from Labview into a dict"""
+    
     box = {}
-    box_file = signals_box_file_path + '*.box'
-
-    with open(box_file, 'rb') as fid:
-        
-        # Read binary data with big-endian (">")
-        box['magic_key'] = struct.unpack('>I', fid.read(4))[0]
-        box['header_size'] = struct.unpack('>h', fid.read(2))[0]
-        box['main_version'] = struct.unpack('>h', fid.read(2))[0]    
-        box['secondary_version'] = struct.unpack('>h', fid.read(2))[0]
-        box['sampling_rate'] = struct.unpack('>h', fid.read(2))[0]
-        box['bytes_per_sample'] = struct.unpack('>h', fid.read(2))[0]
-        box['num_channels'] = struct.unpack('>h', fid.read(2))[0]
+    with open(box_file_path, "rb") as fid:
+        # Read binary data from the file, specifying the big-endian data format '>'
+        box["magic_key"] = struct.unpack(">I", fid.read(4))[0]
+        box["header_size"] = struct.unpack(">h", fid.read(2))[0]
+        box["main_version"] = struct.unpack(">h", fid.read(2))[0]
+        box["secondary_version"] = struct.unpack(">h", fid.read(2))[0]
+        box["sampling_rate"] = struct.unpack(">h", fid.read(2))[0]
+        box["bytes_per_sample"] = struct.unpack(">h", fid.read(2))[0]
+        box["num_channels"] = struct.unpack(">h", fid.read(2))[0]
 
         # Read and decode file name, date, and time
-        box['file_name'] = fid.read(256).decode('utf-8').strip('\x00')
-        box['date'] = fid.read(256).decode('utf-8').strip('\x00')
-        box['time'] = fid.read(256).decode('utf-8').strip('\x00')    
+        box["file_name"] = fid.read(256).decode("utf-8").strip("\x00")
+        box["date"] = fid.read(256).decode("utf-8").strip("\x00")
+        box["time"] = fid.read(256).decode("utf-8").strip("\x00")
 
         # Read channel locations
-        box['ch1_location'] = fid.read(256).decode('utf-8').strip('\x00')
-        box['ch2_location'] = fid.read(256).decode('utf-8').strip('\x00')
-        box['ch3_location'] = fid.read(256).decode('utf-8').strip('\x00')    
+        box["ch1_location"] = fid.read(256).decode("utf-8").strip("\x00")
+        box["ch2_location"] = fid.read(256).decode("utf-8").strip("\x00")
+        box["ch3_location"] = fid.read(256).decode("utf-8").strip("\x00")
 
         # Get current file position
         position = fid.tell()
-        
-        # Calculate pad size and read padding
-        pad_size = box['header_size'] - position
 
-        box['pad'] = fid.read(pad_size)
+        # Calculate pad size and read padding
+        pad_size = box["header_size"] - position
+        box["pad"] = fid.read(pad_size)
 
         # Read the remaining data and reshape it
         data = np.fromfile(fid, dtype=np.uint8)
-        box['data'] = np.reshape(data, (box['num_channels'], -1), order='F')
+        box["data"] = np.reshape(data, (box["num_channels"], -1), order="F")
 
-    print(box)
     return box
 
 
 def process_pulses(box):
-    diff_data = np.diff(box['data'][2, :].astype(np.int16))
+    """Extract port visit times from the box dict and return visit timestamps in 10kHz sample time"""
+    diff_data = np.diff(box["data"][2, :].astype(np.int16))
     start = np.where(diff_data < -1)[0][0]
     pulses = np.where(diff_data > 1)[0]
     visits = pulses - start
     return visits
 
 
-def lockin_detection(input_signal, exc1, exc2, Fs, **kwargs):
-    # Default values
-    filter_order = 5
-    tau = 10
-    de_trend = False
-    full = False
-
-    # Parse optional arguments
-    for key, value in kwargs.items():
-        if key == 'tau':
-            tau = value
-        elif key == 'filterorder':
-            filter_order = value
-        elif key == 'detrend':
-            de_trend = value
-        elif key == 'full':
-            full = value
-        else:
-            print(f'Invalid optional argument: {key}')
-
+def lockin_detection(input_signal, exc1, exc2, Fs, tau=10, filter_order=5, detrend=False, full=True):
     tau /= 1000  # Convert to seconds
     Fc = 1 / (2 * np.pi * tau)
     fL = 0.01
 
     # High-pass filter design (Same as MATLAB filter design)
-    b, a = butter(filter_order, Fc / (Fs / 2), 'high')
-    
+    b, a = butter(filter_order, Fc / (Fs / 2), "high")
+
     # Single-direction filtering to match MATLAB's 'filter'
     input_signal = lfilter(b, a, input_signal)
 
@@ -175,7 +152,7 @@ def lockin_detection(input_signal, exc1, exc2, Fs, **kwargs):
     demod2 = input_signal * exc2
 
     # Trend filter design
-    if de_trend:
+    if detrend:
         b, a = butter(filter_order, [fL, Fc] / (Fs / 2))
     else:
         b, a = butter(filter_order, Fc / (Fs / 2))
@@ -195,12 +172,12 @@ def lockin_detection(input_signal, exc1, exc2, Fs, **kwargs):
 
         demod1 = input_signal * exc1_hilbert
         demod2 = input_signal * exc2_hilbert
-        
-        if de_trend:
+
+        if detrend:
             b, a = butter(filter_order, [fL, Fc] / (Fs / 2))
         else:
             b, a = butter(filter_order, Fc / (Fs / 2))
-        
+
         sig1y = lfilter(b, a, demod1)
         sig2y = lfilter(b, a, demod2)
 
@@ -211,34 +188,64 @@ def lockin_detection(input_signal, exc1, exc2, Fs, **kwargs):
     return sig1, sig2
 
 
-def lockin_detection(input_signal, exc1, exc2, Fs, **kwargs):
+def run_lockin_detection(phot):
+    """Run lockin detection to extract the modulated photometry signals"""
+    # Default args for lockin detection
     tau = 10
     filter_order = 5
 
     # Get the necessary data from the phot structure
-    detector = phot['data'][5, :]
-    exc1 = phot['data'][6, :]
-    exc2 = phot['data'][7, :]
+    detector = phot["data"][5, :]
+    exc1 = phot["data"][6, :]
+    exc2 = phot["data"][7, :]
 
     # Call lockin_detection function
-    sig1, ref = lockin_detection(detector, exc1, exc2, phot['sampling_rate'], tau=tau, filterorder=filter_order, detrend=False, full=True)
+    sig1, ref = lockin_detection(
+        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=False, full=True
+    )
 
-    detector = phot['data'][2, :]
-    exc1 = phot['data'][0, :]
-    exc2 = phot['data'][1, :]
+    detector = phot["data"][2, :]
+    exc1 = phot["data"][0, :]
+    exc2 = phot["data"][1, :]
 
     # Call lockin_detection function for the second set of signals
-    sig2, ref2 = lockin_detection(detector, exc1, exc2, phot['sampling_rate'], tau=tau, filterorder=filter_order, detrend=False, full=True)
+    sig2, ref2 = lockin_detection(
+        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=False, full=True
+    )
 
-    # Cut off the beginning of the signal to match behavioral data
-    sig1 = sig1[start:]
-    sig2 = sig2[start:]
-    ref = ref[start:]
-    ref2 = ref2[start:]
+    # Cut off the beginning of the signals to match behavioral data
+    remove = 0  # Number of samples to remove from the beginning of the signals
+    sig1 = sig1[remove:]
+    sig2 = sig2[remove:]
+    ref = ref[remove:]
+    ref2 = ref2[remove:]
 
-    loc = phot['channels'][2]['location'][:15]  # First 15 characters of the location
+    loc = phot["channels"][2]["location"][:15]  # First 15 characters of the location
 
-    return sig1, sig2, ref, ref2, loc
+    # Create a dictionary with the relevant signals to match signals.mat returned by the original MATLAB processing code
+    # NOTE: We don't actually use sig2 and ref2 - these may be removed in a future PR but are kept for posterity for now
+    signals = {"sig1": sig1, "ref": ref, "sig2": sig2, "ref2": ref2, "loc": loc}
+    return signals
+
+
+def do_photometry_preprocessing(phot_file_path, box_file_path):
+    """Process the .phot and .box files from Labview into a "signals" dict, replacing former MATLAB preprocessing code that created signals.mat"""
+    
+    # Read .phot file from Labview into a dict
+    phot_dict = read_phot_data(phot_file_path)
+
+    # Read .box file from Labview into a dict
+    box_dict = read_box_data(box_file_path)
+
+    # Run lockin detection to extract the modulated photometry signals
+    signals = run_lockin_detection(phot_dict)
+
+    # Get timestamps of port visits in 10 kHz photometry sample time
+    visits = process_pulses(box_dict)
+    signals["visits"] = visits
+
+    # Return signals dict equivalent to signals.mat
+    return signals
 
 
 def whittaker_smooth(data, binary_mask, lambda_):
@@ -335,24 +342,33 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
     pass
 
 
-def add_photometry(nwbfile: NWBFile, metadata: dict, preprocessed:bool=True):
+def add_photometry(nwbfile: NWBFile, metadata: dict, preprocessed: bool = True):
+    """
+    Add photometry data to the NWB.
+
+    Option to do the initial photometry processing separately in MATLAB (specify preprocessed=True),
+    in which case "signals_mat_file_path" must exist in the metadata dict.
+    Alternatively, create "signals" from the raw .phot and .box files returned by Labview (preprocessed=False), 
+    in which case "phot_file_path" and "box_file_path" must exist in the metadata dict.
+    Argument "preprocessed" is True by default (starts from existing signals.mat file)
+
+    We may ultimately remove the "preprocessed" argument and make this decision based on if signals.mat
+    exists or not. Note the preprocessed=False mode has not yet been extensively tested.
+    """
+
     print("Adding photometry...")
 
-    # If we don't have signals.mat, process the raw signal
+    # If we don't have signals.mat, process the raw .phot and .box files from Labview
     if not preprocessed:
-      # Get metadata for photometry from metadata file 
-      # TODO: we may combine these (phot file path, box file path) into 1 directory path
-      signals_phot_file_path = metadata["photometry"]["signals_phot_file_path"]
-      signals_box_file_path = metadata["photometry"]["signals_box_file_path"]
-      
-      # TODO: call YS functions to preprocess <3 ...
-      signals = None # populated by functions above
-    # Otherwise load signals.mat and go from there! 
-    # TODO: Ultimately maybe do a check for if signals.mat exists to make this choice
+        # Process photometry data from Labview to create dict of relevant photometry signals
+        phot_file_path = metadata["photometry"]["phot_file_path"]
+        box_file_path = metadata["photometry"]["box_file_path"]
+        signals = do_photometry_preprocessing(phot_file_path, box_file_path)
+    # If we do have signals.mat, load it and go from there!
     else:
-      # Get path to signals.mat (photometry data) from metadata file
-      signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
-      signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
+        # Load signals.mat created by external MATLAB photometry processing code
+        signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
+        signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
 
     # Downsample the raw data from 10 kHz to 250 Hz by taking every 40th sample
     print("Downsampling raw data to 250 Hz...")
