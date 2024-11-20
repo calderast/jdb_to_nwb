@@ -11,9 +11,9 @@ def test_convert_behavior():
     # Test data is copied from /Volumes/Tim/Photometry/IM-1478/07252022/
     metadata = {}
     metadata["behavior"] = {}
-    metadata["behavior"]["arduino_text_file_path"] = "test_data/behavior/arduinoraw0.txt"
-    metadata["behavior"]["arduino_timestamps_file_path"] = "test_data/behavior/ArduinoStamps0.csv"
-    metadata["behavior"]["maze_configuration_file_path"] = "test_data/behavior/barriers.txt"
+    metadata["behavior"]["arduino_text_file_path"] = "tests/test_data/behavior/arduinoraw0.txt"
+    metadata["behavior"]["arduino_timestamps_file_path"] = "tests/test_data/behavior/ArduinoStamps0.csv"
+    metadata["behavior"]["maze_configuration_file_path"] = "tests/test_data/behavior/barriers.txt"
 
     nwbfile = NWBFile(
         session_description="Mock session",
