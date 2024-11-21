@@ -128,6 +128,7 @@ myenv/
 ENV/
 env.bak/
 venv.bak/
+nwb_venv/
 
 # Spyder project settings
 .spyderproject
@@ -167,6 +168,8 @@ _version.py
 *.nwb
 
 # Large test data
+tests/test_data/photometry/*
 tests/test_data/raw_ephys/*
 tests/test_data/processed_ephys/*
 tests/test_data/behavior/IM-1478*
+
