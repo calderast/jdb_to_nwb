@@ -166,4 +166,10 @@ _version.py
 .DS_Store
 .ruff_cache/
 *.nwb
+
+# Large test data
 tests/test_data/photometry/*
+tests/test_data/raw_ephys/*
+tests/test_data/processed_ephys/*
+tests/test_data/behavior/IM-1478*
+

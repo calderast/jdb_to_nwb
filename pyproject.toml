@@ -28,6 +28,7 @@ dependencies = [
     "neuroconv == 0.6.0",
     "pynwb >= 2.8.1",
     "ndx_fiber_photometry",
+    "ndx_franklab_novela",
 ]
 dynamic = ["version"]
 
