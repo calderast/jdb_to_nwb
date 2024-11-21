@@ -1,0 +1,8 @@
+# This is a barrier change session with 3 blocks
+
+# block 1
+11, 14, 12, 18, 22, 15, 31, 29, 35, 45
+# block 2
+11, 14, 12, 18, 22, 15, 31, 29, 20, 45
+# block 3
+11, 14, 12, 15, 31, 29, 20, 36, 45
