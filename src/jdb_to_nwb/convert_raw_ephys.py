@@ -62,6 +62,11 @@ def get_channel_map(plug_order : str = "chip_first"):
 
 def get_electrode_coords():
     """Get the relative x and y coordinates of the electrodes."""
+    # TODO: These are different for each probe! 
+    # Add argument "probe" and then get coords for that probe specifically
+    # Likely want to set up coordinate files for each probe and then just read from those
+    # Maybe can store those in a berke lab metadata file in this repo somewhere
+    
     # Define the base arrays
     array1 = np.arange(240, 29, -30) # [240, 210, 180, 150, 120, 90, 60, 30]
     array2 = array1 - 15 # [225, 195, 165, 135, 105, 75, 45, 15]
@@ -167,6 +172,8 @@ def add_electrode_data(
     )
     
     # Append the x and y coordinates to the impedance data using the channel map
+    
+    # TODO: Make sure Stephanie's understanding of the channel map indexing is correct!!
     electrode_data["rel_x"] = [channel_geometry[idx][0] for idx in channel_map] # formerly channel_geometry.iloc[:, 0]
     electrode_data["rel_y"] = [channel_geometry[idx][1] for idx in channel_map] # formerly channel_geometry.iloc[:, 1]
 
