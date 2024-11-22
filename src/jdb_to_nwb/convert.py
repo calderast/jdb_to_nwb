@@ -8,6 +8,8 @@ from dateutil import tz
 
 from .convert_raw_ephys import add_raw_ephys
 from .convert_spikes import add_spikes
+from .convert_behavior import add_behavior
+from .convert_photometry import add_photometry
 
 
 def create_nwbs(
@@ -26,6 +28,8 @@ def create_nwbs(
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
+    add_behavior(nwbfile=nwbfile, metadata=metadata)
+    add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     print(f"Writing file, including iterative read from raw ephys data...")
 
