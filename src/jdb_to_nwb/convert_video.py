@@ -9,10 +9,15 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["arduino_video_file_path"]
     video_timestamps_file_path = metadata["video"]["arduino_video_timestamps_file_path"]
+
+    # TODO: use Steph's returned value
     arduino_timestamps_file_path = metadata["behavior"]["arduino_timestamps_file_path"]
     deeplabcut_file_path = metadata["video"]["deeplabcut_file_path"]
 
     # TODO: make this optional or automatic?
+    # TODO: specifying dlc_algorithm_name?
+    # TODO: adding module to automatically return pixelsPerCm
+
     phot_dlc = metadata["video"]["phot_dlc"] # 'y' or 'n'?
     pixelsPerCm = 3.14 # 3.14 if video is before IM-1594. 2.6 before 1/11/2024. 2.688 after (old maze)
 
@@ -28,9 +33,9 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     video_timestamps = adjust_video_timestamps(video_timestamps, arduino_timestamps)
 
     # Read 
-    x, y, vel = read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixelsPerCm)
+    x, y, vel, acc = read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixelsPerCm)
 
-    return video_timestamps, x, y, vel
+    return video_timestamps, x, y, vel, acc
 
     
 
@@ -42,7 +47,7 @@ def read_dlc(deeplabcut_file_path, phot_dlc = 'n', cutoff = 0.9, cam_fps = 15, p
         dlc_position_file = 'Behav_Vid0DLC_resnet50_Triangle_Maze_PhotFeb12shuffle1_800000.h5'
         dlc_position = pd.read_hdf(deeplabcut_file_path + dlc_position_file).DLC_resnet50_Triangle_Maze_PhotFeb12shuffle1_800000
     else:
-        pos_col = 'cap_back'
+        position_col = 'cap_back'
         dlc_position_file = 'Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5'
         dlc_position = pd.read_hdf(deeplabcut_file_path + dlc_position_file).DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000
 
@@ -54,7 +59,7 @@ def read_dlc(deeplabcut_file_path, phot_dlc = 'n', cutoff = 0.9, cam_fps = 15, p
     pixelJumpCutoff = 30 * pixelsPerCm
     position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
         position.loc[position.x.notnull(),['x','y']].values,pixelJumpCutoff)
-        
+
     # Fill the missing gaps
     position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
@@ -119,6 +124,7 @@ def adjust_video_timestamps(video_timestamps: list, arduino_timestamps: list):
 
     # Adjust all arduino timestamps so the photometry starts at time zero
     video_timestamps = np.subtract(video_timestamps, photometry_start)
+
 
 def calculate_velocity(x, y, fps, unit_conversion=1):
     # Convert pixels to cm if required
