@@ -1,0 +1,25 @@
+impedance_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/impedance.csv"
+channel_geometry_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/geom_1_stephtestcopy.csv"
+openephys_folder_path: "/Volumes/Tim/Ephys/IM-1478/07192022/2022-07-19_13-12-30"
+mountain_sort_output_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/mntsort_output/firings.mda"
+sampling_frequency: 30000
+
+# TODO: confirm that all electrodes are in the same group and in the same location
+electrodes_location: "Nucleus Accumbens core"
+
+reference_skull_screw_location: Medial cerebellum, 1.0 mm posterior to lambda
+
+behavior:
+  arduino_text_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/arduinoraw0.txt"
+  arduino_timestamps_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/ArduinoStamps0.csv"
+  maze_configuration_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/barriers.txt"
+
+# For now, there is just one device, which is the probe
+device:
+ name: "Probe"
+ description: "Berke Lab Probe"
+ manufacturer: "My Manufacturer"
+
+video:
+ file_path: "../data/video/video.mp4"
+ timestamps_file_path: "../data/photometry/07252022/timestamps.csv"
