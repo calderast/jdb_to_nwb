@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
     "spikeinterface >= 0.101.0",
     "tqdm",
-    "neuroconv == 0.6.0",
+    "neuroconv == 0.6.5",
     "pynwb >= 2.8.1",
     "ndx_fiber_photometry",
     "ndx_franklab_novela",
@@ -40,6 +40,7 @@ dev = [
     "ruff",
     "codespell",
 ]
+test = ["pytest", "pytest-cov"]
 
 [project.urls]
 "Homepage" = "https://github.com/calderast/jdb_to_nwb/"

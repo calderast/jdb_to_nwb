@@ -56,11 +56,11 @@ def test_add_electrode_data():
 
     # Test that the nwbfile has the expected electrodes after filtering
     assert len(nwbfile.electrodes) == 4
-    assert nwbfile.electrodes.channel_name.data[:] == ["B0", "B1", "B2", "B3"]
-    assert nwbfile.electrodes.port.data[:] == [0, 0, 0, 0]
+    assert nwbfile.electrodes.channel_name.data[:] == ["B-000", "B-001", "B-002", "B-003"]
+    assert nwbfile.electrodes.port.data[:] == ["Port B", "Port B", "Port B", "Port B"]
     assert nwbfile.electrodes.enabled.data[:] == [True, True, True, True]
     assert nwbfile.electrodes.imp.data[:] == [9999, 1e5, 3e6, 4e6]
-    assert nwbfile.electrodes.imp_phase.data[:] == [0, 0, 0, 0]
+    assert nwbfile.electrodes.imp_phase.data[:] == [-1, -2, -3, -4]
     assert nwbfile.electrodes.series_resistance_in_ohms.data[:] == [
         0.1,
         0.15,
@@ -74,8 +74,8 @@ def test_add_electrode_data():
         0.0003,
     ]
     assert nwbfile.electrodes.bad_channel.data[:] == [True, False, False, True]
-    assert nwbfile.electrodes.rel_x.data[:] == [0, 1, 2.1, 3]
-    assert nwbfile.electrodes.rel_y.data[:] == [0, 0, 0.1, 1]
+    assert nwbfile.electrodes.rel_x.data[:] == [1056, 1056, 1056, 1056]
+    assert nwbfile.electrodes.rel_y.data[:] == [-14, 16, 46, 76]
     assert nwbfile.electrodes.group.data[:] == [eg] * 4
     assert nwbfile.electrodes.group_name.data[:] == ["ElectrodeGroup"] * 4
     assert nwbfile.electrodes.filtering.data[:] == filtering_list

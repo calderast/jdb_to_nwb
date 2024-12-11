@@ -16,9 +16,9 @@ def test_process_raw_photometry_signals():
     # Create a test metadata dictionary
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/signals.mat"
-    metadata["photometry"]["phot_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    metadata["photometry"]["signals_mat_file_path"] = "tests/test_data/IM-1478/07252022/signals.mat"
+    metadata["photometry"]["phot_file_path"] = "tests/test_data/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    metadata["photometry"]["box_file_path"] = "tests/test_data/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Load signals.mat created by the external MATLAB photometry processing code as a reference
     signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
@@ -68,12 +68,12 @@ def test_add_photometry():
     # Create a test metadata dictionary
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/signals.mat"
-    metadata["photometry"]["phot_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    metadata["photometry"]["signals_mat_file_path"] = "tests/test_data/IM-1478/07252022/signals.mat"
+    metadata["photometry"]["phot_file_path"] = "tests/test_data/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    metadata["photometry"]["box_file_path"] = "tests/test_data/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Define paths to reference data
-    reference_data_path = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_07252022_h_sampleframe.csv"
+    reference_data_path = "tests/test_data/IM-1478/07252022/IM-1478_07252022_h_sampleframe.csv"
     reference_dataframe = pd.read_csv(reference_data_path)
 
     # Create a test NWBFile
@@ -134,12 +134,12 @@ def test_add_photometry_with_preprocessing():
     # Create a test metadata dictionary
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/signals.mat"
-    metadata["photometry"]["phot_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    metadata["photometry"]["signals_mat_file_path"] = "tests/test_data/IM-1478/07252022/signals.mat"
+    metadata["photometry"]["phot_file_path"] = "tests/test_data/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    metadata["photometry"]["box_file_path"] = "tests/test_data/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Define paths to reference data
-    reference_data_path = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_07252022_h_sampleframe.csv"
+    reference_data_path = "tests/test_data/IM-1478/07252022/IM-1478_07252022_h_sampleframe.csv"
     reference_dataframe = pd.read_csv(reference_data_path)
 
     # Create a test NWBFile
