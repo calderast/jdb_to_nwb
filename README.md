@@ -1,6 +1,9 @@
 # jdb_to_nwb
 Converts electrophysiology, photometry, and behavioral data for the hex maze task used by the Berke Lab at UCSF to NWB format for sharing and analysis.
 
+## User Note
+This repository is currently in development and should not be treated as a final/working version of an NWB conversion pipeline. Expect the code to change significantly before this pipeline is ready for regular use.
+
 ## Installation
 
 ```bash
@@ -61,7 +64,3 @@ Versioning is handled automatically using [hatch-vcs](https://github.com/ofek/ha
 tag in the git history as the version number. To make a new release, simply tag the current commit and 
 push to the repository. Use [semantic versioning](https://semver.org/) to set the version number.
 Create a GitHub release using the tag.
-
-## TODO
-
-Rename metadata.yaml to metadata_test.yaml
