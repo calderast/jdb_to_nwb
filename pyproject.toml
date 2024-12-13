@@ -29,6 +29,7 @@ dependencies = [
     "pynwb >= 2.8.1",
     "ndx_fiber_photometry",
     "ndx_franklab_novela",
+    "scikit-learn",
 ]
 dynamic = ["version"]
 
