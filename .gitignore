@@ -170,6 +170,7 @@ _version.py
 # Large test data
 tests/test_data/photometry/*
 tests/test_data/behavior/IM-1478*
+tests/test_data/downloaded/*
 
 # Box credentials
 .env

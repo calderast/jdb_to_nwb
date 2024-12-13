@@ -16,7 +16,7 @@ def main():
     exclude_files = [".dat"]
 
     # This is the directory where the downloaded data will be saved
-    test_data_dir = Path('tests/test_data/IM-1478/07252022')
+    test_data_dir = Path('tests/test_data/downloaded/IM-1478/07252022')
 
     # Create test data directory if it doesn't exist
     test_data_dir.mkdir(parents=True, exist_ok=True)
