@@ -21,7 +21,10 @@ def test_convert_behavior():
         identifier="mock_session",
     )
 
-    add_behavior(nwbfile, metadata)
+    photometry_start_in_arduino_time = add_behavior(nwbfile, metadata)
+    
+    # Test that we got the expected photometry start time for this session
+    assert photometry_start_in_arduino_time == 55520059.6736
 
     # Note that we do not run validation tests on the trial- and block-level data (e.g. trials/blocks are
     # enumerated corrrectly, block metadata is valid, number of trials per block adds to the

@@ -28,7 +28,7 @@ def create_nwbs(
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
-    add_behavior(nwbfile=nwbfile, metadata=metadata)
+    photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
     add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     print(f"Writing file, including iterative read from raw ephys data...")
