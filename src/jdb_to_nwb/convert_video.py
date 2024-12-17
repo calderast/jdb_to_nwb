@@ -10,24 +10,27 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     video_file_path = metadata["video"]["arduino_video_file_path"]
     video_timestamps_file_path = metadata["video"]["arduino_video_timestamps_file_path"]
 
+
+
     # TODO: use Steph's returned value
     arduino_timestamps_file_path = metadata["behavior"]["arduino_timestamps_file_path"]
     deeplabcut_file_path = metadata["video"]["deeplabcut_file_path"]
 
-    # TODO: make this optional or automatic?
-    # TODO: specifying dlc_algorithm_name?
-    # TODO: adding module to automatically return pixelsPerCm
+    # Read arduino timestamps from the CSV into a list of floats to use for parsing
+    with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
+        arduino_timestamps = list(map(float, itertools.chain.from_iterable(csv.reader(arduino_timestamps_file))))
 
-    phot_dlc = metadata["video"]["phot_dlc"] # 'y' or 'n'?
-    pixelsPerCm = 3.14 # 3.14 if video is before IM-1594. 2.6 before 1/11/2024. 2.688 after (old maze)
+
+
+    # metadata should include ethe full name of dlc algorithm
+    phot_dlc = metadata["video"]["dlc_algorithm"] # Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
+
+    # Get pixelsPerCm based on the date of the data collected
+    pixelsPerCm = assign_pixels_per_cm(metadata["date"])
 
     # Read times of each position point, equal to the time of each camera frame recording
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
         video_timestamps = np.array(list(csv.reader(open(video_timestamps_file, 'r'))), dtype=float).ravel()
-
-    # Read arduino timestamps from the CSV into a list of floats to use for parsing
-    with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
-        arduino_timestamps = list(map(float, itertools.chain.from_iterable(csv.reader(arduino_timestamps_file))))
 
     # Convert arduino timestamps to corresponding photosmetry sample number
     video_timestamps = adjust_video_timestamps(video_timestamps, arduino_timestamps)
@@ -38,6 +41,39 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     return video_timestamps, x, y, vel, acc
 
     
+
+def assign_pixels_per_cm(date_str):
+    """
+    Assigns pixelsPerCm based on the provided date string in mmddyyyy format.
+    - date_str (str): Date string in 'mmddyyyy' format, e.g., '11122022'.
+
+    3.14 if video is before IM-1594(before 01012023). 2.6 before (01112024). 2.688 after (old maze)
+
+    Returns:
+    - float: The corresponding pixelsPerCm value.
+    """
+    # Define the date format
+    date_format = "%m%d%Y"
+    
+    try:
+        # Parse the input date string into a datetime object
+        date = datetime.strptime(date_str, date_format)
+    except ValueError:
+        raise ValueError(f"Date string '{date_str}' is not in the expected format 'mmddyyyy'.")
+
+    # Define cutoff dates
+    cutoff1 = datetime.strptime("12312022", date_format)  # December 31, 2022
+    cutoff2 = datetime.strptime("01112024", date_format)  # January 11, 2024
+
+    # Assign pixelsPerCm based on the date
+    if date <= cutoff1:
+        pixels_per_cm = 3.14
+    elif cutoff1 < date <= cutoff2:
+        pixels_per_cm = 2.6
+    else:
+        pixels_per_cm = 2.688  # After January 11, 2024
+
+    return pixels_per_cm
 
 def read_dlc(deeplabcut_file_path, phot_dlc = 'n', cutoff = 0.9, cam_fps = 15, pixelsPerCm)
 
@@ -126,26 +162,7 @@ def adjust_video_timestamps(video_timestamps: list, arduino_timestamps: list):
     video_timestamps = np.subtract(video_timestamps, photometry_start)
 
 
-def calculate_velocity(x, y, fps, unit_conversion=1):
-    # Convert pixels to cm if required
-    x = x * unit_conversion
-    y = y * unit_conversion
-    
-    # Calculate distance
-    dx = np.diff(x)
-    dy = np.diff(y)
-    dist = np.sqrt(dx**2 + dy**2)
-
-    # Calculate time
-    time = 1/fps
-    t = np.arange(0, len(x) - 1) * time
-
-    # Calculate velocity
-    vel = dist / time
-
-    return vel
-
-def calculate_acceleration(x, y, fps, pixel_to_cm=1):
+def calculate_velocity_acceleration(x, y, fps, pixel_to_cm=1):
     # convert pixel to cm
     x_cm = x * pixel_to_cm
     y_cm = y * pixel_to_cm
@@ -160,26 +177,4 @@ def calculate_acceleration(x, y, fps, pixel_to_cm=1):
     acceleration_y = np.gradient(velocity_y) * fps
     acceleration = np.sqrt(acceleration_x ** 2 + acceleration_y ** 2)
 
-
-# ##  TODO: alignment with visit indices, This is leftover from tim's code that to be dumpted or used
-# def align_pos_to_visits(Fs, visits, datepath, phot_dlc='n',
-#                         filecount="0", cam_fps=15,pixelsPerCm=3.14):
-#     # Import arduino behavioral data and their timestamps
-#     ardtext = open(datepath + f'arduinoraw{filecount}.txt', 'r').read().splitlines()
-#     with open(datepath + f'ArduinoStamps{filecount}.csv', 'r') as at:
-#         ardtimes = np.array(list(csv.reader(at)), dtype=float).ravel()
-#     photStart = ardtimes[1] # time when pulse was sent to R series. 0 index for sig data
-#     ardstamps = np.round((ardtimes - photStart) * (Fs / 1000)).astype(int) # convert ardtimes to sample number to match photometry data.
-
-#     # Align with photometry visit indices
-#     porttimes = get_port_times(ardtext, ardtimes) - photStart
-#     framestamps = []
-#     inds = (frametimes<=porttimes[0])
-#     framestamps.append(frametimes[inds]*(Fs/1000))
-#     for p in range(1,len(porttimes)):
-#         inds = (frametimes>porttimes[p-1])&(frametimes<=porttimes[p])
-#         framestamps.append((frametimes[inds]-porttimes[p-1])*(Fs/1000) + visits[p-1])
-#     inds = (frametimes>=porttimes[-1])
-#     framestamps.append((frametimes[inds]-porttimes[-1])*(Fs/1000) + visits[-1])
-#     framestamps = np.concatenate(framestamps).astype(int)
-#     ##TODO ADD IN CODE TO REMOVE ABERRANT JUMPS AND THEN FILL IN MISSING GAPS
+    return velocity, acceleration
