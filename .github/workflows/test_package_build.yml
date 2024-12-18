@@ -83,8 +83,6 @@ jobs:
       - name: Install editable
         if: matrix.package == 'editable'
         run: pip install -e .
-      - name: Install test extras
-        run: pip install .[test]
       - name: Download test data
         env:
           BOX_USERNAME: ${{ secrets.BOX_USERNAME }}
@@ -94,10 +92,16 @@ jobs:
           tree tests/test_data
       - name: Run tests without coverage
         if: matrix.package != 'editable'
-        run: pytest -v jdb_to_nwb
+        run: |
+          pip install pytest
+          pip list
+          pytest -v jdb_to_nwb
       - name: Run tests on editable install with coverage
         if: matrix.package == 'editable'
-        run: pytest --cov=src --cov-report=xml -v jdb_to_nwb
+        run: |
+          pip install pytest-cov
+          pip list
+          pytest --cov=src --cov-report=xml -v jdb_to_nwb
       - name: Upload coverage reports to Codecov
         if: matrix.package == 'editable'
         uses: codecov/codecov-action@v5
