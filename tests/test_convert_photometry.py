@@ -59,20 +59,18 @@ def test_process_raw_photometry_signals():
     assert np.allclose(signals["sig2"][samples_removed_from_reference:], reference_signals_mat["sig2"].flatten(), rtol=1e-4, atol=5)
 
 
-def test_add_photometry():
+def test_add_photometry_from_signals_mat():
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
     This version of the test uses the already created signals.mat at "signals_mat_file_path" to further process and add photometry signals to the NWB.
     """
 
-    # Create a test metadata dictionary
+    # Create a test metadata dictionary with preprocessed LabVIEW data ("signals_mat_file_path")
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
-    metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
@@ -125,19 +123,18 @@ def test_add_photometry():
     )
 
 
-def test_add_photometry_with_preprocessing():
+def test_add_photometry_from_raw_labview():
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
-    This version of the test uses the raw Labview data to first create a signals dict, and then further process and add photometry signals to the NWB.
-    The only difference between this test and test_add_photometry is that we call the add_photometry function with preprocessed=False.
+    This version of the test uses the raw LabVIEW data at "phot_file_path" and "box_file_path" 
+    to first create a signals dict, and then further process and add photometry signals to the NWB.
     """
 
-    # Create a test metadata dictionary
+    # Create a test metadata dictionary with raw LabVIEW data ("phot_file_path" and "box_file_path")
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
     metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
     metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
@@ -152,8 +149,8 @@ def test_add_photometry_with_preprocessing():
         identifier="mock_session",
     )
 
-    # Add photometry data to the nwbfile (with argument preprocessed=False to start from raw Labview data)
-    visits = add_photometry(nwbfile=nwbfile, metadata=metadata, preprocessed=False)
+    # Add photometry data to the nwbfile
+    visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
@@ -199,3 +196,84 @@ def test_add_photometry_with_preprocessing():
     #    rtol=0.05,
     #    err_msg=f"Data mismatch between nwbfile z_scored_green_dFF and reference data",
     # )
+
+
+def test_add_photometry_from_pyphotometry():
+    """
+    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
+
+    This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
+    
+    TODO: Implement this test once adding photometry via ppd file is inplemented!!
+    """
+
+    # Create a test metadata dictionary with pyPhotometry data
+    metadata = {}
+    metadata["photometry"] = {}
+    metadata["photometry"]["ppd_file_path"] = "" # TODO. 
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+    
+    # TODO: Actually implement this test.
+    # Reference data and most assertions can likely be copied from the above tests.
+    # For now we test that the appropriate NotImplementedError is raised.
+
+    # Check that add_photometry complains about pyPhotometry not being implemented if we specify a ppd file
+    try:
+        visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    except NotImplementedError as e:
+        assert str(e) == "pyPhotometry processing is not yet implemented."
+    else:
+        assert False, "Expected NotImplementedError when attempting to process pyPhotometry data."
+
+
+def test_add_photometry_with_incomplete_metadata(capsys):
+    """
+    Test that the add_photometry function responds appropriately to missing or incomplete metadata.
+    
+    If no 'photometry' key is in the metadata dictionary, it should print that we are skipping 
+    photometry conversion and move on without raising any errors.
+    
+    If there is a 'photometry' key in the metadata dict but the required paths to photometry data
+    are not present, raise a ValueError telling the user which keys must be present in the dict.
+    """
+    
+    # Create a test metadata dictionary with no photometry key
+    metadata = {}
+    
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+    
+    # If we call the add_photometry function with no 'photometry' key in metadata,
+    # It should print that we are skipping photometry conversion and return None for visits.
+    # This should not raise any errors, as omitting the 'photometry' key is a 
+    # valid way to specify that we have no photometry data for this session.
+    
+    # Call the add_photometry function with no 'photometry' key in metadata
+    visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    captured = capsys.readouterr() # capture stdout
+    
+    # Check that the correct message was printed to stdout and returned visits is None
+    assert "No photometry metadata found for this session. Skipping photometry conversion." in captured.out
+    assert visits is None
+    
+    # Create a test metadata dictionary with a photometry field but no photometry data
+    metadata["photometry"] = {}
+    
+    # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
+    try:
+        visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    except ValueError as e:
+        assert str(e).startswith("None of the required photometry subfields exist in the metadata dictionary")
+    else:
+        assert False, "Expected ValueError was not raised in response to missing photometry subfields in the metadata dict."
+        

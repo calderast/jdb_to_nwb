@@ -39,7 +39,7 @@ def adjust_arduino_timestamps(arduino_timestamps: list):
     # Target rate = 250 samples/sec from 10 KHz initial sample rate (same as photometry)
     # (This is named 'ardstamps' in the original conversion code)
     photometry_sample_for_arduino_event = np.round(arduino_timestamps * (250 / 1000)).astype(int)
-    return photometry_sample_for_arduino_event
+    return photometry_sample_for_arduino_event, photometry_start
 
 
 def determine_session_type(block_data: list):
@@ -255,7 +255,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
         )
 
     # Convert arduino timestamps to corresponding photometry sample number
-    arduino_timestamps = adjust_arduino_timestamps(arduino_timestamps)
+    arduino_timestamps, photometry_start_in_arduino_time = adjust_arduino_timestamps(arduino_timestamps)
 
     # Read through the arduino text and timestamps to get trial and block data
     trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps)
@@ -373,6 +373,9 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     )
     nwbfile.processing["associated_files"].add(raw_arduino_text_file)
     nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
+    
+    # Return photometry start in arduino time for video/DLC and behavioral alignment with photometry
+    return photometry_start_in_arduino_time
 
     # NOTE: the start/end times are in photometry samples, but NWB wants seconds relative to the start of the recording
     # NOTE: first trial currently starts at block 1 start and has start_port="None", this may be changed later so the time before the first nosepoke is not included in any trial
