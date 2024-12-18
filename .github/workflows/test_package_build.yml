@@ -105,13 +105,13 @@ jobs:
         run: |
           pip install pytest
           pip list
-          pytest -v jdb_to_nwb
+          pytest -v
       - name: Run tests on editable install with coverage
         if: matrix.package == 'editable'
         run: |
           pip install pytest-cov
           pip list
-          pytest --cov=src --cov-report=xml -v jdb_to_nwb
+          pytest --cov=src --cov-report=xml --cov-report=term -v
       - name: Upload coverage reports to Codecov
         if: matrix.package == 'editable'
         uses: codecov/codecov-action@v5
