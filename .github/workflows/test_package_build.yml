@@ -40,6 +40,18 @@ jobs:
         with:
           name: archive
           path: archive/
+      - name: Download test data
+        env:
+          BOX_USERNAME: ${{ secrets.BOX_USERNAME }}
+          BOX_PASSWORD: ${{ secrets.BOX_PASSWORD }}
+        run: |
+          python tests/download_test_data.py
+          tree tests/test_data
+      - name: Upload test data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_data
+          path: tests/test_data/downloaded
   test-package:
     runs-on: ubuntu-latest
     needs: [build]
@@ -83,13 +95,11 @@ jobs:
       - name: Install editable
         if: matrix.package == 'editable'
         run: pip install -e .
-      - name: Download test data
-        env:
-          BOX_USERNAME: ${{ secrets.BOX_USERNAME }}
-          BOX_PASSWORD: ${{ secrets.BOX_PASSWORD }}
-        run: |
-          python tests/download_test_data.py
-          tree tests/test_data
+      - name: Download test data artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test_data
+          path: tests/test_data/downloaded
       - name: Run tests without coverage
         if: matrix.package != 'editable'
         run: |
