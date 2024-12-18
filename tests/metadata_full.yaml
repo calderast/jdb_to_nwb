@@ -14,10 +14,14 @@ ephys:
     description: "Berke Lab Probe"
     manufacturer: "My Manufacturer"
 
+# Specify both "phot_file_path" and "box_file_path" for raw LabVIEW data,
+# OR "signals_mat_file_path" for preprocessed LabVIEW data,
+# OR "ppd_file_path" for pyPhotometry data
 photometry:
   signals_mat_file_path: "tests/test_data/photometry/signals.mat"
   phot_file_path: "tests/test_data/photometry/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
   box_file_path: "tests/test_data/photometry/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+  # ppd_file_path: ""
 
 behavior:
   arduino_text_file_path: "tests/test_data/behavior/arduinoraw0.txt"

@@ -343,33 +343,70 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
     pass
 
 
-def add_photometry(nwbfile: NWBFile, metadata: dict, preprocessed: bool = True):
+def add_photometry(nwbfile: NWBFile, metadata: dict):
     """
-    Add photometry data to the NWB.
+    Add photometry data to the NWB and return port visits 
+    in downsampled photometry time (250 Hz) to use for alignment.
 
-    Option to do the initial photometry processing separately in MATLAB (specify preprocessed=True),
-    in which case "signals_mat_file_path" must exist in the metadata dict.
-    Alternatively, create "signals" from the raw .phot and .box files returned by Labview (preprocessed=False),
-    in which case "phot_file_path" and "box_file_path" must exist in the metadata dict.
-    Argument "preprocessed" is True by default (starts from existing signals.mat file)
-
-    We may ultimately remove the "preprocessed" argument and make this decision based on if signals.mat
-    exists or not. Note the preprocessed=False mode has not yet been extensively tested.
+    The processing differs based on what photometry data 
+    is available as specified by the metadata dictionary:
+    
+    If "phot_file_path" and "box_file_path" exist in the metadata dict:
+    - We are using LabVIEW and have not done any preprocessing to extract the
+    modulated photometry signals
+    - Read raw data from the LabVIEW files and run lockin detection to extract visits,
+    raw green signal, and raw reference signal, then do signal processing and dF/F
+    
+    If "signals_mat_file_path" exists in the metadata dict:
+    - We are using LabVIEW and the raw .phot and .box files have already 
+    been processed in MATLAB to create signals.mat (this is true for older recordings)
+    - Load the "signals.mat" dictionary that contains raw green signal, raw reference 
+    signal, and port visit times and do the signal processing and dF/F
+    - Note that if "signals_mat_file_path" and both "phot_file_path" and "box_file_path"
+    have been specified, we default to processing the raw LabVIEW data and ignore signals.mat
+    
+    If "ppd_file_path" exists in the metadata dict:
+    - We are using pyPhotometry and do processing accordingly. 
+    - TODO: This has not yet been implemented, update comment when done!
     """
+    
+    if "photometry" not in metadata:
+        print("No photometry metadata found for this session. Skipping photometry conversion.")
+        return None
 
     print("Adding photometry...")
 
-    # If we don't have signals.mat, process the raw .phot and .box files from Labview
-    if not preprocessed:
-        # Process photometry data from Labview to create dict of relevant photometry signals
+    # If we have raw LabVIEW data (.phot and .box files)
+    if "phot_file_path" in metadata["photometry"] and "box_file_path" in metadata["photometry"]:
+        # Process photometry data from LabVIEW to create a signals dict of relevant photometry signals
+        print("Processing raw .phot and .box files from LabVIEW...")
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
         signals = process_raw_photometry_signals(phot_file_path, box_file_path)
-    # If we do have signals.mat, load it and go from there!
-    else:
+
+    # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
+    elif "signals_mat_file_path" in metadata["photometry"]:
         # Load signals.mat created by external MATLAB photometry processing code
+        print("Processing signals.mat file of photometry signals from LabVIEW...")
         signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
         signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
+
+    # If we have a ppd file from pyPhotometry
+    elif "ppd_file_path" in metadata["photometry"]:
+        # Process ppd file from pyPhotometry
+        print("Processing ppd file from pyPhotometry...")
+        
+        # TODO for Jose - add pyPhotometry processing here!! 
+        # Probably add the processing functions above and just call them here
+        raise NotImplementedError("pyPhotometry processing is not yet implemented.")
+
+    else:
+        raise ValueError(
+            "None of the required photometry subfields exist in the metadata dictionary.\n"
+            "If you are using LabVIEW, you must include both 'phot_file_path' and 'box_file_path' to process raw LabVIEW data,\n"
+            "OR 'signals_mat_file_path' if the initial preprocessing has already been done in MATLAB.\n"
+            "If you are using pyPhotometry, you must include 'ppd_file_path'."
+        )
 
     # Downsample the raw data from 10 kHz to 250 Hz by taking every 40th sample
     print("Downsampling raw data to 250 Hz...")
