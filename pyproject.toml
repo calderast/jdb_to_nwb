@@ -52,7 +52,7 @@ jdb_to_nwb = "jdb_to_nwb.convert:cli"
 
 [tool.hatch.version]
 source = "vcs"
-fallback_version = "0.1.0.dev0"
+fallback-version = "0.1.0.dev0"
 
 [tool.hatch.build.hooks.vcs]
 # this file is created/updated when the package is installed and used in
