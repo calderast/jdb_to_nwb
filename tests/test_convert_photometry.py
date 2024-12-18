@@ -1,7 +1,7 @@
 from datetime import datetime
-
 import numpy as np
 import pandas as pd
+from pathlib import Path
 import scipy.io
 from dateutil import tz
 from pynwb import NWBFile
@@ -14,11 +14,12 @@ def test_process_raw_photometry_signals():
     """Test that the process_raw_photometry_signals function returns a signals dictionary equivalent to signals.mat."""
 
     # Create a test metadata dictionary
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/signals.mat"
-    metadata["photometry"]["phot_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
+    metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Load signals.mat created by the external MATLAB photometry processing code as a reference
     signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
@@ -66,12 +67,13 @@ def test_add_photometry_from_signals_mat():
     """
 
     # Create a test metadata dictionary with preprocessed LabVIEW data ("signals_mat_file_path")
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/signals.mat"
+    metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
 
     # Define paths to reference data
-    reference_data_path = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_07252022_h_sampleframe.csv"
+    reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
     reference_dataframe = pd.read_csv(reference_data_path)
 
     # Create a test NWBFile
@@ -130,13 +132,14 @@ def test_add_photometry_from_raw_labview():
     """
 
     # Create a test metadata dictionary with raw LabVIEW data ("phot_file_path" and "box_file_path")
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["phot_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Define paths to reference data
-    reference_data_path = "/Volumes/Tim/Photometry/IM-1478/07252022/IM-1478_07252022_h_sampleframe.csv"
+    reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
     reference_dataframe = pd.read_csv(reference_data_path)
 
     # Create a test NWBFile

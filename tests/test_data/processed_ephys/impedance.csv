@@ -1,0 +1,5 @@
+Channel Number,Channel Name,Port,Enabled,Impedance Magnitude at 1000 Hz (ohms),Impedance Phase at 1000 Hz (degrees),Series RC equivalent R (Ohms),Series RC equivalent C (Farads)
+B-000,B-000,Port B,1,9999,-1,0.1,0.0001
+B-001,B-001,Port B,1,1.0e+05,-2,0.15,0.00015
+B-002,B-002,Port B,1,3e+06,-3,0.25,0.00025
+B-003,B-003,Port B,1,4e+06,-4,0.3,0.0003
