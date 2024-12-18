@@ -21,13 +21,15 @@ def main():
     # Create test data directory if it doesn't exist
     test_data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Read .env file and parse variables into environment variables 
-    with open('.env', 'r') as f:
-        for line in f:
-            # Skip empty lines and comments
-            if line.strip() and not line.startswith('#'):
-                key, value = line.strip().split('=', 1)
-                os.environ[key] = value
+    # Read .env file if present and parse variables into environment variables
+    env_file_path = ".env"
+    if os.path.exists(env_file_path):
+        with open(env_file_path, 'r') as f:
+            for line in f:
+                # Skip empty lines and comments
+                if line.strip() and not line.startswith('#'):
+                    key, value = line.strip().split('=', 1)
+                    os.environ[key] = value
 
     # Get Box credentials
     box_username = os.environ.get('BOX_USERNAME')
