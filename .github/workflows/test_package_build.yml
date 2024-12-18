@@ -18,28 +18,37 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: 3
-      - run: pip install --upgrade build twine
+
       - name: Build sdist and wheel
-        run: python -m build
-      - run: twine check dist/*
+        run: |
+          pip install --upgrade build twine
+          python -m build
+          twine check dist/*
+
       - name: Upload sdist and wheel artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+
       - name: Build git archive
         run: mkdir archive && git archive -v -o archive/archive.tgz HEAD
+
       - name: Upload git archive artifact
         uses: actions/upload-artifact@v4
         with:
           name: archive
           path: archive/
+
       - name: Download test data
         env:
           BOX_USERNAME: ${{ secrets.BOX_USERNAME }}
@@ -47,11 +56,13 @@ jobs:
         run: |
           python tests/download_test_data.py
           tree tests/test_data
+
       - name: Upload test data artifact
         uses: actions/upload-artifact@v4
         with:
           name: test_data
           path: tests/test_data/downloaded
+
   test-package:
     runs-on: ubuntu-latest
     needs: [build]
@@ -59,64 +70,79 @@ jobs:
       matrix:
         package: ['wheel', 'sdist', 'archive', 'editable']
     steps:
+      - name: Checkout repo
+        # Used to access the tests. Only install from source if matrix.package == 'editable'.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download sdist and wheel artifacts
-        if: matrix.package != 'archive'
+        if: matrix.package == 'wheel' || matrix.package == 'sdist'
         uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
+
       - name: Download git archive artifact
         if: matrix.package == 'archive'
         uses: actions/download-artifact@v4
         with:
           name: archive
           path: archive/
-      - name: Checkout repo
-        if: matrix.package == 'editable'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
+
       - name: Update pip
         run: pip install --upgrade pip
+
       - name: Install wheel
         if: matrix.package == 'wheel'
         run: pip install dist/*.whl
+
       - name: Install sdist
         if: matrix.package == 'sdist'
         run: pip install dist/*.tar.gz
+
       - name: Install archive
         if: matrix.package == 'archive'
         run: pip install archive/archive.tgz
+
       - name: Install editable
         if: matrix.package == 'editable'
         run: pip install -e .
+
       - name: Download test data artifact
         uses: actions/download-artifact@v4
         with:
           name: test_data
           path: tests/test_data/downloaded
+
       - name: Run tests without coverage
         if: matrix.package != 'editable'
         run: |
           pip install pytest
           pip list
           pytest -v
+
       - name: Run tests on editable install with coverage
         if: matrix.package == 'editable'
         run: |
           pip install pytest-cov
           pip list
           pytest --cov=src --cov-report=xml --cov-report=term -v
+
       - name: Upload coverage reports to Codecov
         if: matrix.package == 'editable'
         uses: codecov/codecov-action@v5
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   # pypi-publish:
   #   name: Upload release to PyPI
   #   runs-on: ubuntu-latest
