@@ -417,9 +417,9 @@ def import_ppd(ppd_file_path):
     data_dict.update(header_dict)
     return data_dict
 
-def processppdphotometry(ppd_file_path):
+def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
     """
-        
+    Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     """
     ppd_data = import_ppd(ppd_file_path)  
 
@@ -430,13 +430,15 @@ def processppdphotometry(ppd_file_path):
     relative_raw_signal = raw_green / raw_405   
 
     sampling_rate = ppd_data['sampling_rate']
+    visits = ppd_data['pulse_inds_1'][1:]
 
+    # low pass at 10Hz to remove high frequency noise
+    print('Filtering data...')
     b,a = butter(2, 10, btype='low', fs=sampling_rate)
     GACh_denoised = filtfilt(b,a, raw_green)
     rDA3m_denoised = filtfilt(b,a, raw_red)
     ratio_denoised = filtfilt(b,a, relative_raw_signal)
     denoised_405 = filtfilt(b,a, raw_405)
-
     # high pass at 0.001Hz which removes the drift due to bleaching, but will also remove any physiological variation in the signal on very slow timescales.
     b,a = butter(2, 0.001, btype='high', fs=sampling_rate)
     GACh_highpass = filtfilt(b,a, GACh_denoised, padtype='even')
@@ -444,6 +446,8 @@ def processppdphotometry(ppd_file_path):
     ratio_highpass = filtfilt(b,a, ratio_denoised, padtype='even')
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
 
+    # Z-score of each signal to normalize the data
+    print('Z-scoring data...')
     green_zscored = np.divide(np.subtract(GACh_highpass,GACh_highpass.mean()),GACh_highpass.std())
 
     red_zscored = np.divide(np.subtract(rDA3m_highpass,rDA3m_highpass.mean()),rDA3m_highpass.std())
@@ -451,9 +455,92 @@ def processppdphotometry(ppd_file_path):
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
 
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
+    print('Done processing photometry data! Returning z-scored signals...')
 
-    return {"green_zscored": green_zscored, "red_zscored": red_zscored, "ratio_zscored": ratio_zscored, "zscored_405": zscored_405}
-    pass
+    # Add photometry metadata to the NWB
+    print("Adding photometry metadata to NWB ...")
+    add_photometry_metadata(NWBFile, metadata)
+
+    # Add actual photometry data to the NWB
+    print("Adding photometry signals to NWB ...")
+
+    raw_470_response_series = FiberPhotometryResponseSeries(
+        name="raw_470",
+        description="Raw ACh signal @470 nm",
+        data=raw_green.T[0],
+        unit="V",
+        rate=float(sampling_rate),
+    )
+
+    z_scored_470_response_series = FiberPhotometryResponseSeries(
+        name="z_scored_470",
+        description="Z-scored ACh signal @470 nm",
+        data=green_zscored.T[0],
+        unit="z-score",
+        rate=float(sampling_rate),
+    )
+
+    raw_405_response_series = FiberPhotometryResponseSeries(
+        name="raw_405",
+        description="Raw ACh signal @405 nm",
+        data=raw_405.T[0],
+        unit="V",
+        rate=float(sampling_rate),
+    )
+
+    z_scored_405_response_series = FiberPhotometryResponseSeries(
+        name="zscored_405",
+        description="Z-scored ACh signal @ 405nm. This is used to calculate the ratiometric index when using GRAB-ACh3.8",
+        data=zscored_405.T[0],
+        unit="z-score",
+        rate=float(sampling_rate),
+    )
+
+    raw_565_response_series = FiberPhotometryResponseSeries(
+        name="raw_565",
+        description="Raw DA signal @565 nm",
+        data=raw_red.T[0],
+        unit="V",
+        rate=float(sampling_rate),
+    )
+
+    z_scored_565_response_series = FiberPhotometryResponseSeries(
+        name="zscored_565",
+        description="Z-scored DA signal @ 565nm",
+        data=red_zscored.T[0],
+        unit="z-score",
+        rate=float(sampling_rate),
+    )
+
+    raw_ratio_response_series = FiberPhotometryResponseSeries(
+        name="raw_470/405",
+        description="Raw ratiometric index of ACh signal @ 470nm and 405nm",
+        data=relative_raw_signal.T[0],
+        unit="V",
+        rate=float(sampling_rate),
+    )
+
+    z_scored_ratio_response_series = FiberPhotometryResponseSeries(
+        name="zscored_470/405",
+        description="Z-scored ratiometric index of ACh3.8 signal @ 470nm and 405nm",
+        data=ratio_zscored.T[0],
+        unit="z-score",
+        rate=float(sampling_rate),
+    )
+
+    # Add the FiberPhotometryResponseSeries objects to the NWB
+    nwbfile.add_acquisition(raw_405_response_series)
+    nwbfile.add_acquisition(raw_470_response_series)
+    nwbfile.add_acquisition(raw_565_response_series)
+    nwbfile.add_acquisition(raw_ratio_response_series)    
+    nwbfile.add_acquisition(z_scored_405_response_series)
+    nwbfile.add_acquisition(z_scored_470_response_series)
+    nwbfile.add_acquisition(z_scored_565_response_series)
+    nwbfile.add_acquisition(z_scored_ratio_response_series)
+
+    # Return port visits in downsampled photometry time (250 Hz) to use for alignment
+
+    return sampling_rate, visits
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
