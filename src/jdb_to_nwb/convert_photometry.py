@@ -365,7 +365,7 @@ def import_ppd(ppd_file_path):
             'pulse_times_2' - Times of rising edges on digital input 2 (ms).
             'time'          - Time of each sample relative to start of recording (ms)
     '''
-    with open(, "rb") as f:
+    with open(ppd_file_path, "rb") as f:
         header_size = int.from_bytes(f.read(2), "little")
         data_header = f.read(header_size)
         data = np.frombuffer(f.read(), dtype=np.dtype("<u2"))
