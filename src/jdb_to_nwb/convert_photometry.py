@@ -342,7 +342,7 @@ def import_ppd(ppd_file_path):
     '''
     Credit to the homie: https://github.com/ThomasAkam/photometry_preprocessing.git
     I eddited it so that his function only retuns the data dictionary without the filtered data.
-    Raw data is filtered later/separately using the processppdphotometry function.
+    Raw data is filtered later/separately using the process_ppd_photometry function.
 
         Function to import pyPhotometry binary data files into Python. Returns a dictionary with the
         following items:
@@ -417,7 +417,7 @@ def import_ppd(ppd_file_path):
     data_dict.update(header_dict)
     return data_dict
 
-def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
+def process_ppd_photometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     """
@@ -435,22 +435,22 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
     # low pass at 10Hz to remove high frequency noise
     print('Filtering data...')
     b,a = butter(2, 10, btype='low', fs=sampling_rate)
-    GACh_denoised = filtfilt(b,a, raw_green)
-    rDA3m_denoised = filtfilt(b,a, raw_red)
+    green_denoised = filtfilt(b,a, raw_green)
+    red_denoised = filtfilt(b,a, raw_red)
     ratio_denoised = filtfilt(b,a, relative_raw_signal)
     denoised_405 = filtfilt(b,a, raw_405)
     # high pass at 0.001Hz which removes the drift due to bleaching, but will also remove any physiological variation in the signal on very slow timescales.
     b,a = butter(2, 0.001, btype='high', fs=sampling_rate)
-    GACh_highpass = filtfilt(b,a, GACh_denoised, padtype='even')
-    rDA3m_highpass = filtfilt(b,a, rDA3m_denoised, padtype='even')
+    green_highpass = filtfilt(b,a, green_denoised, padtype='even')
+    red_highpass = filtfilt(b,a, red_denoised, padtype='even')
     ratio_highpass = filtfilt(b,a, ratio_denoised, padtype='even')
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
 
     # Z-score of each signal to normalize the data
     print('Z-scoring data...')
-    green_zscored = np.divide(np.subtract(GACh_highpass,GACh_highpass.mean()),GACh_highpass.std())
+    green_zscored = np.divide(np.subtract(green_highpass,green_highpass.mean()),green_highpass.std())
 
-    red_zscored = np.divide(np.subtract(rDA3m_highpass,rDA3m_highpass.mean()),rDA3m_highpass.std())
+    red_zscored = np.divide(np.subtract(red_highpass,red_highpass.mean()),red_highpass.std())
 
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
 
@@ -466,7 +466,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     raw_470_response_series = FiberPhotometryResponseSeries(
         name="raw_470",
-        description="Raw ACh signal @470 nm",
+        description="Raw 470 nm",
         data=raw_green.T[0],
         unit="V",
         rate=float(sampling_rate),
@@ -474,7 +474,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     z_scored_470_response_series = FiberPhotometryResponseSeries(
         name="z_scored_470",
-        description="Z-scored ACh signal @470 nm",
+        description="Z-scored 470 nm",
         data=green_zscored.T[0],
         unit="z-score",
         rate=float(sampling_rate),
@@ -482,7 +482,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     raw_405_response_series = FiberPhotometryResponseSeries(
         name="raw_405",
-        description="Raw ACh signal @405 nm",
+        description="Raw 405 nm",
         data=raw_405.T[0],
         unit="V",
         rate=float(sampling_rate),
@@ -490,7 +490,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     z_scored_405_response_series = FiberPhotometryResponseSeries(
         name="zscored_405",
-        description="Z-scored ACh signal @ 405nm. This is used to calculate the ratiometric index when using GRAB-ACh3.8",
+        description="Z-scored 405nm. This is used to calculate the ratiometric index when using GRAB-ACh3.8",
         data=zscored_405.T[0],
         unit="z-score",
         rate=float(sampling_rate),
@@ -498,7 +498,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     raw_565_response_series = FiberPhotometryResponseSeries(
         name="raw_565",
-        description="Raw DA signal @565 nm",
+        description="Raw 565 nm",
         data=raw_red.T[0],
         unit="V",
         rate=float(sampling_rate),
@@ -506,7 +506,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     z_scored_565_response_series = FiberPhotometryResponseSeries(
         name="zscored_565",
-        description="Z-scored DA signal @ 565nm",
+        description="Z-scored 565nm",
         data=red_zscored.T[0],
         unit="z-score",
         rate=float(sampling_rate),
@@ -514,7 +514,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     raw_ratio_response_series = FiberPhotometryResponseSeries(
         name="raw_470/405",
-        description="Raw ratiometric index of ACh signal @ 470nm and 405nm",
+        description="Raw ratiometric index of 470nm and 405nm",
         data=relative_raw_signal.T[0],
         unit="V",
         rate=float(sampling_rate),
@@ -522,7 +522,7 @@ def processppdphotometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
 
     z_scored_ratio_response_series = FiberPhotometryResponseSeries(
         name="zscored_470/405",
-        description="Z-scored ratiometric index of ACh3.8 signal @ 470nm and 405nm",
+        description="Z-scored ratiometric index of 470nm and 405nm",
         data=ratio_zscored.T[0],
         unit="z-score",
         rate=float(sampling_rate),
@@ -602,7 +602,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
         # Process ppd file from pyPhotometry
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        signals = processppdphotometry(ppd_file_path)
+        signals = process_ppd_photometry(ppd_file_path)
         # TODO for Jose - add pyPhotometry processing here!! 
         # Probably add the processing functions above and just call them here
 
