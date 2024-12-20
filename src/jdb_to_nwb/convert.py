@@ -19,11 +19,23 @@ def create_nwbs(
     with open(metadata_file_path, "r") as f:
         metadata = yaml.safe_load(f)
 
+    # parse surgery metadata
+    surgery = "..."  # TODO parse from structured metadata
+
     # TODO: read these from metadata
     nwbfile = NWBFile(
-        session_description="Mock session",
-        session_start_time=datetime.now(tz.tzlocal()),
-        identifier="mock_session",
+        session_description="Mock session",  # TODO: generate this from metadata
+        session_start_time=datetime.now(tz.tzlocal()),  # TODO: update this 
+        identifier="mock_session",  # TODO: update this
+        session_id=metadata.get("session_id"),
+        surgery=surgery,
+        notes=metadata.get("notes"),
+        experimenter=metadata.get("experimenter"),
+        institution=metadata.get("institution"),
+        lab=metadata.get("lab"),
+        keywords=metadata.get("keywords"),
+        experiment_description=metadata.get("experiment_description"),
+        related_publications=metadata.get("related_publications"),
     )
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
