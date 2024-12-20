@@ -16,10 +16,10 @@ def test_add_electrode_data():
     """
     # Create a test metadata dictionary
     metadata = {}
-    metadata["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
-    metadata["electrodes_location"] = "Nucleus Accumbens core"
-    metadata["device"] = {
+    metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
+    metadata["ephys"]["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
+    metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
+    metadata["ephys"]["device"] = {
         "name": "Probe",
         "description": "Berke Lab Probe",
         "manufacturer": "My Manufacturer",
@@ -51,7 +51,7 @@ def test_add_electrode_data():
     eg = nwbfile.electrode_groups["ElectrodeGroup"]
     assert eg is not None
     assert eg.description == "All electrodes"
-    assert eg.location == metadata["electrodes_location"]
+    assert eg.location == metadata["ephys"]["electrodes_location"]
     assert eg.device is device
 
     # Test that the nwbfile has the expected electrodes after filtering
@@ -111,11 +111,11 @@ def test_add_raw_ephys():
     )
 
     metadata = {}
-    metadata["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
-    metadata["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
-    metadata["electrodes_location"] = "Nucleus Accumbens core"
-    metadata["device"] = {
+    metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+    metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
+    metadata["ephys"]["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
+    metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
+    metadata["ephys"]["device"] = {
         "name": "Probe",
         "description": "Berke Lab Probe",
         "manufacturer": "My Manufacturer",
