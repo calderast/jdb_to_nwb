@@ -3,24 +3,12 @@ from scipy.ndimage import gaussian_filter
 import csv
 import numpy as np
 
-def add_video(nwbfile: NWBFile, metadata: dict):
+def add_video(nwbfile: NWBFile, metadata: dict, photometry_start_in_arduino_time: 55520059.6736):
     print("Adding video..")
 
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["arduino_video_file_path"]
     video_timestamps_file_path = metadata["video"]["arduino_video_timestamps_file_path"]
-
-
-
-    # TODO: use Steph's returned value
-    arduino_timestamps_file_path = metadata["behavior"]["arduino_timestamps_file_path"]
-    deeplabcut_file_path = metadata["video"]["deeplabcut_file_path"]
-
-    # Read arduino timestamps from the CSV into a list of floats to use for parsing
-    with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
-        arduino_timestamps = list(map(float, itertools.chain.from_iterable(csv.reader(arduino_timestamps_file))))
-
-
 
     # metadata should include ethe full name of dlc algorithm
     phot_dlc = metadata["video"]["dlc_algorithm"] # Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
@@ -33,21 +21,19 @@ def add_video(nwbfile: NWBFile, metadata: dict):
         video_timestamps = np.array(list(csv.reader(open(video_timestamps_file, 'r'))), dtype=float).ravel()
 
     # Convert arduino timestamps to corresponding photosmetry sample number
-    video_timestamps = adjust_video_timestamps(video_timestamps, arduino_timestamps)
+    video_timestamps = adjust_video_timestamps(video_timestamps, photometry_start_in_arduino_time)
 
-    # Read 
-    x, y, vel, acc = read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixelsPerCm)
+    # Read x and y position data and calculate velocity and acceleration
+    x, y, velocity, acceleration = read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixelsPerCm)
 
-    return video_timestamps, x, y, vel, acc
-
-    
+    return video_timestamps, x, y, velocity, acceleration
 
 def assign_pixels_per_cm(date_str):
     """
     Assigns pixelsPerCm based on the provided date string in mmddyyyy format.
     - date_str (str): Date string in 'mmddyyyy' format, e.g., '11122022'.
 
-    3.14 if video is before IM-1594(before 01012023). 2.6 before (01112024). 2.688 after (old maze)
+    3.14 if video is before IM-1594(before 01012023). 2.3 before (01112024). 2.688 after (old maze)
 
     Returns:
     - float: The corresponding pixelsPerCm value.
@@ -69,23 +55,31 @@ def assign_pixels_per_cm(date_str):
     if date <= cutoff1:
         pixels_per_cm = 3.14
     elif cutoff1 < date <= cutoff2:
-        pixels_per_cm = 2.6
+        pixels_per_cm = 2.3
     else:
         pixels_per_cm = 2.688  # After January 11, 2024
 
     return pixels_per_cm
 
-def read_dlc(deeplabcut_file_path, phot_dlc = 'n', cutoff = 0.9, cam_fps = 15, pixelsPerCm)
+def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixelsPerCm = pixelsPerCm)
+    """
+    Read dlc position data from the deeplabcut file, that contains algorithm name and position data
 
-    # Read position data from deeplabcut
-    if phot_dlc == 'y':
-        position_col = 'cap'
-        dlc_position_file = 'Behav_Vid0DLC_resnet50_Triangle_Maze_PhotFeb12shuffle1_800000.h5'
-        dlc_position = pd.read_hdf(deeplabcut_file_path + dlc_position_file).DLC_resnet50_Triangle_Maze_PhotFeb12shuffle1_800000
-    else:
-        position_col = 'cap_back'
-        dlc_position_file = 'Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5'
-        dlc_position = pd.read_hdf(deeplabcut_file_path + dlc_position_file).DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000
+    Position data is under the column names: cap_back and cap_front.
+    Cap_bak is the back of the rat implant (red), and cap_front is the front of the rat implant (green)
+
+    After reading the position data, the position data is used to calculate velocity and acceleration based on the camera fps and pixelsPerCm
+
+    Returns:
+    - x: x coordinates of the rat's body parts
+    - y: y coordinates of the rat's body parts
+    - velocity: velocity of the rat's body parts
+    - acceleration: acceleration of the rat's body parts
+    """
+    # Build file path dynamically and load position data
+    position_col = 'cap_back'
+    dlc_position_file = f'Behav_Vid0{phot_dlc}.h5'
+    dlc_position = pd.read_hdf(deeplabcut_file_path + dlc_position_file)[phot_dlc]
 
     # Remove position with uncertainty
     position = dlc_position[position_col][['x', 'y']].copy()
@@ -99,17 +93,17 @@ def read_dlc(deeplabcut_file_path, phot_dlc = 'n', cutoff = 0.9, cam_fps = 15, p
     # Fill the missing gaps
     position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
-    # Calculate velocity
-    vel = calculate_velocity(position['x'].values, position['y'].values,fps=cam_fps, unit_conversion = pixelsPerCm)
-    vel = np.append([0],vel)
-    
-    # Caculate acceleration
-    acc = calculate_acceleration(position['x'].values, position['y'].values,fps = cam_fps, pixel_to_cm = pixelsPerCm)
+    # Calculate velocity and acceleration
+    velocity, acceleration = calculate_velocity_acceleration(position['x'].values, position['y'].values,fps = cam_fps, pixel_to_cm = pixelsPerCm)
 
-    return position['x'].values, position['y'].values, vel, acc
+    return position['x'].values, position['y'].values, velocity, acceleration
 
 
 def detect_and_replace_jumps(coordinates, pixelJumpCutoff):
+    """
+    Detect and replace jumps in the position data that are bigger than pixelJumpCutoff (default30 cm)
+    Jumps are replaced with NaN
+    """
     n = len(coordinates)
     jumps = []
 
@@ -131,7 +125,10 @@ def detect_and_replace_jumps(coordinates, pixelJumpCutoff):
     return coordinates
 
 def fill_missing_gaps(position_data):
-
+    """
+    Fill missing values in the position data
+    It identifies gaps in the position data and fills them with linear interpolation
+    """
     # Identify missing values as NaNs
     missing_values = np.isnan(position_data[:, 0]) | np.isnan(position_data[:, 1])
 
@@ -153,16 +150,17 @@ def fill_missing_gaps(position_data):
 
     return position_data
 
-def adjust_video_timestamps(video_timestamps: list, arduino_timestamps: list):
-    """Convert arduino timestamps to corresponding photometry sample number."""
-    # The photometry start time is always the second timestamp in arduino_timestamps
-    photometry_start = arduino_timestamps[1]
-
+def adjust_video_timestamps(video_timestamps: list, photometry_start_in_arduino_time: float):
+    """Convert video timestamps to corresponding sample number."""
     # Adjust all arduino timestamps so the photometry starts at time zero
-    video_timestamps = np.subtract(video_timestamps, photometry_start)
+    video_timestamps = np.subtract(video_timestamps, photometry_start_in_arduino_time)
 
+    return video_timestamps
 
 def calculate_velocity_acceleration(x, y, fps, pixel_to_cm=1):
+    """
+    Calculate velocity and acceleration based on the camera fps and pixelsPerCm
+    """
     # convert pixel to cm
     x_cm = x * pixel_to_cm
     y_cm = y * pixel_to_cm
