@@ -38,10 +38,17 @@ def create_nwbs(
         related_publications=metadata.get("related_publications"),
     )
 
+    # if photometry is present, timestamps should be aligned to the photometry
+    add_photometry(nwbfile=nwbfile, metadata=metadata)
+    photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
+
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
-    photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
-    add_photometry(nwbfile=nwbfile, metadata=metadata)
+
+    # TODO: time alignment
+
+    # reset the session start time to the earliest of the data streams
+    nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
 
     print(f"Writing file, including iterative read from raw ephys data...")
 
