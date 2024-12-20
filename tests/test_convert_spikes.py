@@ -13,6 +13,7 @@ def test_add_spikes():
     `python tests/test_data/create_spike_test_data.py`.
     """
     metadata = {}
+    metadata["ephys"] = {}
     metadata["ephys"]["mountain_sort_output_file_path"] = "tests/test_data/processed_ephys/firings.mda"
     metadata["ephys"]["sampling_frequency"] = 30_000
 

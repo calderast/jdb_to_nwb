@@ -16,6 +16,7 @@ def test_add_electrode_data():
     """
     # Create a test metadata dictionary
     metadata = {}
+    metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
     metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
@@ -111,6 +112,7 @@ def test_add_raw_ephys():
     )
 
     metadata = {}
+    metadata["ephys"] = {}
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
