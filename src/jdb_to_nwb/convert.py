@@ -6,6 +6,7 @@ from pynwb import NWBFile, NWBHDF5IO
 from datetime import datetime
 from dateutil import tz
 
+from . import __version__
 from .convert_raw_ephys import add_raw_ephys
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
@@ -36,6 +37,8 @@ def create_nwbs(
         keywords=metadata.get("keywords"),
         experiment_description=metadata.get("experiment_description"),
         related_publications=metadata.get("related_publications"),
+        source_script="jdb_to_nwb " + __version__,
+        source_script_file_name="convert.py",
     )
 
     # if photometry is present, timestamps should be aligned to the photometry
