@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 
 from pynwb import NWBFile, NWBHDF5IO
+from pynwb.file import Subject
 from datetime import datetime
 from dateutil import tz
 
@@ -19,6 +20,9 @@ def create_nwbs(
 ):
     with open(metadata_file_path, "r") as f:
         metadata = yaml.safe_load(f)
+
+    # parse subject metadata
+    subject = Subject(**metadata["subject"])
 
     # parse surgery metadata
     surgery = "..."  # TODO parse from structured metadata
@@ -37,6 +41,7 @@ def create_nwbs(
         keywords=metadata.get("keywords"),
         experiment_description=metadata.get("experiment_description"),
         related_publications=metadata.get("related_publications"),
+        subject=subject,
         source_script="jdb_to_nwb " + __version__,
         source_script_file_name="convert.py",
     )
