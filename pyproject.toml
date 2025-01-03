@@ -81,7 +81,7 @@ exclude = [
 
 [tool.codespell]
 skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
-ignore-words-list = "datas,assertIn"
+ignore-words-list = "datas,assertIn,lockin"
 
 [tool.coverage.run]
 branch = true

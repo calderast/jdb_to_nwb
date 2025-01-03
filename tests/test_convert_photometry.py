@@ -204,7 +204,7 @@ def test_add_photometry_from_pyphotometry():
 
     This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
     
-    TODO: Implement this test once adding photometry via ppd file is inplemented!!
+    TODO: Implement this test once adding photometry via ppd file is implemented!!
     """
 
     # Create a test metadata dictionary with pyPhotometry data
