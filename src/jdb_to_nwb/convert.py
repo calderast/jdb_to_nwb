@@ -31,7 +31,7 @@ def create_nwbs(
     photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
     add_photometry(nwbfile=nwbfile, metadata=metadata)
 
-    print(f"Writing file, including iterative read from raw ephys data...")
+    print("Writing file, including iterative read from raw ephys data...")
 
     with NWBHDF5IO(output_nwb_file_path, mode="w") as io:
         io.write(nwbfile)
