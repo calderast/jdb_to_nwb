@@ -27,7 +27,7 @@ def test_convert_behavior():
     assert photometry_start_in_arduino_time == 55520059.6736
 
     # Note that we do not run validation tests on the trial- and block-level data (e.g. trials/blocks are
-    # enumerated corrrectly, block metadata is valid, number of trials per block adds to the
+    # enumerated correctly, block metadata is valid, number of trials per block adds to the
     # total number of trials, block start/end times are aligned to trial start/end times)
     # because these checks are already run by validate_trial_and_block_data every time add_behavior is run
 

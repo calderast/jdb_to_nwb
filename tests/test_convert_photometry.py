@@ -110,7 +110,8 @@ def test_add_photometry_from_signals_mat():
 
     # Check that the lengths match
     assert len(green_z_scored_dFF) == len(green_z_scored_dFF_reference), (
-        f"Data length mismatch: z_scored_green_dFF has {len(green_z_scored_dFF)} points, " f"but the reference signal has {len(green_z_scored_dFF_reference)} points."
+        f"Data length mismatch: z_scored_green_dFF has {len(green_z_scored_dFF)} points, "
+        f"but the reference signal has {len(green_z_scored_dFF_reference)} points."
     )
 
     # Check that the z-scored green dF/F signal in the nwbfile matches the reference green signal (within a tolerance)
@@ -119,7 +120,7 @@ def test_add_photometry_from_signals_mat():
         green_z_scored_dFF_reference,
         atol=0.005,
         rtol=0.05,
-        err_msg=f"Data mismatch between nwbfile z_scored_green_dFF and reference data",
+        err_msg="Data mismatch between nwbfile z_scored_green_dFF and reference data",
     )
 
 
@@ -204,7 +205,7 @@ def test_add_photometry_from_pyphotometry():
 
     This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
     
-    TODO: Implement this test once adding photometry via ppd file is inplemented!!
+    TODO: Implement this test once adding photometry via ppd file is implemented!!
     """
 
     # Create a test metadata dictionary with pyPhotometry data

@@ -58,7 +58,7 @@ def create_nwbs(
     # reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
 
-    print(f"Writing file, including iterative read from raw ephys data...")
+    print("Writing file, including iterative read from raw ephys data...")
 
     with NWBHDF5IO(output_nwb_file_path, mode="w") as io:
         io.write(nwbfile)
