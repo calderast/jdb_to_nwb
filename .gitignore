@@ -172,5 +172,8 @@ tests/test_data/photometry/*
 tests/test_data/behavior/IM-1478*
 tests/test_data/downloaded/*
 
+# Frank lab nwbs and experimental notes
+frank_lab/data/*
+
 # Box credentials
 .env
