@@ -104,9 +104,9 @@ def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 
     return position['x'].values, position['y'].values, velocity, acceleration
 
 
-def detect_and_replace_jumps(coordinates, pixelJumpCutoff):
+def detect_and_replace_jumps(coordinates, pixel_jump_cutoff):
     """
-    Detect and replace jumps in the position data that are bigger than pixelJumpCutoff (default30 cm)
+    Detect and replace jumps in the position data that are bigger than pixel_jump_cutoff (default 30 cm)
     Jumps are replaced with NaN
     """
     n = len(coordinates)
@@ -115,8 +115,8 @@ def detect_and_replace_jumps(coordinates, pixelJumpCutoff):
     # Calculate Euclidean distances between consecutive points
     distances = np.linalg.norm(coordinates[1:] - coordinates[:-1], axis=1)
     
-    # Find positions where the distance exceeds the threshold: pixelJumpCutoff
-    jump_indices = np.where(distances > pixelJumpCutoff)[0] + 1
+    # Find positions where the distance exceeds the threshold pixel_jump_cutoff
+    jump_indices = np.where(distances > pixel_jump_cutoff)[0] + 1
     
     # Mark all points within the jump range
     for idx in jump_indices:
