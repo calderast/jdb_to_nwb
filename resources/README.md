@@ -1,0 +1,2 @@
+The `channel_map` csv 
+The channel map for the probe electrodes depends on how the rat was plugged in.  Normally the rat is plugged in "chip first" (this is the assumed default unless otherwise specified).
