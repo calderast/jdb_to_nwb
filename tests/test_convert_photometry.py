@@ -7,11 +7,11 @@ from dateutil import tz
 from pynwb import NWBFile
 from ndx_fiber_photometry import FiberPhotometryResponseSeries
 
-from jdb_to_nwb.convert_photometry import add_photometry, process_raw_photometry_signals
+from jdb_to_nwb.convert_photometry import add_photometry, process_raw_labview_photometry_signals
 
 
-def test_process_raw_photometry_signals():
-    """Test that the process_raw_photometry_signals function returns a signals dictionary equivalent to signals.mat."""
+def test_process_raw_labview_photometry_signals():
+    """Test that the process_raw_labview_photometry_signals function returns a signals dictionary equivalent to signals.mat."""
 
     # Create a test metadata dictionary
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
@@ -28,7 +28,7 @@ def test_process_raw_photometry_signals():
     # Process the raw .phot and .box files from Labview into an equivalent signals dict
     phot_file_path = metadata["photometry"]["phot_file_path"]
     box_file_path = metadata["photometry"]["box_file_path"]
-    signals = process_raw_photometry_signals(phot_file_path, box_file_path)
+    signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path)
 
     # Ensure all relevant keys are present in both the reference and created signals dict
     expected_keys = {"sig1", "sig2", "loc", "ref", "visits"}
@@ -84,11 +84,14 @@ def test_add_photometry_from_signals_mat():
     )
 
     # Add photometry data to the nwbfile
-    visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
     expected_sampling_rate = 250  # Hz
+    
+    # Assert that we have returned the correct sampling rate
+    assert sampling_rate == expected_sampling_rate, f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz"
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -151,11 +154,14 @@ def test_add_photometry_from_raw_labview():
     )
 
     # Add photometry data to the nwbfile
-    visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
     expected_sampling_rate = 250  # Hz
+    
+    # Assert that we have returned the correct sampling rate
+    assert sampling_rate == expected_sampling_rate, f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz"
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -205,7 +211,7 @@ def test_add_photometry_from_pyphotometry():
 
     This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
     
-    TODO: Implement this test once adding photometry via ppd file is implemented!!
+    TODO: Implement this test
     """
 
     # Create a test metadata dictionary with pyPhotometry data
@@ -219,18 +225,34 @@ def test_add_photometry_from_pyphotometry():
         session_start_time=datetime.now(tz.tzlocal()),
         identifier="mock_session",
     )
-    
-    # TODO: Actually implement this test.
-    # Reference data and most assertions can likely be copied from the above tests.
-    # For now we test that the appropriate NotImplementedError is raised.
 
-    # Check that add_photometry complains about pyPhotometry not being implemented if we specify a ppd file
-    try:
-        visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
-    except NotImplementedError as e:
-        assert str(e) == "pyPhotometry processing is not yet implemented."
-    else:
-        assert False, "Expected NotImplementedError when attempting to process pyPhotometry data."
+    # Add photometry data to the nwbfile
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+
+    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
+    expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470/405", "zscored_470/405"}
+    expected_sampling_rate = 86 # Hz
+    
+    # Assert that we have returned the correct sampling rate
+    assert sampling_rate == expected_sampling_rate, f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz"
+
+    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
+    actual_photometry_series = set(nwbfile.acquisition.keys())
+    missing_photometry_series = expected_photometry_series - actual_photometry_series
+    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
+
+    # Check the basic attributes of each series
+    for series_name in expected_photometry_series:
+        # Assert that all series are of type FiberPhotometryResponseSeries
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), f"{series_name} is not of type FiberPhotometryResponseSeries"
+        # Assert all series have a sampling rate of 86 Hz
+        assert (
+            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
+        ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
+        
+    # TODO: actually check the returned signals. 
+
+    
 
 
 def test_add_photometry_with_incomplete_metadata(capsys):
@@ -260,7 +282,7 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     # valid way to specify that we have no photometry data for this session.
     
     # Call the add_photometry function with no 'photometry' key in metadata
-    visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr() # capture stdout
     
     # Check that the correct message was printed to stdout and returned visits is None
@@ -272,7 +294,7 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     
     # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
     try:
-        visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+        sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
     except ValueError as e:
         assert str(e).startswith("None of the required photometry subfields exist in the metadata dictionary")
     else:
