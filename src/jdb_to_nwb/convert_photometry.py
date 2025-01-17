@@ -231,8 +231,11 @@ def run_lockin_detection(phot):
     return signals
 
 
-def process_raw_photometry_signals(phot_file_path, box_file_path):
-    """Process the .phot and .box files from Labview into a "signals" dict, replacing former MATLAB preprocessing code that created signals.mat"""
+def process_raw_labview_photometry_signals(phot_file_path, box_file_path):
+    """
+    Process the .phot and .box files from Labview into a "signals" dict, 
+    replacing former MATLAB preprocessing code that created signals.mat
+    """
 
     # Read .phot file from Labview into a dict
     phot_dict = read_phot_data(phot_file_path)
@@ -338,14 +341,15 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
         weights[-1] = weights[0]
     return baseline
 
+
 def import_ppd(ppd_file_path):
     '''
     Credit to the homie: https://github.com/ThomasAkam/photometry_preprocessing.git
-    I edited it so that his function only returns the data dictionary without the filtered data.
-    Raw data is filtered later/separately using the process_ppd_photometry function.
+    Edited so that this function only returns the data dictionary without the filtered data.
+    Raw data is then filtered by the process_ppd_photometry function.
 
-        Function to import pyPhotometry binary data files into Python. Returns a dictionary with the
-        following items:
+        Function to import pyPhotometry binary data files into Python. 
+        Returns a dictionary with the following items:
             'filename'      - Data filename
             'subject_ID'    - Subject ID
             'date_time'     - Recording start date and time (ISO 8601 format string)
@@ -417,47 +421,53 @@ def import_ppd(ppd_file_path):
     data_dict.update(header_dict)
     return data_dict
 
-def process_ppd_photometry(nwbfile: NWBFile, ppd_file_path):
+
+def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
+    
+    TODO: Update this function to have options for isosbestic vs ratiometric 
+    correction depending on the identities of analog_1, analog_2, etc. 
+    Wait until we know more about those use cases. 
+    
+    For now, we assume the following (Jose's setup):
+    analog_1: 470 nm (gACh)
+    analog_2: 565 nm (rDA3m)
+    analog_3: 405 nm (for ratiometric correction of gACh)
     """
     ppd_data = import_ppd(ppd_file_path)  
 
-    raw_green =  pd.Series(ppd_data['analog_1'])
+    raw_green = pd.Series(ppd_data['analog_1'])
     raw_red = pd.Series(ppd_data ['analog_2'])
     raw_405 = pd.Series(ppd_data['analog_3'])
-    
-    relative_raw_signal = raw_green / raw_405   
+    relative_raw_signal = raw_green / raw_405
 
     sampling_rate = ppd_data['sampling_rate']
     visits = ppd_data['pulse_inds_1'][1:]
 
-    # low pass at 10Hz to remove high frequency noise
+    # Low pass filter at 10Hz to remove high frequency noise
     print('Filtering data...')
     b,a = butter(2, 10, btype='low', fs=sampling_rate)
     green_denoised = filtfilt(b,a, raw_green)
     red_denoised = filtfilt(b,a, raw_red)
     ratio_denoised = filtfilt(b,a, relative_raw_signal)
     denoised_405 = filtfilt(b,a, raw_405)
-    # high pass at 0.001Hz which removes the drift due to bleaching, but will also remove any physiological variation in the signal on very slow timescales.
+    # High pass filter at 0.001Hz to removes drift due to photobleaching
+    # Note that this will also remove any physiological variation in the signal on very slow timescales
     b,a = butter(2, 0.001, btype='high', fs=sampling_rate)
     green_highpass = filtfilt(b,a, green_denoised, padtype='even')
     red_highpass = filtfilt(b,a, red_denoised, padtype='even')
     ratio_highpass = filtfilt(b,a, ratio_denoised, padtype='even')
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
 
-    # Z-score of each signal to normalize the data
-    print('Z-scoring data...')
+    # Z-score each signal to normalize the data
+    print('Z-scoring photometry signals...')
     green_zscored = np.divide(np.subtract(green_highpass,green_highpass.mean()),green_highpass.std())
-
     red_zscored = np.divide(np.subtract(red_highpass,red_highpass.mean()),red_highpass.std())
-
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
-
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
-    print('Done processing photometry data!')
 
-    # Add actual photometry data to the NWB
+    # Add photometry signals to the NWB
     print("Adding photometry signals to NWB ...")
 
     raw_470_response_series = FiberPhotometryResponseSeries(
@@ -534,81 +544,21 @@ def process_ppd_photometry(nwbfile: NWBFile, ppd_file_path):
     nwbfile.add_acquisition(z_scored_565_response_series)
     nwbfile.add_acquisition(z_scored_ratio_response_series)
 
-    # Return port visits in downsampled photometry time (86 Hz) to use for alignment
+    # Return sampling rate and port visits in downsampled photometry time (86 Hz) to use for alignment
     return sampling_rate, visits
 
 
-def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
-    # TODO for Ryan - add photometry metadata to NWB :)
-    # https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
-    pass
-
-
-def add_photometry(nwbfile: NWBFile, metadata: dict):
+def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
     """
-    Add photometry data to the NWB and return port visits 
-    in downsampled photometry time (250 Hz) to use for alignment.
+    Process LabVIEW signals and add the processed signals to the NWB file.
 
-    The processing differs based on what photometry data 
-    is available as specified by the metadata dictionary:
-    
-    If "phot_file_path" and "box_file_path" exist in the metadata dict:
-    - We are using LabVIEW and have not done any preprocessing to extract the
-    modulated photometry signals
-    - Read raw data from the LabVIEW files and run lockin detection to extract visits,
-    raw green signal, and raw reference signal, then do signal processing and dF/F
-    
-    If "signals_mat_file_path" exists in the metadata dict:
-    - We are using LabVIEW and the raw .phot and .box files have already 
-    been processed in MATLAB to create signals.mat (this is true for older recordings)
-    - Load the "signals.mat" dictionary that contains raw green signal, raw reference 
-    signal, and port visit times and do the signal processing and dF/F
-    - Note that if "signals_mat_file_path" and both "phot_file_path" and "box_file_path"
-    have been specified, we default to processing the raw LabVIEW data and ignore signals.mat
-    
-    If "ppd_file_path" exists in the metadata dict:
-    - We are using pyPhotometry and do processing accordingly. 
-    - TODO: This has not yet been implemented, update comment when done!
+    Assumes:
+    sig1: 470 nm (dLight)
+    ref: 405 nm (isosbestic wavelength)
     """
-    
-    if "photometry" not in metadata:
-        print("No photometry metadata found for this session. Skipping photometry conversion.")
-        return None
-
-    print("Adding photometry...")
-
-    # If we have raw LabVIEW data (.phot and .box files)
-    if "phot_file_path" in metadata["photometry"] and "box_file_path" in metadata["photometry"]:
-        # Process photometry data from LabVIEW to create a signals dict of relevant photometry signals
-        print("Processing raw .phot and .box files from LabVIEW...")
-        phot_file_path = metadata["photometry"]["phot_file_path"]
-        box_file_path = metadata["photometry"]["box_file_path"]
-        signals = process_raw_photometry_signals(phot_file_path, box_file_path)
-
-    # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
-    elif "signals_mat_file_path" in metadata["photometry"]:
-        # Load signals.mat created by external MATLAB photometry processing code
-        print("Processing signals.mat file of photometry signals from LabVIEW...")
-        signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
-        signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
-
-    # If we have a ppd file from pyPhotometry
-    elif "ppd_file_path" in metadata["photometry"]:
-        # Process ppd file from pyPhotometry
-        print("Processing ppd file from pyPhotometry...")
-        ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        sampling_rate, visits = process_ppd_photometry(nwbfile, ppd_file_path)
-
-    else:
-        raise ValueError(
-            "None of the required photometry subfields exist in the metadata dictionary.\n"
-            "If you are using LabVIEW, you must include both 'phot_file_path' and 'box_file_path' to process raw LabVIEW data,\n"
-            "OR 'signals_mat_file_path' if the initial preprocessing has already been done in MATLAB.\n"
-            "If you are using pyPhotometry, you must include 'ppd_file_path'."
-        )
 
     # Downsample the raw data from 10 kHz to 250 Hz by taking every 40th sample
-    print("Downsampling raw data to 250 Hz...")
+    print("Downsampling raw LabVIEW data to 250 Hz...")
     SR = 10000  # Original sampling rate of the photometry system (Hz)
     Fs = 250  # Target downsample frequency (Hz)
     # Use np.squeeze to deal with the fact that signals from our dict are 1D but signals.mat are 2D
@@ -659,17 +609,13 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     z_scored_reference_fitted = lin.predict(z_scored_reference).reshape(len(z_scored_reference), 1)
     # We use these predicted values from the reference signal as our baseline for the dF/F calculation because
     # it accounts for the changes in the green signal that are accompanied by changes in the reference signal
-    # due to photobleaching, rat head movements, etc.
+    # due to rat head movements, etc.
 
     # Calculate deltaF/F for the green signal
     print("Calculating deltaF/F...")
     z_scored_green_dFF = z_scored_green - z_scored_reference_fitted
 
-    # Add photometry metadata to the NWB
-    print("Adding photometry metadata to NWB ...")
-    add_photometry_metadata(NWBFile, metadata)
-
-    # Add actual photometry data to the NWB
+    # Add photometry signals to the NWB
     print("Adding photometry signals to NWB ...")
 
     # Create NWB FiberPhotometryResponseSeries objects for the relevant photometry signals
@@ -709,4 +655,80 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     nwbfile.add_acquisition(raw_reference_response_series)
 
     # Return port visits in downsampled photometry time (250 Hz) to use for alignment
-    return port_visits
+    return Fs, port_visits
+
+
+def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
+    # TODO for Ryan - add photometry metadata to NWB :)
+    # https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
+    pass
+
+
+def add_photometry(nwbfile: NWBFile, metadata: dict):
+    """
+    Add photometry data to the NWB and return port visits 
+    in downsampled photometry time to use for alignment.
+
+    The processing differs based on what photometry data 
+    is available as specified by the metadata dictionary:
+    
+    If "phot_file_path" and "box_file_path" exist in the metadata dict:
+    - We are using LabVIEW and have not done any preprocessing to extract the
+    modulated photometry signals
+    - Read raw data from the LabVIEW files and run lockin detection to extract visits,
+    raw green signal, and raw reference signal, then do signal processing and dF/F
+    
+    If "signals_mat_file_path" exists in the metadata dict:
+    - We are using LabVIEW and the raw .phot and .box files have already 
+    been processed in MATLAB to create signals.mat (this is true for older recordings)
+    - Load the "signals.mat" dictionary that contains raw green signal, raw reference 
+    signal, and port visit times and do the signal processing and dF/F
+    - Note that if "signals_mat_file_path" and both "phot_file_path" and "box_file_path"
+    have been specified, we default to processing the raw LabVIEW data and ignore signals.mat
+    
+    If "ppd_file_path" exists in the metadata dict:
+    - We are using pyPhotometry and do processing accordingly. This is currently
+    only implemented for Jose's case (gACh, ratiometric instead of isosbestic correction)
+    """
+
+    if "photometry" not in metadata:
+        print("No photometry metadata found for this session. Skipping photometry conversion.")
+        return None
+
+    # Add photometry metadata to the NWB
+    print("Adding photometry metadata to NWB ...")
+    add_photometry_metadata(NWBFile, metadata)
+
+    # If we have raw LabVIEW data (.phot and .box files)
+    if "phot_file_path" in metadata["photometry"] and "box_file_path" in metadata["photometry"]:
+        # Process photometry data from LabVIEW to create a signals dict of relevant photometry signals
+        print("Processing raw .phot and .box files from LabVIEW...")
+        phot_file_path = metadata["photometry"]["phot_file_path"]
+        box_file_path = metadata["photometry"]["box_file_path"]
+        signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path)
+        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals)
+
+    # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
+    elif "signals_mat_file_path" in metadata["photometry"]:
+        # Load signals.mat created by external MATLAB photometry processing code
+        print("Processing signals.mat file of photometry signals from LabVIEW...")
+        signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
+        signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
+        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals)
+      
+    # If we have a ppd file from pyPhotometry
+    elif "ppd_file_path" in metadata["photometry"]:
+        # Process ppd file from pyPhotometry and add signals to the NWB
+        print("Processing ppd file from pyPhotometry...")
+        ppd_file_path = metadata["photometry"]["ppd_file_path"]
+        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path)
+
+    else:
+        raise ValueError(
+            "None of the required photometry subfields exist in the metadata dictionary.\n"
+            "If you are using LabVIEW, you must include both 'phot_file_path' and 'box_file_path' to process raw LabVIEW data,\n"
+            "OR 'signals_mat_file_path' if the initial preprocessing has already been done in MATLAB.\n"
+            "If you are using pyPhotometry, you must include 'ppd_file_path'."
+        )
+
+    return sampling_rate, visits
