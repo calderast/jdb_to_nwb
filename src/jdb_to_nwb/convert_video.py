@@ -155,13 +155,13 @@ def fill_missing_gaps(position_data):
 
     return position_data
 
-def calculate_velocity_acceleration(x, y, fps, pixel_to_cm=1):
+def calculate_velocity_acceleration(x, y, fps, pixels_per_cm):
     """
-    Calculate velocity and acceleration based on the camera fps and pixelsPerCm
+    Calculate velocity and acceleration based on the camera fps and pixels_per_cm
     """
     # convert pixel to cm
-    x_cm = x * pixel_to_cm
-    y_cm = y * pixel_to_cm
+    x_cm = x * pixels_per_cm
+    y_cm = y * pixels_per_cm
 
     # calculate velocity
     velocity_x = np.gradient(x_cm) * fps
