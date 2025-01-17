@@ -24,8 +24,6 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
         video_timestamps = np.array(list(csv.reader(open(video_timestamps_file, 'r'))), dtype=float).ravel()
 
-# Adjust all arduino timestamps so the photometry starts at time zero
-video_timestamps = np.subtract(video_timestamps, photometry_start_in_arduino_time)
 
     # Read x and y position data and calculate velocity and acceleration
     x, y, velocity, acceleration = read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixels_per_cm = PIXELS_PER_CM)
