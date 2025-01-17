@@ -69,7 +69,7 @@ def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 
     Position data is under the column names: cap_back and cap_front.
     Cap_bak is the back of the rat implant (red), and cap_front is the front of the rat implant (green)
 
-    After reading the position data, the position data is used to calculate velocity and acceleration based on the camera fps and pixelsPerCm
+    After reading the position data, the position data is used to calculate velocity and acceleration based on the camera fps and pixels_per_cm
 
     Returns:
     - x: x coordinates of the rat's body parts
