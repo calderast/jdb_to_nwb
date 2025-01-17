@@ -417,7 +417,7 @@ def import_ppd(ppd_file_path):
     data_dict.update(header_dict)
     return data_dict
 
-def process_ppd_photometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
+def process_ppd_photometry(nwbfile: NWBFile, ppd_file_path):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     """
@@ -455,11 +455,7 @@ def process_ppd_photometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
 
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
-    print('Done processing photometry data! Returning z-scored signals...')
-
-    # Add photometry metadata to the NWB
-    print("Adding photometry metadata to NWB ...")
-    add_photometry_metadata(NWBFile, metadata)
+    print('Done processing photometry data!')
 
     # Add actual photometry data to the NWB
     print("Adding photometry signals to NWB ...")
@@ -538,8 +534,7 @@ def process_ppd_photometry(ppd_file_path, nwbfile: NWBFile, metadata: dict):
     nwbfile.add_acquisition(z_scored_565_response_series)
     nwbfile.add_acquisition(z_scored_ratio_response_series)
 
-    # Return port visits in downsampled photometry time (250 Hz) to use for alignment
-
+    # Return port visits in downsampled photometry time (86 Hz) to use for alignment
     return sampling_rate, visits
 
 
@@ -602,11 +597,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
         # Process ppd file from pyPhotometry
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        signals = process_ppd_photometry(ppd_file_path)
-        # TODO for Jose - add pyPhotometry processing here!! 
-        # Probably add the processing functions above and just call them here
-
-        raise NotImplementedError("pyPhotometry processing is not yet implemented.")
+        sampling_rate, visits = process_ppd_photometry(nwbfile, ppd_file_path)
 
     else:
         raise ValueError(
