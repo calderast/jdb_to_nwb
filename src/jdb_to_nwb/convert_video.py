@@ -13,8 +13,12 @@ def add_video(nwbfile: NWBFile, metadata: dict, photometry_start_in_arduino_time
     # metadata should include ethe full name of dlc algorithm
     phot_dlc = metadata["video"]["dlc_algorithm"] # Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
 
-    # Get pixelsPerCm based on the date of the data collected
-    pixelsPerCm = assign_pixels_per_cm(metadata["date"])
+    # If pixels_per_cm exists in metadata, use that value
+    if "pixels_per_cm" in metadata["video"]:
+        PIXELS_PER_CM = metadata["video"]["pixels_per_cm"]
+    # Otherwise, assign it based on the date of the experiment
+    else:
+        PIXELS_PER_CM = assign_pixels_per_cm(metadata["date"])
 
     # Read times of each position point, equal to the time of each camera frame recording
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
