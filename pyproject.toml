@@ -81,7 +81,7 @@ exclude = [
 
 [tool.codespell]
 skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
-ignore-words-list = "datas,assertIn"
+ignore-words-list = "datas,assertIn,lockin"
 
 [tool.coverage.run]
 branch = true
@@ -99,7 +99,7 @@ preview = true
 exclude = ".git|.mypy_cache|.tox|.venv|venv|.ipynb_checkpoints|_build/|dist/|__pypackages__|.ipynb"
 
 [tool.ruff]
-lint.select = ["E", "F", "T100", "T201", "T203"]
+lint.select = ["E", "F", "T100", "T203"]
 exclude = [
   ".git",
   ".tox",

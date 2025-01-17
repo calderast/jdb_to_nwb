@@ -22,8 +22,8 @@ def load_maze_configurations(maze_configuration_file_path: Path):
                 maze = set(map(int, line.strip().split(",")))
                 maze_sequence.append(maze)
             return maze_sequence
-    except:
-        warnings.warn(f"Could not load maze configurations from {maze_configuration_file_path}")
+    except Exception as e:
+        warnings.warn(f"Could not load maze configurations from {maze_configuration_file_path}: {e}")
         return []
 
 

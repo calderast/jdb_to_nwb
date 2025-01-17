@@ -310,7 +310,7 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
     """
 
     num_data_points = data.shape[0]
-    weights = np.ones(num_data_points)  # Set the intial weights to 1 to treat all points equally
+    weights = np.ones(num_data_points)  # Set the initial weights to 1 to treat all points equally
 
     # Loop runs up to 'max_iterations' times to adjust the weights and fit the baseline
     for i in range(1, max_iterations + 1):
