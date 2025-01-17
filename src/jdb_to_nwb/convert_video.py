@@ -99,7 +99,7 @@ def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 
     position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
     # Calculate velocity and acceleration
-    velocity, acceleration = calculate_velocity_acceleration(position['x'].values, position['y'].values,fps = cam_fps, pixel_to_cm = pixelsPerCm)
+    velocity, acceleration = calculate_velocity_acceleration(position['x'].values, position['y'].values,fps = cam_fps, pixels_per_cm = pixels_per_cm)
 
     return position['x'].values, position['y'].values, velocity, acceleration
 
