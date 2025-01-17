@@ -10,7 +10,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, photometry_start_in_arduino_time
     video_file_path = metadata["video"]["arduino_video_file_path"]
     video_timestamps_file_path = metadata["video"]["arduino_video_timestamps_file_path"]
 
-    # metadata should include ethe full name of dlc algorithm
+    # metadata should include the full name of dlc algorithm
     phot_dlc = metadata["video"]["dlc_algorithm"] # Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
 
     # If pixels_per_cm exists in metadata, use that value
