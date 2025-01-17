@@ -156,7 +156,7 @@ def add_electrode_data(
     ).all(), "First column is not the same as the second column."
     electrode_data.drop(columns=["Channel Number"], inplace=True)
 
-    # Get electrode coordinates as a (2, 256) arrray
+    # Get electrode coordinates as a (2, 256) array
     # The first column is the relative x coordinate, and the second column is the relative y coordinate
     channel_geometry = get_electrode_coords() # formerly pd.read_csv(channel_geometry_file_path, header=None)
     

@@ -16,10 +16,11 @@ def test_add_electrode_data():
     """
     # Create a test metadata dictionary
     metadata = {}
-    metadata["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
-    metadata["electrodes_location"] = "Nucleus Accumbens core"
-    metadata["device"] = {
+    metadata["ephys"] = {}
+    metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
+    metadata["ephys"]["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
+    metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
+    metadata["ephys"]["device"] = {
         "name": "Probe",
         "description": "Berke Lab Probe",
         "manufacturer": "My Manufacturer",
@@ -51,16 +52,16 @@ def test_add_electrode_data():
     eg = nwbfile.electrode_groups["ElectrodeGroup"]
     assert eg is not None
     assert eg.description == "All electrodes"
-    assert eg.location == metadata["electrodes_location"]
+    assert eg.location == metadata["ephys"]["electrodes_location"]
     assert eg.device is device
 
     # Test that the nwbfile has the expected electrodes after filtering
     assert len(nwbfile.electrodes) == 4
-    assert nwbfile.electrodes.channel_name.data[:] == ["B0", "B1", "B2", "B3"]
-    assert nwbfile.electrodes.port.data[:] == [0, 0, 0, 0]
+    assert nwbfile.electrodes.channel_name.data[:] == ["B-000", "B-001", "B-002", "B-003"]
+    assert nwbfile.electrodes.port.data[:] == ["Port B", "Port B", "Port B", "Port B"]
     assert nwbfile.electrodes.enabled.data[:] == [True, True, True, True]
     assert nwbfile.electrodes.imp.data[:] == [9999, 1e5, 3e6, 4e6]
-    assert nwbfile.electrodes.imp_phase.data[:] == [0, 0, 0, 0]
+    assert nwbfile.electrodes.imp_phase.data[:] == [-1, -2, -3, -4]
     assert nwbfile.electrodes.series_resistance_in_ohms.data[:] == [
         0.1,
         0.15,
@@ -74,8 +75,8 @@ def test_add_electrode_data():
         0.0003,
     ]
     assert nwbfile.electrodes.bad_channel.data[:] == [True, False, False, True]
-    assert nwbfile.electrodes.rel_x.data[:] == [0, 1, 2.1, 3]
-    assert nwbfile.electrodes.rel_y.data[:] == [0, 0, 0.1, 1]
+    assert nwbfile.electrodes.rel_x.data[:] == [1056, 1056, 1056, 1056]
+    assert nwbfile.electrodes.rel_y.data[:] == [-14, 16, 46, 76]
     assert nwbfile.electrodes.group.data[:] == [eg] * 4
     assert nwbfile.electrodes.group_name.data[:] == ["ElectrodeGroup"] * 4
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
@@ -111,11 +112,12 @@ def test_add_raw_ephys():
     )
 
     metadata = {}
-    metadata["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
-    metadata["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
-    metadata["electrodes_location"] = "Nucleus Accumbens core"
-    metadata["device"] = {
+    metadata["ephys"] = {}
+    metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+    metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
+    metadata["ephys"]["channel_geometry_file_path"] = "tests/test_data/processed_ephys/geom.csv"
+    metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
+    metadata["ephys"]["device"] = {
         "name": "Probe",
         "description": "Berke Lab Probe",
         "manufacturer": "My Manufacturer",

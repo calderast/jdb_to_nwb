@@ -25,10 +25,11 @@ classifiers = [
 dependencies = [
     "spikeinterface >= 0.101.0",
     "tqdm",
-    "neuroconv == 0.6.0",
+    "neuroconv == 0.6.5",
     "pynwb >= 2.8.1",
     "ndx_fiber_photometry",
     "ndx_franklab_novela",
+    "scikit-learn",
 ]
 dynamic = ["version"]
 
@@ -40,6 +41,7 @@ dev = [
     "ruff",
     "codespell",
 ]
+test = ["pytest", "pytest-cov"]
 
 [project.urls]
 "Homepage" = "https://github.com/calderast/jdb_to_nwb/"
@@ -79,7 +81,7 @@ exclude = [
 
 [tool.codespell]
 skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
-ignore-words-list = "datas,assertIn"
+ignore-words-list = "datas,assertIn,lockin"
 
 [tool.coverage.run]
 branch = true
@@ -97,7 +99,7 @@ preview = true
 exclude = ".git|.mypy_cache|.tox|.venv|venv|.ipynb_checkpoints|_build/|dist/|__pypackages__|.ipynb"
 
 [tool.ruff]
-lint.select = ["E", "F", "T100", "T201", "T203"]
+lint.select = ["E", "F", "T100", "T203"]
 exclude = [
   ".git",
   ".tox",
