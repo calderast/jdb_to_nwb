@@ -341,7 +341,7 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
 def import_ppd(ppd_file_path):
     '''
     Credit to the homie: https://github.com/ThomasAkam/photometry_preprocessing.git
-    I eddited it so that his function only retuns the data dictionary without the filtered data.
+    I edited it so that his function only returns the data dictionary without the filtered data.
     Raw data is filtered later/separately using the process_ppd_photometry function.
 
         Function to import pyPhotometry binary data files into Python. Returns a dictionary with the
