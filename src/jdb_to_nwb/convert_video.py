@@ -91,9 +91,9 @@ def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 
     position.loc[dlc_position[position_col].likelihood < cutoff, ['x', 'y']] = np.nan
 
     # Remove the abrupt jump of position bigger than a body of rat (30cm)
-    pixelJumpCutoff = 30 * pixelsPerCm
+    pixel_jump_cutoff = 30 * pixels_per_cm
     position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
-        position.loc[position.x.notnull(),['x','y']].values,pixelJumpCutoff)
+        position.loc[position.x.notnull(),['x','y']].values,pixel_jump_cutoff)
 
     # Fill the missing gaps
     position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
