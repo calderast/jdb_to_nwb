@@ -30,13 +30,14 @@ video_timestamps = np.subtract(video_timestamps, photometry_start_in_arduino_tim
 
 def assign_pixels_per_cm(date_str):
     """
-    Assigns pixelsPerCm based on the provided date string in mmddyyyy format.
-    - date_str (str): Date string in 'mmddyyyy' format, e.g., '11122022'.
-
-    3.14 if video is before IM-1594(before 01012023). 2.3 before (01112024). 2.688 after (old maze)
+    Assigns constant PIXELS_PER_CM based on the provided date string in MMDDYYYY format.
+    PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01012023), 2.3 before (01112024), or 2.688 after (old maze)
+    
+    Args:
+    - date_str (str): Date string in MMDDYYYY format, e.g., '11122022'.
 
     Returns:
-    - float: The corresponding pixelsPerCm value.
+    - float: The corresponding PIXELS_PER_CM value.
     """
     # Define the date format
     date_format = "%m%d%Y"
