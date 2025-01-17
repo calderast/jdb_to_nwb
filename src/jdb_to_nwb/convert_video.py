@@ -66,7 +66,7 @@ def assign_pixels_per_cm(date_str):
 
     return pixels_per_cm
 
-def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixelsPerCm = pixelsPerCm)
+def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixels_per_cm)
     """
     Read dlc position data from the deeplabcut file, that contains algorithm name and position data
 
