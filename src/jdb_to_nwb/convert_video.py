@@ -150,13 +150,6 @@ def fill_missing_gaps(position_data):
 
     return position_data
 
-def adjust_video_timestamps(video_timestamps: list, photometry_start_in_arduino_time: float):
-    """Convert video timestamps to corresponding sample number."""
-    # Adjust all arduino timestamps so the photometry starts at time zero
-    video_timestamps = np.subtract(video_timestamps, photometry_start_in_arduino_time)
-
-    return video_timestamps
-
 def calculate_velocity_acceleration(x, y, fps, pixel_to_cm=1):
     """
     Calculate velocity and acceleration based on the camera fps and pixelsPerCm
