@@ -3,7 +3,7 @@ from scipy.ndimage import gaussian_filter
 import csv
 import numpy as np
 
-def add_video(nwbfile: NWBFile, metadata: dict, photometry_start_in_arduino_time = 55520059.6736):
+def add_video(nwbfile: NWBFile, metadata: dict):
     print("Adding video..")
 
     # Get file paths for video from metadata file
