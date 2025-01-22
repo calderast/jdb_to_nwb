@@ -79,8 +79,11 @@ def add_electrode_data(
         "Series RC equivalent R (Ohms)",
         "Series RC equivalent C (Farads)",
     ]
-    assert electrode_data.columns.tolist() == expected_columns, "Impedance file does not have the expected columns."
-
+    assert electrode_data.columns.tolist() == expected_columns, (
+        f"Impedance file has columns {electrode_data.columns.tolist()}, "
+        f"does not match expected columns {expected_columns}"
+    )
+    
     # Check that the filtering list has the same length as the number of channels
     assert len(filtering_list) == len(
         electrode_data
@@ -121,7 +124,8 @@ def add_electrode_data(
 
     # Mark electrodes with impedance that is less than 0.1 MOhms or more than 3.0 MOhms
     # as bad electrodes
-    electrode_data["bad_channel"] = (electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
+    electrode_data["bad_channel"] = (
+        electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
         electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
     )
 
@@ -258,7 +262,8 @@ def get_raw_ephys_data(
         channel.attrib["number"]: channel.attrib["name"] for channel in channel_info.findall("CHANNEL")
     }
 
-    # Read the settings.xml file to get the filtering applied to each channel - map channel number to filter description
+    # Read the settings.xml file to get the filtering applied to each channel - 
+    # map channel number to filter description
     # <PROCESSOR name="Filters/Bandpass Filter" ...>
     #   <CHANNEL name="0" number="0">
     #     <SELECTIONSTATE param="1" record="0" audio="0"/>
