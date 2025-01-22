@@ -233,7 +233,7 @@ def test_add_photometry_from_pyphotometry():
     sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
-    expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470/405", "zscored_470/405"}
+    expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"}
     expected_sampling_rate = 86 # Hz
     
     # Assert that we have returned the correct sampling rate
@@ -254,7 +254,7 @@ def test_add_photometry_from_pyphotometry():
         ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
         
     # Check that the photometry series in the nwbfile match the expected signals from the reference dataframe
-    nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470/405", "zscored_470/405"]
+    nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"]
     reference_signal_names = ["raw_green", "filtered_green", "raw_405", "filtered_405", "raw_red", "filtered_red", "raw 470/405", "filtered_ratio"]
 
     # Compare each signal in the nwbfile to its respective reference

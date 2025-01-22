@@ -519,7 +519,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     )
 
     raw_ratio_response_series = FiberPhotometryResponseSeries(
-        name="raw_470/405",
+        name="raw_470_405_ratio",
         description="Raw ratiometric index of 470nm and 405nm",
         data=relative_raw_signal.to_numpy(),
         unit="V",
@@ -527,7 +527,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     )
 
     z_scored_ratio_response_series = FiberPhotometryResponseSeries(
-        name="zscored_470/405",
+        name="zscored_470_405_ratio",
         description="Z-scored ratiometric index of 470nm and 405nm",
         data=ratio_zscored,
         unit="z-score",
