@@ -210,15 +210,18 @@ def test_add_photometry_from_pyphotometry():
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
     This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
-    
-    TODO: Implement this test
     """
 
     # Create a test metadata dictionary with pyPhotometry data
+    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
     metadata = {}
     metadata["photometry"] = {}
-    metadata["photometry"]["ppd_file_path"] = "" # TODO. 
+    metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
 
+    # Define paths to reference data
+    reference_data_path = test_data_dir / "sampleframe.csv"
+    reference_dataframe = pd.read_csv(reference_data_path)
+    
     # Create a test NWBFile
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -250,9 +253,29 @@ def test_add_photometry_from_pyphotometry():
             getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
         ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
         
-    # TODO: actually check the returned signals. 
+    # Check that the photometry series in the nwbfile match the expected signals from the reference dataframe
+    nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470/405", "zscored_470/405"]
+    reference_signal_names = ["raw_green", "filtered_green", "raw_405", "filtered_405", "raw_red", "filtered_red", "raw 470/405", "filtered_ratio"]
 
+    # Compare each signal in the nwbfile to its respective reference
+    for sig_name, ref_name in zip(nwb_signal_names, reference_signal_names):
+        signal = np.array(nwbfile.acquisition[sig_name].data)
+        reference = reference_dataframe[ref_name].values
     
+        # Check that the lengths match
+        assert len(signal) == len(reference), (
+            f"Data length mismatch: {sig_name} has {len(signal)} points, "
+            f"but the reference signal {ref_name} has {len(reference)} points."
+        )
+
+        # Check that the signal in the nwbfile matches the reference signal (within a tolerance)
+        np.testing.assert_allclose(
+            signal,
+            reference,
+            atol=0.005,
+            rtol=0.05,
+            err_msg=f"Data mismatch between nwbfile {sig_name} and reference {ref_name}",
+        )
 
 
 def test_add_photometry_with_incomplete_metadata(capsys):
@@ -285,8 +308,9 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr() # capture stdout
     
-    # Check that the correct message was printed to stdout and returned visits is None
+    # Check that the correct message was printed to stdout and returned sampling_rate and visits is None
     assert "No photometry metadata found for this session. Skipping photometry conversion." in captured.out
+    assert sampling_rate is None
     assert visits is None
     
     # Create a test metadata dictionary with a photometry field but no photometry data

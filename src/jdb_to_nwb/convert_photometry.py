@@ -693,7 +693,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
 
     if "photometry" not in metadata:
         print("No photometry metadata found for this session. Skipping photometry conversion.")
-        return None
+        return None, None
 
     # Add photometry metadata to the NWB
     print("Adding photometry metadata to NWB ...")
