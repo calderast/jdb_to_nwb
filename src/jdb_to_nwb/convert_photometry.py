@@ -436,9 +436,8 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     analog_3: 405 nm (for ratiometric correction of gACh)
     """
     ppd_data = import_ppd(ppd_file_path)  
-
     raw_green = pd.Series(ppd_data['analog_1'])
-    raw_red = pd.Series(ppd_data ['analog_2'])
+    raw_red = pd.Series(ppd_data['analog_2'])
     raw_405 = pd.Series(ppd_data['analog_3'])
     relative_raw_signal = raw_green / raw_405
 
