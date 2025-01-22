@@ -254,11 +254,8 @@ def test_add_photometry_from_pyphotometry():
         ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
         
     # Check that the photometry series in the nwbfile match the expected signals from the reference dataframe
-    #nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"]
-    #reference_signal_names = ["raw_green", "filtered_green", "raw_405", "filtered_405", "raw_red", "filtered_red", "raw 470/405", "filtered_ratio"]
-    # TODO: Remove filtered signals from comparison for now - check how reference data was processed
-    nwb_signal_names = ["raw_470", "raw_405", "raw_565", "raw_470_405_ratio"]
-    reference_signal_names = ["raw_green",  "raw_405",  "raw_red", "raw 470/405"]
+    nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"]
+    reference_signal_names = ["raw_green", "green_z_scored", "raw_405", "z_scored_405", "raw_red", "red_z_scored", "raw 470/405", "ratio_z_scored"]
 
     # Compare each signal in the nwbfile to its respective reference
     for sig_name, ref_name in zip(nwb_signal_names, reference_signal_names):
