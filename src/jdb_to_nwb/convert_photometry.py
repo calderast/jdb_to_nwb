@@ -274,7 +274,7 @@ def whittaker_smooth(data, binary_mask, lambda_):
     the fitted background vector
     """
 
-    data_matrix = np.array(data).reshape(-1, 1)
+    data_matrix = np.matrix(data)
     data_size = data_matrix.size  # Size of the data matrix
     # Create an identity matrix the size of the data matrix in compressed sparse column (csc) format
     identity_matrix = eye(data_size, format="csc")
@@ -468,7 +468,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
 
     # Add photometry signals to the NWB
-    print("Adding photometry signals to NWB ...")
+    print("Adding photometry signals to NWB...")
 
     raw_470_response_series = FiberPhotometryResponseSeries(
         name="raw_470",
