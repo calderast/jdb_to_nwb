@@ -47,11 +47,17 @@ def test_convert_behavior():
     expected_block_columns = {
         'start_time', 'stop_time', 'epoch', 'block', 
         'maze_configuration', 'pA', 'pB', 'pC', 'num_trials', 'task_type'}
-    assert set(nwbfile.intervals["block"].colnames) == expected_block_columns, f"Block columns {nwbfile.intervals['block'].colnames} did not match expected"
+    assert set(nwbfile.intervals["block"].colnames) == expected_block_columns, (
+        f"Block columns {nwbfile.intervals['block'].colnames} "
+        f"did not match expected columns {expected_block_columns}"
+    )
     assert len(nwbfile.intervals["block"].start_time) == 3 # there are 3 blocks in this session
     # Check block data
     assert nwbfile.intervals["block"].num_trials[0] == 68
-    assert nwbfile.intervals["block"]["maze_configuration"][0] == "11,12,14,15,18,22,29,31,35,45", f"Maze configuration {nwbfile.intervals['block']['maze_configuration'][0]} did not match expected"
+    assert nwbfile.intervals["block"].maze_configuration[0] == "11,12,14,15,18,22,29,31,35,45", (
+        f"Maze configuration {nwbfile.intervals['block'].maze_configuration[0]} "
+        f"did not match expected '11,12,14,15,18,22,29,31,35,45'"
+    )
     assert nwbfile.intervals["block"].pA[0] == 10
     assert nwbfile.intervals["block"].pB[0] == 50
     assert nwbfile.intervals["block"].pC[0] == 90
@@ -62,5 +68,8 @@ def test_convert_behavior():
         'start_time', 'stop_time', 'epoch', 'block', 'trial_within_block', 
         'trial_within_epoch', 'start_port', 'end_port', 'reward', 
         'opto_condition', 'duration', 'poke_in', 'poke_out'}
-    assert set(nwbfile.trials.colnames) == expected_trial_columns, f"Trial columns {nwbfile.trials.colnames} did not match expected"
+    assert set(nwbfile.trials.colnames) == expected_trial_columns, (
+        f"Trial columns {nwbfile.trials.colnames} "
+        f"did not match expected columns {expected_trial_columns}"
+    )
     assert len(nwbfile.trials.start_time) == 188 # there are 188 trials in this session
