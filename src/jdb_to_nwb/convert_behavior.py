@@ -203,7 +203,7 @@ def validate_trial_and_block_data(trial_data: list, block_data: list):
         assert len({block["pA"] for block in block_data}) > 1
         assert len({block["pB"] for block in block_data}) > 1
         assert len({block["pC"] for block in block_data}) > 1
-    # In a barrier change session, maze configs vary and reward probabilties do not
+    # In a barrier change session, maze configs vary and reward probabilities do not
     elif block_data[0]["task_type"] == "barrier change":
         # All reward probabilities should be the same for all blocks
         assert len({block["pA"] for block in block_data}) == 1
@@ -250,7 +250,7 @@ def validate_trial_and_block_data(trial_data: list, block_data: list):
 
         summed_trials += block.get("num_trials")
 
-    # The summmed number of trials in each block must match the total number of trials
+    # The summed number of trials in each block must match the total number of trials
     assert summed_trials == len(trial_data)
 
 
@@ -306,7 +306,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
             )
        
     # Convert each maze config from a set to a sorted, comma separated string 
-    # for compatability with NWB and spyglass
+    # for compatibility with NWB and spyglass
     def barrier_set_to_string(set):
         return ",".join(map(str, sorted(set)))
 
