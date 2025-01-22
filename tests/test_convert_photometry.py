@@ -11,7 +11,10 @@ from jdb_to_nwb.convert_photometry import add_photometry, process_raw_labview_ph
 
 
 def test_process_raw_labview_photometry_signals():
-    """Test that the process_raw_labview_photometry_signals function returns a signals dictionary equivalent to signals.mat."""
+    """
+    Test that the process_raw_labview_photometry_signals function 
+    returns a signals dictionary equivalent to signals.mat.
+    """
 
     # Create a test metadata dictionary
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
@@ -47,23 +50,37 @@ def test_process_raw_labview_photometry_signals():
     # In our former MATLAB photometry preprocessing pipeline (used to create signals.mat), we would sometimes
     # remove a certain number of samples from the beginning of our signals for alignment with behavior.
     # In this new pipeline, we do this alignment later so this is no longer necessary at this step.
-    # This results in the signals in our created signals dict being longer than the signals in the reference signals.mat,
+    # This results in the signals in our created dict being longer than the reference signals in signals.mat,
     # so we calculate the number of samples to remove from the beginning so we can do comparisons.
     samples_removed_from_reference = len(signals["ref"]) - len(reference_signals_mat["ref"].flatten())
 
-    # The difference between our created signal and the reference from signals.mat must be <0.01% of the magnitude of the reference
-    assert np.allclose(signals["ref"][samples_removed_from_reference:], reference_signals_mat["ref"].flatten(), rtol=1e-4)
-    assert np.allclose(signals["sig1"][samples_removed_from_reference:], reference_signals_mat["sig1"].flatten(), rtol=1e-4)
-    # We allow an additional absolute tolerance for sig2 because there are some values very close to 0 where relative tolerance is less useful
-    # (Also, we don't use actually sig2 so it doesn't really matter)
-    assert np.allclose(signals["sig2"][samples_removed_from_reference:], reference_signals_mat["sig2"].flatten(), rtol=1e-4, atol=5)
+    # The difference between our signal and the reference must be <0.01% of the magnitude of the reference
+    assert np.allclose(
+        signals["ref"][samples_removed_from_reference:], 
+        reference_signals_mat["ref"].flatten(), 
+        rtol=1e-4
+    )
+    assert np.allclose(
+        signals["sig1"][samples_removed_from_reference:], 
+        reference_signals_mat["sig1"].flatten(), 
+        rtol=1e-4
+    )
+    # We allow an additional absolute tolerance for sig2 because there are some values very close to 0 
+    # where relative tolerance is less useful. (Also, we don't use actually sig2 so it doesn't really matter)
+    assert np.allclose(
+        signals["sig2"][samples_removed_from_reference:], 
+        reference_signals_mat["sig2"].flatten(), 
+        rtol=1e-4, 
+        atol=5
+    )
 
 
 def test_add_photometry_from_signals_mat():
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
-    This version of the test uses the already created signals.mat at "signals_mat_file_path" to further process and add photometry signals to the NWB.
+    This version of the test uses the already created signals.mat at "signals_mat_file_path" 
+    to further process and add photometry signals to the NWB.
     """
 
     # Create a test metadata dictionary with preprocessed LabVIEW data ("signals_mat_file_path")
@@ -89,9 +106,10 @@ def test_add_photometry_from_signals_mat():
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
     expected_sampling_rate = 250  # Hz
-    
+
     # Assert that we have returned the correct sampling rate
-    assert sampling_rate == expected_sampling_rate, f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz"
+    assert sampling_rate == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz")
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -101,11 +119,15 @@ def test_add_photometry_from_signals_mat():
     # Check the basic attributes of each series
     for series_name in expected_photometry_series:
         # Assert that all series are of type FiberPhotometryResponseSeries
-        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), f"{series_name} is not of type FiberPhotometryResponseSeries"
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
         # Assert all series have a sampling rate of 250 Hz
         assert (
             getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
-        ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
+        ), (
+            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}"
+        )
 
     # Check that the photometry series in the nwbfile match the expected signals from the reference dataframe
     green_z_scored_dFF = np.array(nwbfile.acquisition["z_scored_green_dFF"].data)
@@ -159,9 +181,10 @@ def test_add_photometry_from_raw_labview():
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
     expected_sampling_rate = 250  # Hz
-    
+
     # Assert that we have returned the correct sampling rate
-    assert sampling_rate == expected_sampling_rate, f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz"
+    assert sampling_rate == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz")
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -171,20 +194,24 @@ def test_add_photometry_from_raw_labview():
     # Check the basic attributes of each series
     for series_name in expected_photometry_series:
         # Assert that all series are of type FiberPhotometryResponseSeries
-        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), f"{series_name} is not of type FiberPhotometryResponseSeries"
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
         # Assert all series have a sampling rate of 250 Hz
         assert (
             getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
-        ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
+        ), (
+            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}"
+        )
 
     # Check that the photometry series in the nwbfile match the expected signals from the reference dataframe
     green_z_scored_dFF = np.array(nwbfile.acquisition["z_scored_green_dFF"].data)
     green_z_scored_dFF_reference = reference_dataframe["green"].values
 
-    # In our former MATLAB photometry preprocessing pipeline (used to create the reference dataframe), we would sometimes
-    # remove a certain number of samples from the beginning of our signals for alignment with behavior.
+    # In our former MATLAB photometry preprocessing pipeline (used to create the reference dataframe), 
+    # we would sometimes remove some samples from the beginning of our signals for alignment with behavior.
     # In this new pipeline, we do this alignment later so this is no longer necessary at this step.
-    # This results in the signals in our created signals dict being longer than the signals in the reference dataframe,
+    # This results in the signals in our created dict being longer than the reference signals in the dataframe,
     # so we calculate the number of samples to remove from the beginning so we can do comparisons.
     samples_removed_from_reference = len(green_z_scored_dFF) - len(green_z_scored_dFF_reference)
     green_z_scored_dFF = green_z_scored_dFF[samples_removed_from_reference:]
@@ -233,11 +260,13 @@ def test_add_photometry_from_pyphotometry():
     sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
-    expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"}
+    expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", 
+                                  "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"}
     expected_sampling_rate = 86 # Hz
-    
+
     # Assert that we have returned the correct sampling rate
-    assert sampling_rate == expected_sampling_rate, f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz"
+    assert sampling_rate == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz")
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -247,15 +276,21 @@ def test_add_photometry_from_pyphotometry():
     # Check the basic attributes of each series
     for series_name in expected_photometry_series:
         # Assert that all series are of type FiberPhotometryResponseSeries
-        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), f"{series_name} is not of type FiberPhotometryResponseSeries"
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
         # Assert all series have a sampling rate of 86 Hz
         assert (
             getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
-        ), f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, expected {expected_sampling_rate}"
+        ), (
+            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}"
+        )
         
     # Check that the photometry series in the nwbfile match the expected signals from the reference dataframe
-    nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"]
-    reference_signal_names = ["raw_green", "green_z_scored", "raw_405", "z_scored_405", "raw_red", "red_z_scored", "raw 470/405", "ratio_z_scored"]
+    nwb_signal_names = ["raw_470", "z_scored_470", "raw_405", "zscored_405", 
+                        "raw_565", "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"]
+    reference_signal_names = ["raw_green", "green_z_scored", "raw_405", "z_scored_405", 
+                              "raw_red", "red_z_scored", "raw 470/405", "ratio_z_scored"]
 
     # Compare each signal in the nwbfile to its respective reference
     for sig_name, ref_name in zip(nwb_signal_names, reference_signal_names):
@@ -322,5 +357,7 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     except ValueError as e:
         assert str(e).startswith("None of the required photometry subfields exist in the metadata dictionary")
     else:
-        assert False, "Expected ValueError was not raised in response to missing photometry subfields in the metadata dict."
-        
+        assert False, (
+            "Expected ValueError was not raised in response to "
+            "missing photometry subfields in the metadata dict."
+        )

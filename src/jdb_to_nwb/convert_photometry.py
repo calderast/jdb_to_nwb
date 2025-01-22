@@ -32,7 +32,8 @@ def read_phot_data(phot_file_path):
         phot["date"] = fid.read(256).decode("utf-8").strip("\x00")
         phot["time"] = fid.read(256).decode("utf-8").strip("\x00")
 
-        # Loop through the four channels and extract the location, signal, frequency, max and min values in the same way
+        # Loop through the four channels and extract the 
+        # location, signal, frequency, max and min values in the same way
         phot["channels"] = []
 
         # Initialize a list of empty dictionaries for the channels
@@ -211,8 +212,8 @@ def run_lockin_detection(phot):
 
     loc = phot["channels"][2]["location"][:15]  # First 15 characters of the location
 
-    # Create a dictionary with the relevant signals to match signals.mat returned by the original MATLAB processing code
-    # NOTE: We don't actually use sig2 and ref2 - these may be removed in a future PR but are kept for posterity for now
+    # Create a dict with the relevant signals to match signals.mat returned by the original MATLAB processing code
+    # NOTE: We don't use sig2 and ref2 - these may be removed in a future PR but are kept for posterity for now
     signals = {"sig1": sig1, "ref": ref, "sig2": sig2, "ref2": ref2, "loc": loc}
     return signals
 
@@ -253,7 +254,8 @@ def whittaker_smooth(data, binary_mask, lambda_):
 
     Args:
     data: 1D array representing the signal data
-    binary_mask: binary mask indicating which points are signals (peaks) and which are background (0 = signal/peak, 1=background)
+    binary_mask: binary mask indicating which points are signals (peaks) and which are background 
+    (0 = signal/peak, 1=background)
     lambda_: Smoothing parameter. A larger value results in a smoother baseline.
 
     Returns:
@@ -305,24 +307,25 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
     for i in range(1, max_iterations + 1):
         # Use Whittaker smoothing to fit a baseline to the data using the updated weights
         baseline = whittaker_smooth(data, weights, lambda_)
-        # Difference between data and baseline to calculate residuals. delta > 0 == peak. delta < 0 == background.
+        # Difference between data and baseline to calculate residuals. delta > 0 == peak, delta < 0 == background
         delta = data - baseline
         # Calculate how much data is below the baseline
         sum_of_neg_deltas = np.abs(delta[delta < 0].sum())
 
-        # Convergence check: if sum_of_neg_deltas < 0.1% of the total data, or if the maximum number of iterations is reached
+        # Convergence check: if sum_of_neg_deltas < 0.1% of the total data, or if max iterations is reached
         if sum_of_neg_deltas < 0.001 * (abs(data)).sum() or i == max_iterations:
             if i == max_iterations:
                 warnings.warn(
                     f"Reached maximum iterations before convergence was achieved! "
-                    f"Wanted sum_of_neg_deltas < {0.001 * (abs(data)).sum()}, got sum_of_neg_deltas = {sum_of_neg_deltas}"
+                    f"Wanted sum_of_neg_deltas < {0.001 * (abs(data)).sum()}, "
+                    f"got sum_of_neg_deltas = {sum_of_neg_deltas}"
                 )
             break
         # Delta >= 0 means that this point is part of a peak, so its weight is set to 0 in order to ignore it
         weights[delta >= 0] = 0
-        # Updates the weights for the negative deltas. Gives more weight to larger residuals using an exponential function.
+        # Update weights for the negative deltas. Gives more weight to larger residuals using an exponential
         weights[delta < 0] = np.exp(i * np.abs(delta[delta < 0]) / sum_of_neg_deltas)
-        # Updates the weights for the first and last data points to ensure edges of data are not ignored or underweighed.
+        # Update weights for the first and last data points to ensure edges of data are not ignored or underweighed
         weights[0] = np.exp(i * (delta[delta < 0]).max() / sum_of_neg_deltas)
         weights[-1] = weights[0]
     return baseline
@@ -711,7 +714,8 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
     else:
         raise ValueError(
             "None of the required photometry subfields exist in the metadata dictionary.\n"
-            "If you are using LabVIEW, you must include both 'phot_file_path' and 'box_file_path' to process raw LabVIEW data,\n"
+            "If you are using LabVIEW, you must include both 'phot_file_path' and 'box_file_path' "
+            "to process raw LabVIEW data,\n"
             "OR 'signals_mat_file_path' if the initial preprocessing has already been done in MATLAB.\n"
             "If you are using pyPhotometry, you must include 'ppd_file_path'."
         )
