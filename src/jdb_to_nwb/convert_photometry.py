@@ -481,7 +481,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     z_scored_470_response_series = FiberPhotometryResponseSeries(
         name="z_scored_470",
         description="Z-scored 470 nm",
-        data=green_zscored.to_numpy(),
+        data=green_zscored,
         unit="z-score",
         rate=float(sampling_rate),
     )
@@ -497,7 +497,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     z_scored_405_response_series = FiberPhotometryResponseSeries(
         name="zscored_405",
         description="Z-scored 405nm. This is used to calculate the ratiometric index when using GRAB-ACh3.8",
-        data=zscored_405.to_numpy(),
+        data=zscored_405,
         unit="z-score",
         rate=float(sampling_rate),
     )
@@ -513,7 +513,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     z_scored_565_response_series = FiberPhotometryResponseSeries(
         name="zscored_565",
         description="Z-scored 565nm",
-        data=red_zscored.to_numpy(),
+        data=red_zscored,
         unit="z-score",
         rate=float(sampling_rate),
     )
@@ -529,7 +529,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     z_scored_ratio_response_series = FiberPhotometryResponseSeries(
         name="zscored_470/405",
         description="Z-scored ratiometric index of 470nm and 405nm",
-        data=ratio_zscored.to_numpy(),
+        data=ratio_zscored,
         unit="z-score",
         rate=float(sampling_rate),
     )
