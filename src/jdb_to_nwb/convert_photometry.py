@@ -10,21 +10,7 @@ from scipy.signal import butter, lfilter, hilbert, filtfilt
 from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
-
-# Some of these imports are unused for now but will be used for photometry metadata
-from ndx_fiber_photometry import (
-    Indicator,
-    OpticalFiber,
-    ExcitationSource,
-    Photodetector,
-    DichroicMirror,
-    BandOpticalFilter,
-    EdgeOpticalFilter,
-    FiberPhotometry,
-    FiberPhotometryTable,
-    FiberPhotometryResponseSeries,
-    CommandedVoltageSeries,
-)
+from ndx_fiber_photometry import FiberPhotometryResponseSeries
 
 
 def read_phot_data(phot_file_path):
