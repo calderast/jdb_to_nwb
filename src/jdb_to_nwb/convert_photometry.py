@@ -274,7 +274,7 @@ def whittaker_smooth(data, binary_mask, lambda_):
     the fitted background vector
     """
 
-    data_matrix = np.matrix(data)
+    data_matrix = np.array(data)
     data_size = data_matrix.size  # Size of the data matrix
     # Create an identity matrix the size of the data matrix in compressed sparse column (csc) format
     identity_matrix = eye(data_size, format="csc")
