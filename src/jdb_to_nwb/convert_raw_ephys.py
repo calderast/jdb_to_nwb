@@ -22,72 +22,10 @@ VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
 
-
-def get_channel_map(plug_order : str = "chip_first"):
-    """
-    Return the channel map for the probe electrodes based on how the rat was plugged in.
-    
-    Optional argument plug_order can be "chip_first" (default) or "cable_first".
-    """
-    
-    if plug_order == "cable_first":
-        # Cable first, only if plugged in wrong by accident (eg T1 / IM1520)
-        channel_map = np.array([
-        63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 
-        11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 64, 
-        65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 
-        96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 
-        122, 123, 124, 125, 126, 127, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 
-        211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 
-        236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 151, 152, 153, 154, 155, 
-        156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 
-        181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 150, 149, 148, 147, 146, 145, 144, 143, 142, 141, 140, 139, 138, 137, 
-        136, 135, 134, 133, 132, 131, 130, 129, 128])
-    else:
-        # Assume chip first if not otherwise specified, this is the regular case for all other rats (eg wt43 / IM1586)
-        channel_map = np.array([
-        191, 190, 189, 188, 187, 186, 185, 184, 183, 182, 181, 180, 179, 178, 177, 176, 175, 174, 173, 172, 171, 170, 169, 128,
-        129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152,
-        153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 192, 193, 194, 195, 196, 197, 198, 199,
-        200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223,
-        224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247,
-        248, 249, 250, 251, 252, 253, 254, 255, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
-        80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103,
-        104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127,
-        23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
-        47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 22, 21, 20, 19, 18, 17, 16,
-        15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0])
-    return channel_map
-
-
-def get_electrode_coords():
-    """Get the relative x and y coordinates of the electrodes."""
-    # TODO: These are different for each probe! 
-    # Add argument "probe" and then get coords for that probe specifically
-    # Likely want to set up coordinate files for each probe and then just read from those
-    # Maybe can store those in a berke lab metadata file in this repo somewhere
-    
-    # Define the base arrays
-    array1 = np.arange(240, 29, -30) # [240, 210, 180, 150, 120, 90, 60, 30]
-    array2 = array1 - 15 # [225, 195, 165, 135, 105, 75, 45, 15]
-
-    # Repeat each array 16 times to get 2 arrays of shape (16, 8)
-    reshaped_array1 = np.tile(array1, (16, 1))
-    reshaped_array2 = np.tile(array2, (16, 1))
-
-    # Create y coordinates by interdigitating both sequences
-    # (fill even rows with reshaped_array1 and odd rows with reshaped_array2)
-    y_coords = np.zeros((32, 8), dtype=int)
-    y_coords[::2], y_coords[1::2] = reshaped_array1, reshaped_array2
-    y_coords = y_coords.flatten()
-
-    # Create x coordinates from 100 to 3200 with steps of 100, with each number repeated 8 times
-    x_coords = np.repeat(np.arange(100, 3201, 100), 8)
-
-    # Stack x and y coordinates as columns to form a 2D array
-    coords = np.column_stack((x_coords, y_coords))
-    return coords
-
+RESOURCES_DIR = Path("../../resources")
+CHANNEL_MAP_PATH = RESOURCES_DIR / "channel_map.csv"
+ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
+ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
 
 def add_electrode_data(
     *,
@@ -128,8 +66,6 @@ def add_electrode_data(
     )
 
     impedance_file_path = metadata["ephys"]["impedance_file_path"]
-    # channel_geometry_file_path = metadata["ephys"]["channel_geometry_file_path"]
-
     electrode_data = pd.read_csv(impedance_file_path)
 
     # Check that the expected columns are present in order and no extra columns are present
@@ -143,8 +79,11 @@ def add_electrode_data(
         "Series RC equivalent R (Ohms)",
         "Series RC equivalent C (Farads)",
     ]
-    assert electrode_data.columns.tolist() == expected_columns, "Impedance file does not have the expected columns."
-
+    assert electrode_data.columns.tolist() == expected_columns, (
+        f"Impedance file has columns {electrode_data.columns.tolist()}, "
+        f"does not match expected columns {expected_columns}"
+    )
+    
     # Check that the filtering list has the same length as the number of channels
     assert len(filtering_list) == len(
         electrode_data
@@ -156,14 +95,21 @@ def add_electrode_data(
     ).all(), "First column is not the same as the second column."
     electrode_data.drop(columns=["Channel Number"], inplace=True)
 
-    # Get electrode coordinates as a (2, 256) array
-    # The first column is the relative x coordinate, and the second column is the relative y coordinate
-    channel_geometry = get_electrode_coords() # formerly pd.read_csv(channel_geometry_file_path, header=None)
-    
-    # Get the channel map based on how the rat was plugged in
+    # Get the channel map based on how the rat was plugged in (assume "chip_first" if none specified)
     plug_order = metadata["ephys"].get("plug_order", "chip_first")
-    channel_map = get_channel_map(plug_order=plug_order)
-    
+    channel_map_df = pd.read_csv(CHANNEL_MAP_PATH)
+    channel_map = np.array(channel_map_df[plug_order])
+
+    # Get electrode coordinates as a (2, 256) array based on the probe name
+    # The first column is the relative x coordinate, and the second column is the relative y coordinate
+    probe_name = metadata["ephys"]["device"].get("name")
+    if "3mm" in probe_name:
+        channel_geometry = pd.read_csv(ELECTRODE_COORDS_PATH_3MM_PROBE)
+    elif "6mm" in probe_name:
+        channel_geometry = pd.read_csv(ELECTRODE_COORDS_PATH_6MM_PROBE)
+    else:
+        raise ValueError(f"Expected either '3mm' or '6mm' in device name '{probe_name}'")
+
     assert len(channel_geometry) == len(channel_map) == len(electrode_data), (
     "Mismatch in lengths: "
     f"channel_geometry ({len(channel_geometry)}), "
@@ -172,14 +118,14 @@ def add_electrode_data(
     )
     
     # Append the x and y coordinates to the impedance data using the channel map
-    
     # TODO: Make sure Stephanie's understanding of the channel map indexing is correct!!
     electrode_data["rel_x"] = [channel_geometry[idx][0] for idx in channel_map] # formerly channel_geometry.iloc[:, 0]
     electrode_data["rel_y"] = [channel_geometry[idx][1] for idx in channel_map] # formerly channel_geometry.iloc[:, 1]
 
     # Mark electrodes with impedance that is less than 0.1 MOhms or more than 3.0 MOhms
     # as bad electrodes
-    electrode_data["bad_channel"] = (electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
+    electrode_data["bad_channel"] = (
+        electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
         electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
     )
 
@@ -316,7 +262,8 @@ def get_raw_ephys_data(
         channel.attrib["number"]: channel.attrib["name"] for channel in channel_info.findall("CHANNEL")
     }
 
-    # Read the settings.xml file to get the filtering applied to each channel - map channel number to filter description
+    # Read the settings.xml file to get the filtering applied to each channel - 
+    # map channel number to filter description
     # <PROCESSOR name="Filters/Bandpass Filter" ...>
     #   <CHANNEL name="0" number="0">
     #     <SELECTIONSTATE param="1" record="0" audio="0"/>
