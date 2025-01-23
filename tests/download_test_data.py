@@ -9,17 +9,24 @@ from pathlib import Path
 
 
 def main():
-    # This path is relative to the root of the user's Box account
-    remote_dir_to_download = "/nwb-test-data/IM-1478/07252022"
+    # These paths are relative to the root of the user's Box account
+    remote_dirs_to_download = [
+        "/nwb-test-data/IM-1478/07252022",
+        "/nwb-test-data/IM-1770_corvette/11062024"
+        ]
 
     # List of file extensions to exclude from the download
     exclude_files = [".dat"]
 
-    # This is the directory where the downloaded data will be saved
-    test_data_dir = Path('tests/test_data/downloaded/IM-1478/07252022')
+    # These are the directories where the downloaded data will be saved
+    test_data_directories = [
+        Path('tests/test_data/downloaded/IM-1478/07252022'),
+        Path('tests/test_data/downloaded/IM-1770_corvette/11062024')
+        ]
 
-    # Create test data directory if it doesn't exist
-    test_data_dir.mkdir(parents=True, exist_ok=True)
+    # Create each test data directory if it doesn't exist
+    for test_data_dir in test_data_directories:
+        test_data_dir.mkdir(parents=True, exist_ok=True)
 
     # Read .env file if present and parse variables into environment variables
     env_file_path = ".env"
@@ -90,8 +97,9 @@ def main():
         ftps.cwd(original_dir)
 
     # Start recursive download from current directory
-    print(f"Starting recursive download from {remote_dir_to_download} to {test_data_dir}...")
-    download_recursively(ftps, remote_dir_to_download, test_data_dir)
+    for remote_dir_to_download, test_data_dir in zip(remote_dirs_to_download, test_data_directories):
+        print(f"Starting recursive download from {remote_dir_to_download} to {test_data_dir}...")
+        download_recursively(ftps, remote_dir_to_download, test_data_dir)
 
     # Close the connection
     ftps.quit()
