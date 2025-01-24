@@ -5,14 +5,15 @@ import numpy as np
 import os
 import json
 import warnings
+from pathlib import Path
 import scipy.io
 from scipy.signal import butter, lfilter, hilbert, filtfilt
 from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
-from plot_photometry import .
 
 from ndx_fiber_photometry import FiberPhotometryResponseSeries
+from plot_photometry import *
 
 def read_phot_data(phot_file_path):
     """Parse .phot file from Labview into a dict"""
@@ -412,7 +413,7 @@ def import_ppd(ppd_file_path):
     return data_dict
 
 
-def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
+def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     
@@ -432,21 +433,16 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     relative_raw_signal = raw_green / raw_405
 
     sampling_rate = ppd_data['sampling_rate']
-    time_seconds = ppd_data['time']/1000
     visits = ppd_data['pulse_inds_1'][1:]
-    pulse_times_in_mins = [time / 60000 for time in visits]
 
-    plot_raw_photometry_signals(visits, pulse_times_in_mins, raw_green, raw_red, raw_405, relative_raw_signal, sampling_rate)
+    # Plot the raw signals
+    plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405, relative_raw_signal, 
+                                sampling_rate, fig_dir)
 
-    # Calculate the correlation between the signals. This I am not too sure if we want to keep or not. Best to discuss with Josh? 
-    
-    plot_405_470_correlation(raw_405, raw_green)
-
-    
-    plot_405_565_correlation(raw_405, raw_red)
-
-    
-    plot_470_565_correlation(raw_green, raw_red)
+    # Plot the correlation between the raw signals
+    plot_405_470_correlation(raw_405, raw_green, fig_dir)
+    plot_405_565_correlation(raw_405, raw_red, fig_dir)
+    plot_470_565_correlation(raw_green, raw_red, fig_dir)
 
     # Low pass filter at 10Hz to remove high frequency noise
     print('Filtering data...')
@@ -464,8 +460,8 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     ratio_highpass = filtfilt(b,a, ratio_denoised, padtype='even')
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
     
-    # Plot the filtered signals of interest against each other
-    plot_ratio_565_correlation(ratio_highpass, red_highpass)
+    # Plot the correlation between the filtered signals of interest (ACh and DA)
+    plot_ratio_565_correlation(ratio_highpass, red_highpass, fig_dir)
     
     # Z-score each signal to normalize the data
     print('Z-scoring photometry signals...')
@@ -474,7 +470,9 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
 
-    plot_normalized_signals(pulse_times_in_mins, green_zscored, zscored_405, red_zscored, ratio_zscored)
+    # Plot the processed photometry signals
+    plot_normalized_signals(visits, green_zscored, zscored_405, 
+                            red_zscored, ratio_zscored, fig_dir)
 
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
@@ -673,7 +671,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
     pass
 
 
-def add_photometry(nwbfile: NWBFile, metadata: dict):
+def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir: Path):
     """
     Add photometry data to the NWB and return port visits 
     in downsampled photometry time to use for alignment.
@@ -730,7 +728,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
         # Process ppd file from pyPhotometry and add signals to the NWB
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path)
+        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, fig_dir)
 
     else:
         raise ValueError(

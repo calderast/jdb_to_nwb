@@ -1,6 +1,8 @@
 import argparse
 from pathlib import Path
 import yaml
+import uuid
+import os
 
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
@@ -14,23 +16,31 @@ from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
 
 
-def create_nwbs(
-    metadata_file_path: Path,
-    output_nwb_file_path: Path,
-):
+def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
+    # Read metadata
     with open(metadata_file_path, "r") as f:
         metadata = yaml.safe_load(f)
 
+    # TODO: Add checks for required metatdata?
+
     # Parse subject metadata
     subject = Subject(**metadata["subject"])
-    
-    # Create session_id in default rat_date format
+
+    # Create session_id in rat_date format
     session_id = f"{metadata.get("animal_name")}_{metadata.get("date")}"
+
+    # Create directory for associated figures
+    fig_dir = Path(output_nwb_dir) / f"{session_id}_figures"
+    os.makedirs(fig_dir, exist_ok=True)
+
+    # Create directory for conversion log files
+    log_dir = Path(output_nwb_dir) / f"{session_id}_logs"
+    os.makedirs(log_dir, exist_ok=True)
 
     nwbfile = NWBFile(
         session_description="Mock session",  # TODO: replace this from behavior data
-        session_start_time=datetime.now(tz.tzlocal()),  # TODO: update this 
-        identifier="mock_session",  # TODO: update this
+        session_start_time=datetime.now(tz.tzlocal()),  # Will be updated later 
+        identifier=str(uuid.uuid4()),
         institution=metadata.get("institution"),
         lab=metadata.get("lab"),
         experimenter=metadata.get("experimenter"),
@@ -46,19 +56,19 @@ def create_nwbs(
     )
 
     # If photometry is present, timestamps should be aligned to the photometry
-    add_photometry(nwbfile=nwbfile, metadata=metadata)
+    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
     photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
 
-    # TODO: time alignment !
+    # TODO: time alignment
 
-    # Reset the session start time to the earliest of the data streams
+    # TODO: Reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
 
     print("Writing file, including iterative read from raw ephys data...")
-
+    output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
     with NWBHDF5IO(output_nwb_file_path, mode="w") as io:
         io.write(nwbfile)
 
@@ -68,7 +78,7 @@ def create_nwbs(
 def cli():
     parser = argparse.ArgumentParser()
     parser.add_argument("metadata_file_path", type=Path, help="Path to the metadata YAML file.")
-    parser.add_argument("output_nwb_file_path", type=Path, help="Path to the output NWB file.")
+    parser.add_argument("output_nwb_dir", type=Path, help="Path to the output NWB directory.")
     args = parser.parse_args()
 
     create_nwbs(args.metadata_file_path, args.output_nwb_file_path)
