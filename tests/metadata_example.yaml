@@ -1,0 +1,98 @@
+institution: University of California, San Francisco
+lab: Berke Lab
+experimenter:
+  - Crater, Stephanie
+  - Figueroa, Jose
+  - Hwang, Yang-Sun
+  - Krausz, Tim
+
+# General information about the subject and session
+animal_name: "IM-1478"
+date: "07252022"  # MMDDYYYY or YYYYMMDD
+session_id: "IM-1478_07252022"
+subject:
+  subject_id: "IM-1478"
+  species: Rattus norvegicus
+  genotype: Wildtype
+  sex: M
+  date_of_birth: "2022-03-25"
+  description: Long Evans Rat
+
+# If your experiment included electrophysiology, include field 'ephys' and the following subfields:
+ephys:
+  openephys_folder_path: "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+  impedance_file_path: "tests/test_data/processed_ephys/impedance.csv"
+  mountain_sort_output_file_path: "tests/test_data/processed_ephys/firings.mda"
+  sampling_frequency: 30000
+  electrodes_location: "Hippocampus"
+  reference_skull_screw_location: Medial cerebellum, 1.0 mm posterior to lambda
+  plug_order: "chip_first" # "chip_first" or "cable_first". Defaults to "chip_first" if none specified
+  
+  # Berke Lab currently uses 2 possible probes for the hex maze task, specified below.
+  # Un-comment the probe used for your experiment.
+  device:
+    name: "256-ch Silicon Probe, 3mm length, 66um pitch"
+    description: >
+      32 shanks, 8 electrodes per shank. Each shank is 3mm long. 
+      Shanks are 66um apart. There is 30um between electrodes on each shank. 
+      Odd shanks are vertically offset by 1/2 the electrode pitch (15um).
+    manufacturer: "Daniel Egert, Berke Lab"
+  # device:
+  #   name: "256-ch Silicon Probe, 6mm length, 80um pitch"
+  #   description: >
+  #     32 shanks, 8 electrodes per shank. Each shank is 6mm long. 
+  #     Shanks are 80um apart. There is 30um between electrodes on each shank. 
+  #     Odd shanks are vertically offset by 1/2 the electrode pitch (15um).
+  #   manufacturer: "Daniel Egert, Berke Lab"
+
+# If your experiment included photometry, include field 'photometry' and the following subfields:
+# BOTH "phot_file_path" and "box_file_path" for raw LabVIEW data,
+# OR "signals_mat_file_path" for preprocessed LabVIEW data,
+# OR "ppd_file_path" for pyPhotometry data
+photometry:
+  phot_file_path: "tests/test_data/downloaded/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+  box_file_path: "tests/test_data/downloaded/IM-1478/07252022/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+# signals_mat_file_path: "tests/test_data/downloaded/IM-1478/07252022/signals.mat"
+# ppd_file_path: "tests/test_data/downloaded/IM-1770_corvette/11062024/Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+
+behavior:
+  arduino_text_file_path: "tests/test_data/behavior/arduinoraw0.txt"
+  arduino_timestamps_file_path: "tests/test_data/behavior/ArduinoStamps0.csv"
+  maze_configuration_file_path: "tests/test_data/behavior/barriers.txt"
+  behavioral_info:
+    reward_type: sucrose solution (10% sucrose, 0.1% NaCl) 
+    reward_amount_in_uL: 15
+    deprivation_type: water  # water (default) or food
+
+video:
+  file_path: "tests/test_data/downloaded/IM-1478/07252022/Behav_Vid0.avi"
+  timestamps_file_path: "tests/test_data/downloaded/IM-1478/07252022/testvidtimes0.csv"
+
+# Surgical notes, one dictionary per surgery
+surgeries:
+  - description: The virus was injected in the left nucleus accumbens core on 2022-01-01.
+    date: 2022-01-01
+    type: virus_injection  # virus_injection OR probe_implantation
+  - description: The probe was implanted in the left nucleus accumbens core on 2022-02-01.
+    date: 2022-02-01
+    type: probe_implantation  # virus_injection OR probe_implantation
+
+  # TODO
+  # virus_injection_metadata:
+  #   - 
+  # fiber_metadata:
+  #   - 
+
+# The following fields are optional.
+
+notes:
+  General notes about this session, if any.
+
+keywords:
+  - photometry
+  - ephys
+  - behavior
+  - video
+  - hex maze
+  - dopamine
+  - reward
