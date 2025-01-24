@@ -30,6 +30,7 @@ dependencies = [
     "ndx_fiber_photometry",
     "ndx_franklab_novela",
     "scikit-learn",
+    "matplotlib",
 ]
 dynamic = ["version"]
 

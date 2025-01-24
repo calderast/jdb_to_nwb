@@ -49,7 +49,7 @@ def plot_405_470_correlation(raw_405, raw_green, fig_dir):
     """
     Plots the correlation between the raw 405 and 470 signals.
     """
-    slope_405x470, intercep_405x470, r_value_405x470 = linregress(x=raw_405, y=raw_green)
+    slope_405x470, intercep_405x470, r_value_405x470, _ , _ = linregress(x=raw_405, y=raw_green)
     plt.figure()
     plt.scatter(raw_405[::5], raw_green[::5],alpha=0.1, marker='.')
     x = np.array(plt.xlim())
@@ -72,7 +72,7 @@ def plot_405_565_correlation(raw_405, raw_red, fig_dir):
     """
     Plots the correlation between the raw 405 and 565 signals.
     """
-    slope_405x565, intercep_405x565, r_value_405x565 = linregress(x=raw_405, y=raw_red)
+    slope_405x565, intercep_405x565, r_value_405x565, _ , _ = linregress(x=raw_405, y=raw_red)
     plt.figure()
     plt.scatter(raw_405[::5], raw_red[::5],alpha=0.1, marker='.')
     x = np.array(plt.xlim())
@@ -95,7 +95,7 @@ def plot_470_565_correlation(raw_green, raw_red, fig_dir):
     """
     Plots the correlation between the raw 470 and 565 signals.
     """
-    slope_470x565, intercep_470x565, r_value_470x565 = linregress(x=raw_green, y=raw_red)
+    slope_470x565, intercep_470x565, r_value_470x565, _ , _ = linregress(x=raw_green, y=raw_red)
     plt.figure()
     plt.scatter(raw_green[::5], raw_red[::5],alpha=0.1, marker='.')
     x = np.array(plt.xlim())
@@ -118,7 +118,7 @@ def plot_ratio_565_correlation(ratio_highpass, red_highpass, fig_dir):
     """
     Plots the correlation between the filtered 470/405 ratio and the 565 signals.
     """
-    slope_filtered, intercept_filtered, r_value_filtered = linregress(x=red_highpass, y=ratio_highpass)
+    slope_filtered, intercept_filtered, r_value_filtered, _ , _ = linregress(x=red_highpass, y=ratio_highpass)
     plt.figure(figsize=(13, 10))
     plt.scatter(red_highpass[::5], ratio_highpass[::5],alpha=0.1, marker='.')
     x = np.array(plt.xlim())

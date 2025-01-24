@@ -13,7 +13,7 @@ from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
 
 from ndx_fiber_photometry import FiberPhotometryResponseSeries
-from plot_photometry import (
+from .plotting.plot_photometry import (
     plot_raw_photometry_signals,
     plot_405_470_correlation,
     plot_405_565_correlation,
@@ -479,8 +479,8 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
 
     # Plot the processed photometry signals
     plot_normalized_signals(visits, green_zscored, zscored_405, 
-                            red_zscored, ratio_zscored, fig_dir)
-
+                            red_zscored, ratio_zscored, sampling_rate, fig_dir)
+    
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
 

@@ -81,4 +81,4 @@ def cli():
     parser.add_argument("output_nwb_dir", type=Path, help="Path to the output NWB directory.")
     args = parser.parse_args()
 
-    create_nwbs(args.metadata_file_path, args.output_nwb_file_path)
+    create_nwbs(args.metadata_file_path, args.output_nwb_dir)

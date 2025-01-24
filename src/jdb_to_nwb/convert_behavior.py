@@ -314,8 +314,8 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     nwbfile.add_trial_column(name="beam_break_start", description="The time the rat entered the reward port")
     nwbfile.add_trial_column(name="beam_break_end", description="The time the rat exited the reward port")
 
-    # Add description with the session type, number of blocks, and number of trials
-    nwbfile.experiment_description = (
+    # Overwrite session description with the session type, number of blocks, and number of trials
+    nwbfile.fields["session_description"] = (
         f"{session_type} session for the hex maze task with {len(block_data)} blocks and {len(trial_data)} trials."
     )
 
