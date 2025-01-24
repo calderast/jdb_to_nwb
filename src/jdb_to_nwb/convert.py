@@ -21,41 +21,40 @@ def create_nwbs(
     with open(metadata_file_path, "r") as f:
         metadata = yaml.safe_load(f)
 
-    # parse subject metadata
+    # Parse subject metadata
     subject = Subject(**metadata["subject"])
+    
+    # Create session_id in default rat_date format
+    session_id = f"{metadata.get("animal_name")}_{metadata.get("date")}"
 
-    # parse surgery metadata
-    surgery = "..."  # TODO parse from structured metadata
-
-    # TODO: read these from metadata
     nwbfile = NWBFile(
-        session_description="Mock session",  # TODO: generate this from metadata
+        session_description="Mock session",  # TODO: replace this from behavior data
         session_start_time=datetime.now(tz.tzlocal()),  # TODO: update this 
         identifier="mock_session",  # TODO: update this
-        session_id=metadata.get("session_id"),
-        surgery=surgery,
-        notes=metadata.get("notes"),
-        experimenter=metadata.get("experimenter"),
         institution=metadata.get("institution"),
         lab=metadata.get("lab"),
-        keywords=metadata.get("keywords"),
+        experimenter=metadata.get("experimenter"),
         experiment_description=metadata.get("experiment_description"),
-        related_publications=metadata.get("related_publications"),
+        session_id=session_id,
         subject=subject,
+        surgery=metadata.get("surgery"),
+        virus=metadata.get("virus"),
+        notes=metadata.get("notes"),
+        keywords=metadata.get("keywords"),
         source_script="jdb_to_nwb " + __version__,
         source_script_file_name="convert.py",
     )
 
-    # if photometry is present, timestamps should be aligned to the photometry
+    # If photometry is present, timestamps should be aligned to the photometry
     add_photometry(nwbfile=nwbfile, metadata=metadata)
     photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
 
-    # TODO: time alignment
+    # TODO: time alignment !
 
-    # reset the session start time to the earliest of the data streams
+    # Reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
 
     print("Writing file, including iterative read from raw ephys data...")

@@ -713,7 +713,9 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
 
     else:
         raise ValueError(
-            "None of the required photometry subfields exist in the metadata dictionary.\n"
+            "The required photometry subfields do not exist in the metadata dictionary.\n"
+            "Remove the 'photometry' field from metadata if you do not have photometry data "
+            "for this session, or specify the following: \n"
             "If you are using LabVIEW, you must include both 'phot_file_path' and 'box_file_path' "
             "to process raw LabVIEW data,\n"
             "OR 'signals_mat_file_path' if the initial preprocessing has already been done in MATLAB.\n"
