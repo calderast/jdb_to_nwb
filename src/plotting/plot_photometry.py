@@ -145,7 +145,7 @@ def plot_normalized_signals(visits, green_zscored, zscored_405,
     pulse_times_in_mins = [time / 60000 for time in visits]
     
     zscrd = plt.figure(figsize=(16, 10))
-    plt.suptitle("Z-scored signals calculated after preprocessing raw singals \n "
+    plt.suptitle("Z-scored signals calculated after preprocessing raw signals \n "
                  "by applying a high-pass filter at 0.001 Hz and a low-pass filter at 10 Hz")
 
     ax1 = zscrd.add_subplot(411) # Three integers (nrows, ncols, index).

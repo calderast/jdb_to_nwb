@@ -13,7 +13,14 @@ from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
 
 from ndx_fiber_photometry import FiberPhotometryResponseSeries
-from plot_photometry import *
+from plot_photometry import (
+    plot_raw_photometry_signals,
+    plot_405_470_correlation,
+    plot_405_565_correlation,
+    plot_470_565_correlation,
+    plot_ratio_565_correlation,
+    plot_normalized_signals
+)
 
 def read_phot_data(phot_file_path):
     """Parse .phot file from Labview into a dict"""

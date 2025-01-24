@@ -21,7 +21,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     with open(metadata_file_path, "r") as f:
         metadata = yaml.safe_load(f)
 
-    # TODO: Add checks for required metatdata?
+    # TODO: Add checks for required metadata?
 
     # Parse subject metadata
     subject = Subject(**metadata["subject"])
