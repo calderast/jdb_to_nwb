@@ -5,7 +5,6 @@ import numpy as np
 import os
 import json
 import warnings
-from pathlib import Path
 import scipy.io
 from scipy.signal import butter, lfilter, hilbert, filtfilt
 from scipy.sparse import diags, eye, csc_matrix
