@@ -3,7 +3,6 @@ import datetime
 import numpy as np
 import pandas as pd
 from pynwb import NWBFile
-from scipy.ndimage import gaussian_filter
 from scipy.interpolate import interp1d
 
 
@@ -78,9 +77,9 @@ def assign_pixels_per_cm(date_str):
 
 def read_dlc(deeplabcut_file_path, pixels_per_cm, cutoff=0.9, cam_fps=15):
     """
-    Read dlc position data from the deeplabcut file that contains algorithm name and position data
+    Read position data from the deeplabcut file that contains algorithm name and position data
 
-    Position data is under the column names: cap_back and cap_front:
+    Position data is under the column names cap_back and cap_front:
     cap_back is the back of the rat implant (red)
     cap_front is the front of the rat implant (green)
 
@@ -110,7 +109,7 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, cutoff=0.9, cam_fps=15):
     # Remove abrupt jumps of position bigger than a body of rat (30cm)
     pixel_jump_cutoff = 30 * pixels_per_cm
     position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
-        position.loc[position.x.notnull(),['x','y']].values,pixel_jump_cutoff)
+        position.loc[position.x.notnull(),['x','y']].values, pixel_jump_cutoff)
 
     # Fill the missing gaps
     position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
