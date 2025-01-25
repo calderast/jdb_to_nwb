@@ -7,7 +7,7 @@ from scipy.stats import linregress
 # The following plots are called by process_and_add_pyphotometry_to_nwb
 
 def plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405, 
-                                relative_raw_signal, sampling_rate, fig_dir): 
+                                relative_raw_signal, sampling_rate, fig_dir=None): 
     """
     Plots the raw 470, 405, 565 and ratiometric 470/405 fluorescence signals.
     """
@@ -40,12 +40,13 @@ def plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405,
              label='Reward Cue', color='w', marker="|", mec='k', ms=10)
     ax4.legend()
 
-    save_path = os.path.join(fig_dir, "raw_pyphotometry_signals.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, "raw_pyphotometry_signals.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
-def plot_405_470_correlation(raw_405, raw_green, fig_dir):
+def plot_405_470_correlation(raw_405, raw_green, fig_dir=None):
     """
     Plots the correlation between the raw 405 and 470 signals.
     """
@@ -63,12 +64,13 @@ def plot_405_470_correlation(raw_405, raw_green, fig_dir):
     plt.text(0.70, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-    save_path = os.path.join(fig_dir, "raw_405_470_correlation.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, "raw_405_470_correlation.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
-def plot_405_565_correlation(raw_405, raw_red, fig_dir):
+def plot_405_565_correlation(raw_405, raw_red, fig_dir=None):
     """
     Plots the correlation between the raw 405 and 565 signals.
     """
@@ -86,12 +88,13 @@ def plot_405_565_correlation(raw_405, raw_red, fig_dir):
     plt.text(0.70, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-    save_path = os.path.join(fig_dir, "raw_405_565_correlation.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, "raw_405_565_correlation.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
-def plot_470_565_correlation(raw_green, raw_red, fig_dir):
+def plot_470_565_correlation(raw_green, raw_red, fig_dir=None):
     """
     Plots the correlation between the raw 470 and 565 signals.
     """
@@ -109,12 +112,13 @@ def plot_470_565_correlation(raw_green, raw_red, fig_dir):
     plt.text(0.70, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-    save_path = os.path.join(fig_dir, "raw_470_565_correlation.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, "raw_470_565_correlation.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
-def plot_ratio_565_correlation(ratio_highpass, red_highpass, fig_dir):
+def plot_ratio_565_correlation(ratio_highpass, red_highpass, fig_dir=None):
     """
     Plots the correlation between the filtered 470/405 ratio and the 565 signals.
     """
@@ -132,13 +136,14 @@ def plot_ratio_565_correlation(ratio_highpass, red_highpass, fig_dir):
     plt.text(0.70, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
-    save_path = os.path.join(fig_dir, "filtered_ratio_565_correlation.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, "filtered_ratio_565_correlation.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
-def plot_normalized_signals(visits, green_zscored, zscored_405, 
-                            red_zscored, ratio_zscored, sampling_rate, fig_dir):
+def plot_normalized_signals(visits, green_zscored, zscored_405, red_zscored, 
+                            ratio_zscored, sampling_rate, fig_dir=None):
     """
     """
     xvals = np.arange(0,len(green_zscored))/sampling_rate/60
@@ -175,9 +180,10 @@ def plot_normalized_signals(visits, green_zscored, zscored_405,
 
     zscrd.text(0.04, 0.5, 'Z-Score', va='center', rotation='vertical')
 
-    save_path = os.path.join(fig_dir, "processed_pyphotometry_signals.png")
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, "processed_pyphotometry_signals.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
 
 # Commenting out the following plot for now.

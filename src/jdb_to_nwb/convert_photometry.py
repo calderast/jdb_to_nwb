@@ -420,7 +420,7 @@ def import_ppd(ppd_file_path):
     return data_dict
 
 
-def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir):
+def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir=None):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     
@@ -678,7 +678,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
     pass
 
 
-def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir: Path):
+def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None):
     """
     Add photometry data to the NWB and return port visits 
     in downsampled photometry time to use for alignment.
