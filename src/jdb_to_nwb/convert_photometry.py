@@ -10,7 +10,7 @@ from scipy.signal import butter, lfilter, hilbert, filtfilt
 from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
-from plot_photometry import .
+# from plot_photometry import .
 
 from ndx_fiber_photometry import FiberPhotometryResponseSeries
 
@@ -436,17 +436,17 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     visits = ppd_data['pulse_inds_1'][1:]
     pulse_times_in_mins = [time / 60000 for time in visits]
 
-    plot_raw_photometry_signals(visits, pulse_times_in_mins, raw_green, raw_red, raw_405, relative_raw_signal, sampling_rate)
+    # plot_raw_photometry_signals(visits, pulse_times_in_mins, raw_green, raw_red, raw_405, relative_raw_signal, sampling_rate)
 
     # Calculate the correlation between the signals. This I am not too sure if we want to keep or not. Best to discuss with Josh? 
     
-    plot_405_470_correlation(raw_405, raw_green)
+    # plot_405_470_correlation(raw_405, raw_green)
 
     
-    plot_405_565_correlation(raw_405, raw_red)
+    # plot_405_565_correlation(raw_405, raw_red)
 
     
-    plot_470_565_correlation(raw_green, raw_red)
+    # plot_470_565_correlation(raw_green, raw_red)
 
     # Low pass filter at 10Hz to remove high frequency noise
     print('Filtering data...')
@@ -465,7 +465,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
     
     # Plot the filtered signals of interest against each other
-    plot_ratio_565_correlation(ratio_highpass, red_highpass)
+    # plot_ratio_565_correlation(ratio_highpass, red_highpass)
     
     # Z-score each signal to normalize the data
     print('Z-scoring photometry signals...')
@@ -474,7 +474,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path):
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
 
-    plot_normalized_signals(pulse_times_in_mins, green_zscored, zscored_405, red_zscored, ratio_zscored)
+    # plot_normalized_signals(pulse_times_in_mins, green_zscored, zscored_405, red_zscored, ratio_zscored)
 
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
@@ -706,7 +706,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict):
 
     # Add photometry metadata to the NWB
     print("Adding photometry metadata to NWB ...")
-    add_photometry_metadata(NWBFile, metadata)
+    add_photometry_metadata(nwbfile, metadata)
 
     # If we have raw LabVIEW data (.phot and .box files)
     if "phot_file_path" in metadata["photometry"] and "box_file_path" in metadata["photometry"]:
