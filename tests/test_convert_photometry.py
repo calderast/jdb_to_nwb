@@ -18,19 +18,14 @@ def test_process_raw_labview_photometry_signals():
 
     # Create a test metadata dictionary
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
-    metadata = {}
-    metadata["photometry"] = {}
-    metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
-    metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
 
     # Load signals.mat created by the external MATLAB photometry processing code as a reference
-    signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
+    signals_mat_file_path = test_data_dir / "signals.mat"
     reference_signals_mat = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
 
     # Process the raw .phot and .box files from Labview into an equivalent signals dict
-    phot_file_path = metadata["photometry"]["phot_file_path"]
-    box_file_path = metadata["photometry"]["box_file_path"]
+    phot_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    box_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
     signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path)
 
     # Ensure all relevant keys are present in both the reference and created signals dict
