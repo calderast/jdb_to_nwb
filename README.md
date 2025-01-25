@@ -14,17 +14,20 @@ pip install -e .
 
 ## Current usage
 
-1. Copy `tests/metadata_full.yaml` to the root directory of the repository:
+1. Copy `tests/metadata_example.yaml` to the root directory of the repository:
 ```bash
-cp tests/metadata_full.yaml .
+cp tests/metadata_example.yaml .
 ```
 
-2. Open `metadata_full.yaml` in a text editor. Update the paths to point to your data and update the metadata for your experiment.
+2. Open `metadata_example.yaml` in a text editor. Update the paths to point to your data and update the metadata for your experiment.
 
-3. Run the conversion to generate an NWB file (replace `out.nwb` with your desired output file name):
+3. Run the conversion to generate an NWB file (replace `output_dir` with your desired output directory).
+The nwb file will be automatically named based on the animal name and date (i.e. `rat_date.nwb`):
 ```bash
-jdb_to_nwb metadata_full.yaml out.nwb
+jdb_to_nwb metadata_example.yaml output_dir
 ```
+
+4. Sub-directories for associated figures and conversion log files will be created alongside the nwb file in `output_dir`. Check that there are no errors in the error log file and that all figures look as expected.
 
 ## Downloading test data
 

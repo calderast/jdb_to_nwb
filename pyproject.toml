@@ -30,6 +30,7 @@ dependencies = [
     "ndx_fiber_photometry",
     "ndx_franklab_novela",
     "scikit-learn",
+    "matplotlib",
 ]
 dynamic = ["version"]
 
@@ -81,7 +82,7 @@ exclude = [
 
 [tool.codespell]
 skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
-ignore-words-list = "datas,assertIn,lockin"
+ignore-words-list = "datas,assertIn,lockin,SEMs"
 
 [tool.coverage.run]
 branch = true

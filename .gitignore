@@ -166,6 +166,8 @@ _version.py
 .DS_Store
 .ruff_cache/
 *.nwb
+*.mat
+*.m
 
 # Large test data
 tests/test_data/photometry/*
@@ -177,3 +179,6 @@ frank_lab/data/*
 
 # Box credentials
 .env
+
+# Other
+test_plot_data/*
