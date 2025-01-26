@@ -39,7 +39,7 @@ def test_convert_behavior():
 
     # Test that the session description has been updated
     assert (
-        nwbfile.experiment_description == "barrier change session for the hex maze task with 3 blocks and 188 trials."
+        nwbfile.session_description == "barrier change session for the hex maze task with 3 blocks and 188 trials."
     )
 
     # Test that expected block data has been added to the nwbfile

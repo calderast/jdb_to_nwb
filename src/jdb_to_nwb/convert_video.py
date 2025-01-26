@@ -1,17 +1,26 @@
-from pynwb import NWBFile
-from scipy.ndimage import gaussian_filter
 import csv
+import datetime
 import numpy as np
+import pandas as pd
+from pynwb import NWBFile
+from scipy.interpolate import interp1d
+
 
 def add_video(nwbfile: NWBFile, metadata: dict):
-    print("Adding video..")
+    
+    if "video" not in metadata:
+        print("No video metadata found for this session. Skipping video conversion.")
+        return None
+
+    print("Adding video...")
 
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["arduino_video_file_path"]
     video_timestamps_file_path = metadata["video"]["arduino_video_timestamps_file_path"]
 
-    # metadata should include the full name of dlc algorithm
-    phot_dlc = metadata["video"]["dlc_algorithm"] # Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
+    # Metadata should include the full path to the dlc h5
+    # e.g. Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
+    deeplabcut_file_path = metadata["video"]["dlc_path"]
 
     # If pixels_per_cm exists in metadata, use that value
     if "pixels_per_cm" in metadata["video"]:
@@ -24,17 +33,19 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
         video_timestamps = np.array(list(csv.reader(open(video_timestamps_file, 'r'))), dtype=float).ravel()
 
-
     # Read x and y position data and calculate velocity and acceleration
-    x, y, velocity, acceleration = read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixels_per_cm = PIXELS_PER_CM)
+    x, y, velocity, acceleration = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, 
+                                            cutoff=0.9, cam_fps=15)
 
     return video_timestamps, x, y, velocity, acceleration
+
 
 def assign_pixels_per_cm(date_str):
     """
     Assigns constant PIXELS_PER_CM based on the provided date string in MMDDYYYY format.
-    PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01012023), 2.3 before (01112024), or 2.688 after (old maze)
-    
+    PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01012023), 
+    2.3 before (01112024), or 2.688 after (old maze)
+
     Args:
     - date_str (str): Date string in MMDDYYYY format, e.g., '11122022'.
 
@@ -61,17 +72,19 @@ def assign_pixels_per_cm(date_str):
         pixels_per_cm = 2.3
     else:
         pixels_per_cm = 2.688  # After January 11, 2024
-
     return pixels_per_cm
 
-def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 15, pixels_per_cm)
+
+def read_dlc(deeplabcut_file_path, pixels_per_cm, cutoff=0.9, cam_fps=15):
     """
-    Read dlc position data from the deeplabcut file, that contains algorithm name and position data
+    Read position data from the deeplabcut file that contains algorithm name and position data
 
-    Position data is under the column names: cap_back and cap_front.
-    Cap_bak is the back of the rat implant (red), and cap_front is the front of the rat implant (green)
+    Position data is under the column names cap_back and cap_front:
+    cap_back is the back of the rat implant (red)
+    cap_front is the front of the rat implant (green)
 
-    After reading the position data, the position data is used to calculate velocity and acceleration based on the camera fps and pixels_per_cm
+    After reading the position data, calculate velocity and acceleration 
+    based on the camera fps and pixels_per_cm
 
     Returns:
     - x: x coordinates of the rat's body parts
@@ -79,25 +92,31 @@ def read_dlc(deeplabcut_file_path, phot_dlc = phot_dlc, cutoff = 0.9, cam_fps = 
     - velocity: velocity of the rat's body parts
     - acceleration: acceleration of the rat's body parts
     """
-    # Build file path dynamically and load position data
-    position_col = 'cap_back'
-    dlc_position_file = f'Behav_Vid0{phot_dlc}.h5'
-    dlc_position = pd.read_hdf(deeplabcut_file_path + dlc_position_file)[phot_dlc]
 
-    # Remove position with uncertainty
-    position = dlc_position[position_col][['x', 'y']].copy()
-    position.loc[dlc_position[position_col].likelihood < cutoff, ['x', 'y']] = np.nan
+    # Read deeplabcut file into a dataframe
+    dlc_position = pd.read_hdf(deeplabcut_file_path)
 
-    # Remove the abrupt jump of position bigger than a body of rat (30cm)
+    # Remove the multi-level column names so we are left with column names 'x', 'y', 'likelihood'
+    dlc_position.columns = [col[-1] for col in dlc_position.columns]
+    assert set(dlc_position.columns) == {'x', 'y', 'likelihood'}, (
+        f"Expected DLC file columns x, y, and likelihood, got {dlc_position.columns}"
+    )
+
+    # Replace x,y coordinates where DLC has low confidence with NaN
+    position = dlc_position[['x', 'y']].copy()
+    position[dlc_position['likelihood'] < cutoff] = np.nan
+
+    # Remove abrupt jumps of position bigger than a body of rat (30cm)
     pixel_jump_cutoff = 30 * pixels_per_cm
     position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
-        position.loc[position.x.notnull(),['x','y']].values,pixel_jump_cutoff)
+        position.loc[position.x.notnull(),['x','y']].values, pixel_jump_cutoff)
 
     # Fill the missing gaps
     position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
     # Calculate velocity and acceleration
-    velocity, acceleration = calculate_velocity_acceleration(position['x'].values, position['y'].values,fps = cam_fps, pixels_per_cm = pixels_per_cm)
+    velocity, acceleration = calculate_velocity_acceleration(position['x'].values, 
+        position['y'].values, fps=cam_fps, pixels_per_cm=pixels_per_cm)
 
     return position['x'].values, position['y'].values, velocity, acceleration
 
@@ -127,6 +146,7 @@ def detect_and_replace_jumps(coordinates, pixel_jump_cutoff):
 
     return coordinates
 
+
 def fill_missing_gaps(position_data):
     """
     Fill missing values in the position data
@@ -153,20 +173,21 @@ def fill_missing_gaps(position_data):
 
     return position_data
 
+
 def calculate_velocity_acceleration(x, y, fps, pixels_per_cm):
     """
     Calculate velocity and acceleration based on the camera fps and pixels_per_cm
     """
-    # convert pixel to cm
+    # Convert pixels to cm
     x_cm = x * pixels_per_cm
     y_cm = y * pixels_per_cm
 
-    # calculate velocity
+    # Calculate velocity
     velocity_x = np.gradient(x_cm) * fps
     velocity_y = np.gradient(y_cm) * fps
     velocity = np.sqrt(velocity_x ** 2 + velocity_y ** 2)
 
-    # calculate acceleration
+    # Calculate acceleration
     acceleration_x = np.gradient(velocity_x) * fps
     acceleration_y = np.gradient(velocity_y) * fps
     acceleration = np.sqrt(acceleration_x ** 2 + acceleration_y ** 2)

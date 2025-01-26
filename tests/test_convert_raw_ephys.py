@@ -11,14 +11,14 @@ def test_add_electrode_data():
     """
     Test the add_electrode_data function.
 
-    Files `tests/test_data/processed_ephys/impedance.csv` and `tests/test_data/processed_ephys/geom.csv` must be
-    created first by running `python tests/test_data/create_raw_ephys_test_data.py`.
+    File `tests/test_data/processed_ephys/impedance.csv` must be created first 
+    by running `python tests/test_data/create_raw_ephys_test_data.py`.
     """
     # Create a test metadata dictionary
     metadata = {}
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
+    metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["device"] = {
         "name": "256-ch Silicon Probe, 3mm length, 66um pitch",
         "description": "Test Probe",
@@ -39,8 +39,8 @@ def test_add_electrode_data():
     add_electrode_data(nwbfile=nwbfile, filtering_list=filtering_list, metadata=metadata)
 
     # Test that the nwbfile has the expected device
-    assert "Probe" in nwbfile.devices
-    device = nwbfile.devices["Probe"]
+    assert "3mm Probe" in nwbfile.devices
+    device = nwbfile.devices["3mm Probe"]
     assert device is not None
     assert device.description == "Berke Lab Probe"
     assert device.manufacturer == "My Manufacturer"
@@ -79,7 +79,7 @@ def test_add_electrode_data():
     assert nwbfile.electrodes.group.data[:] == [eg] * 256
     assert nwbfile.electrodes.group_name.data[:] == ["ElectrodeGroup"] * 256
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
-    assert nwbfile.electrodes.location.data[:] == ["Nucleus Accumbens core"] * 256
+    assert nwbfile.electrodes.location.data[:] == ["Hippocampus CA1"] * 256
 
 
 def test_get_raw_ephys_data():
@@ -114,7 +114,7 @@ def test_add_raw_ephys():
     metadata["ephys"] = {}
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["ephys"]["electrodes_location"] = "Nucleus Accumbens core"
+    metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["device"] = {
         "name": "256-ch Silicon Probe, 3mm length, 66um pitch",
         "description": "Test Probe",
@@ -137,3 +137,49 @@ def test_add_raw_ephys():
     assert es.electrodes.data == list(range(264))
     assert es.timestamps.shape == (3_000,)
     assert es.conversion == 0.19499999284744263 * 1e-6
+
+
+def test_add_ephys_with_incomplete_metadata(capsys):
+    """
+    Test that the add_raw_ephys function responds appropriately to missing or incomplete metadata.
+    
+    If no 'ephys' key is in the metadata dictionary, it should print that we are skipping 
+    ephys conversion and move on without raising any errors.
+    
+    If there is a 'ephys' key in the metadata dict but the required paths to ephys data
+    are not present, raise a ValueError telling the user which keys must be present in the dict.
+    """
+
+    # Create a test metadata dictionary with no ephys key
+    metadata = {}
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # If we call the add_raw_ephys function with no 'ephys' key in metadata,
+    # It should print that we are skipping ephys conversion
+    # This should not raise any errors, as omitting the 'ephys' key is a 
+    # valid way to specify that we have no ephys data for this session.
+    add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    captured = capsys.readouterr() # capture stdout
+
+    # Check that the correct message was printed to stdout
+    assert "No ephys metadata found for this session. Skipping ephys conversion." in captured.out
+
+    # Create a test metadata dictionary with an ephys field but no ephys data
+    metadata["ephys"] = {}
+
+    # Check that add_raw_ephys raises a ValueError about missing fields in the metadata dictionary
+    try:
+        add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    except ValueError as e:
+        assert str(e).startswith("The required ephys subfields do not exist in the metadata dictionary")
+    else:
+        assert False, (
+            "Expected ValueError was not raised in response to "
+            "missing ephys subfields in the metadata dict."
+        )

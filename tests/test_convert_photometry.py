@@ -350,7 +350,7 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     try:
         sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
     except ValueError as e:
-        assert str(e).startswith("None of the required photometry subfields exist in the metadata dictionary")
+        assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
     else:
         assert False, (
             "Expected ValueError was not raised in response to "

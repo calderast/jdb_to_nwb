@@ -56,7 +56,7 @@ def add_electrode_data(
     }, "Device arguments do not match expected keys."
     device = nwbfile.create_device(**device_args)
 
-    electrodes_location = metadata["ephys"]["electrodes_location"]
+    electrodes_location = metadata["ephys"].get("electrodes_location")
 
     # Create an NWB ElectrodeGroup for all electrodes
     # TODO: confirm that all electrodes are in the same group
@@ -309,8 +309,6 @@ def get_raw_ephys_data(
 
     # TODO: save reference information from settings.xml
 
-    # TODO: handle channel map
-
     # TODO: save settings.xml as an associated file using the ndx-franklab-novela extension
 
     return (
@@ -335,6 +333,21 @@ def add_raw_ephys(
     metadata : dict, optional
         Metadata dictionary,by default None
     """
+
+    if "ephys" not in metadata:
+        print("No ephys metadata found for this session. Skipping ephys conversion.")
+        return
+
+    # If we do have "ephys" in metadata, check for the required keys
+    required_ephys_keys = {"openephys_folder_path", "device", "impedance_file_path"}
+    missing_keys = required_ephys_keys - metadata["ephys"].keys()
+    if missing_keys:
+        raise ValueError(
+            "The required ephys subfields do not exist in the metadata dictionary.\n"
+            "Remove the 'ephys' field from metadata if you do not have ephys data "
+            "for this session, or specify the following missing subfields:\n {missing_keys}"
+        )
+
     print("Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
     (
