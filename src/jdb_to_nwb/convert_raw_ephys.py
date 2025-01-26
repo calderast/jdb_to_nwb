@@ -23,9 +23,14 @@ VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
 
-# TODO test that this works when package is downloaded from pypi
+# Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = files(__name__)
 RESOURCES_DIR = Path(__location_of_this_file).parent.parent / "resources"
+
+# If the resources directory does not exist, we are probably running the code from the source directory
+if not RESOURCES_DIR.exists():
+    RESOURCES_DIR = Path(__location_of_this_file).parent / "resources"
+
 CHANNEL_MAP_PATH = RESOURCES_DIR / "channel_map.csv"
 ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
 ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"

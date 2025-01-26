@@ -77,6 +77,16 @@ exclude = [
     ".pre-commit-config.yaml",
 ]
 
+# Rewrite the path to the `resources` directory to `jdb_to_nwb/resources`.
+# `jdb_to_nwb/__init__.py` will look there first for the spec files.
+# The resulting directory structure within the wheel will be:
+# jdb_to_nwb/
+# ├── __init__.py
+# ├── resources
+# └── plotting
+[tool.hatch.build.targets.wheel.sources]
+"resources" = "jdb_to_nwb/resources"
+
 # [tool.interrogate]
 # fail-under = 95
 # verbose = 1
