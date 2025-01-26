@@ -81,7 +81,7 @@ exclude = [
 # verbose = 1
 
 [tool.codespell]
-skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
+skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs,./tests/test_data/*,*.h264"
 ignore-words-list = "datas,assertIn,lockin,SEMs"
 
 [tool.coverage.run]
