@@ -9,9 +9,8 @@ from ftplib import FTP_TLS
 import os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock, current_thread, local
+from threading import Lock, current_thread
 from tqdm.auto import tqdm
-import io
 import multiprocessing
 import threading
 
@@ -184,7 +183,10 @@ def main():
         "--base-remote-dir",
         type=str,
         default="nwb-test-data",
-        help="Base remote directory in the user's Box account which remote paths to data are relative to (default: nwb-test-data)"
+        help=(
+            "Base remote directory in the user's Box account which remote paths to data are relative to "
+            "(default: nwb-test-data)"
+        )
     )
     args = parser.parse_args()
 
