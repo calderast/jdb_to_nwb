@@ -59,7 +59,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
     photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
 
-    add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    add_raw_ephys(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
 
     # TODO: time alignment

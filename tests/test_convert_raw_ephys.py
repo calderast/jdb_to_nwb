@@ -20,7 +20,7 @@ def test_add_electrode_data():
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["device"] = {
-        "name": "256-ch Silicon Probe, 3mm length, 66um pitch",
+        "name": "3mm Probe",
         "description": "Test Probe",
         "manufacturer": "Test Manufacturer",
     }
@@ -42,8 +42,8 @@ def test_add_electrode_data():
     assert "3mm Probe" in nwbfile.devices
     device = nwbfile.devices["3mm Probe"]
     assert device is not None
-    assert device.description == "Berke Lab Probe"
-    assert device.manufacturer == "My Manufacturer"
+    assert device.description == "Test Probe"
+    assert device.manufacturer == "Test Manufacturer"
 
     # Test that the nwbfile has the expected electrode group
     assert len(nwbfile.electrode_groups) == 1
@@ -51,7 +51,7 @@ def test_add_electrode_data():
     eg = nwbfile.electrode_groups["ElectrodeGroup"]
     assert eg is not None
     assert eg.description == "All electrodes"
-    assert eg.location == metadata["ephys"]["electrodes_location"]
+    assert eg.location == "Hippocampus CA1"
     assert eg.device is device
 
     # Test that the nwbfile has the expected electrodes after filtering
@@ -63,19 +63,24 @@ def test_add_electrode_data():
     assert nwbfile.electrodes.port.data[:] == ["Port B"] * 128 + ["Port C"] * 128
     assert nwbfile.electrodes.enabled.data[:] == [True] * 256
 
-    # Check first and last electrode data
+    # Check first electrode data
     assert nwbfile.electrodes.imp.data[0] == 2.24e+06
     assert nwbfile.electrodes.imp_phase.data[0] == -43
     assert nwbfile.electrodes.series_resistance_in_ohms.data[0] == 1.63e+06
     assert nwbfile.electrodes.series_capacitance_in_farads.data[0] == 1.04e-10
+    assert not nwbfile.electrodes.bad_channel.data[0]
+    assert nwbfile.electrodes.rel_x.data[0] == 66.0
+    assert nwbfile.electrodes.rel_y.data[0] == 211.0
+
+    # Check last electrode data
     assert nwbfile.electrodes.imp.data[-1] == 6.45e+06
     assert nwbfile.electrodes.imp_phase.data[-1] == -69
     assert nwbfile.electrodes.series_resistance_in_ohms.data[-1] == 2.31e+06
     assert nwbfile.electrodes.series_capacitance_in_farads.data[-1] == 2.64e-11
+    assert nwbfile.electrodes.bad_channel.data[-1]
+    assert nwbfile.electrodes.rel_x.data[-1] == 2112.0
+    assert nwbfile.electrodes.rel_y.data[-1] == -14.0
 
-    assert nwbfile.electrodes.bad_channel.data[:] == [True, False, False, True]
-    assert nwbfile.electrodes.rel_x.data[:] == [1056, 1056, 1056, 1056]
-    assert nwbfile.electrodes.rel_y.data[:] == [-14, 16, 46, 76]
     assert nwbfile.electrodes.group.data[:] == [eg] * 256
     assert nwbfile.electrodes.group_name.data[:] == ["ElectrodeGroup"] * 256
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
@@ -101,8 +106,7 @@ def test_add_raw_ephys():
     """
     Test the add_raw_ephys function.
 
-    Files `tests/test_data/processed_ephys/impedance.csv` and `tests/test_data/processed_ephys/geom.csv` must be
-    created first by running `python tests/test_data/create_raw_ephys_test_data.py`.
+    Test raw ephys data must be created first by running `python tests/test_data/create_raw_ephys_test_data.py`.
     """
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -116,7 +120,7 @@ def test_add_raw_ephys():
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["device"] = {
-        "name": "256-ch Silicon Probe, 3mm length, 66um pitch",
+        "name": "3mm Probe",
         "description": "Test Probe",
         "manufacturer": "Test Manufacturer",
     }
@@ -132,9 +136,9 @@ def test_add_raw_ephys():
         "Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts). "
         "Timestamps are the original timestamps from the OpenEphys recording."
     )
-    assert es.data.maxshape == (3_000, 264)
+    assert es.data.maxshape == (3_000, 256)
     assert es.data.dtype == np.int16
-    assert es.electrodes.data == list(range(264))
+    assert es.electrodes.data == list(range(256))
     assert es.timestamps.shape == (3_000,)
     assert es.conversion == 0.19499999284744263 * 1e-6
 
@@ -179,7 +183,4 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     except ValueError as e:
         assert str(e).startswith("The required ephys subfields do not exist in the metadata dictionary")
     else:
-        assert False, (
-            "Expected ValueError was not raised in response to "
-            "missing ephys subfields in the metadata dict."
-        )
+        assert False, "Expected ValueError was not raised in response to missing ephys subfields in the metadata dict."

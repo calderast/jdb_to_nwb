@@ -15,6 +15,7 @@ from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator imp
 from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
+from .plotting.plot_ephys import plot_channel_map
 
 MICROVOLTS_PER_VOLT = 1e6
 VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
@@ -34,6 +35,7 @@ def add_electrode_data(
     nwbfile: NWBFile,
     filtering_list: list[str],
     metadata: dict,
+    fig_dir: Path = None,
 ):
     """
     Add the electrode data from the impedance and channel geometry files.
@@ -46,6 +48,8 @@ def add_electrode_data(
         The filtering applied to each channel.
     metadata : dict
         Metadata dictionary.
+    fig_dir : Path, optional
+        The directory to save the figure. If None, the figure will not be saved.
     """
 
     device_args = metadata["ephys"]["device"]
@@ -87,9 +91,10 @@ def add_electrode_data(
     )
     
     # Check that the filtering list has the same length as the number of channels
-    assert len(filtering_list) == len(
-        electrode_data
-    ), f"Filtering list does not have the same length ({len(filtering_list)}) as the number of channels ({len(electrode_data)})."
+    assert len(filtering_list) == len(electrode_data), (
+        f"Filtering list does not have the same length ({len(filtering_list)}) "
+        "as the number of channels ({len(electrode_data)})."
+    )
 
     # Drop the first column which should be the same as the second column
     assert (
@@ -113,16 +118,21 @@ def add_electrode_data(
         raise ValueError(f"Expected either '3mm' or '6mm' in device name '{probe_name}'")
 
     assert len(channel_geometry) == len(channel_map) == len(electrode_data), (
-    "Mismatch in lengths: "
-    f"channel_geometry ({len(channel_geometry)}), "
-    f"channel_map ({len(channel_map)}), "
-    f"electrode_data ({len(electrode_data)})"
+        "Mismatch in lengths: "
+        f"channel_geometry ({len(channel_geometry)}), "
+        f"channel_map ({len(channel_map)}), "
+        f"electrode_data ({len(electrode_data)})"
     )
+
+    plot_channel_map(probe_name, channel_map, channel_geometry, fig_dir=fig_dir)
     
     # Append the x and y coordinates to the impedance data using the channel map
+    # For example: Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
+    # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
+    # (electrode coords CSV).
     # TODO: Make sure Stephanie's understanding of the channel map indexing is correct!!
-    electrode_data["rel_x"] = [channel_geometry[idx][0] for idx in channel_map] # formerly channel_geometry.iloc[:, 0]
-    electrode_data["rel_y"] = [channel_geometry[idx][1] for idx in channel_map] # formerly channel_geometry.iloc[:, 1]
+    electrode_data["rel_x"] = [channel_geometry.iloc[idx]["x"] for idx in channel_map]
+    electrode_data["rel_y"] = [channel_geometry.iloc[idx]["y"] for idx in channel_map]
 
     # Mark electrodes with impedance that is less than 0.1 MOhms or more than 3.0 MOhms
     # as bad electrodes
@@ -323,6 +333,7 @@ def add_raw_ephys(
     *,
     nwbfile: NWBFile,
     metadata: dict = None,
+    fig_dir: Path = None,
 ) -> None:
     """Add the raw ephys data to a NWB file. Must be called after add_electrode_groups
 
@@ -332,6 +343,8 @@ def add_raw_ephys(
         The NWB file being assembled.
     metadata : dict, optional
         Metadata dictionary,by default None
+    fig_dir: Path, optional
+        The directory to save the figure. If None, the figure will not be saved.
     """
 
     if "ephys" not in metadata:
@@ -359,12 +372,13 @@ def add_raw_ephys(
     num_samples, num_channels = traces_as_iterator.maxshape
 
     # Create electrode groups and add electrode data to the NWB file
-    add_electrode_data(nwbfile=nwbfile, filtering_list=filtering_list, metadata=metadata)
+    add_electrode_data(nwbfile=nwbfile, filtering_list=filtering_list, metadata=metadata, fig_dir=fig_dir)
 
     # Check that the number of electrodes in the NWB file is the same as the number of channels in traces_as_iterator
-    assert (
-        len(nwbfile.electrodes) == num_channels
-    ), f"Number of electrodes in NWB file ({len(nwbfile.electrodes)}) does not match number of channels in traces_as_iterator ({num_channels})."
+    assert (len(nwbfile.electrodes) == num_channels), (
+        f"Number of electrodes in NWB file ({len(nwbfile.electrodes)}) does not match number of channels "
+        "in traces_as_iterator ({num_channels})."
+    )
 
     # Create the electrode table region encompassing all electrodes
     electrode_table_region = nwbfile.create_electrode_table_region(
