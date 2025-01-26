@@ -54,6 +54,7 @@ jobs:
           BOX_USERNAME: ${{ secrets.BOX_USERNAME }}
           BOX_PASSWORD: ${{ secrets.BOX_PASSWORD }}
         run: |
+          pip install tqdm
           python tests/download_test_data.py
           tree tests/test_data
 
