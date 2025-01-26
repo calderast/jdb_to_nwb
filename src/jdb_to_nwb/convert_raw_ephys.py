@@ -5,7 +5,7 @@
 import warnings
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
+from importlib.resources import files
 import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
 import numpy as np
@@ -22,7 +22,9 @@ VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
 
-RESOURCES_DIR = Path("../../resources")
+# TODO test that this works when package is downloaded from pypi
+__location_of_this_file = files(__name__)
+RESOURCES_DIR = Path(__location_of_this_file).parent.parent / "resources"
 CHANNEL_MAP_PATH = RESOURCES_DIR / "channel_map.csv"
 ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
 ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
@@ -87,7 +89,7 @@ def add_electrode_data(
     # Check that the filtering list has the same length as the number of channels
     assert len(filtering_list) == len(
         electrode_data
-    ), "Filtering list does not have the same length as the number of channels."
+    ), f"Filtering list does not have the same length ({len(filtering_list)}) as the number of channels ({len(electrode_data)})."
 
     # Drop the first column which should be the same as the second column
     assert (
@@ -349,7 +351,7 @@ def add_raw_ephys(
     # Check that the number of electrodes in the NWB file is the same as the number of channels in traces_as_iterator
     assert (
         len(nwbfile.electrodes) == num_channels
-    ), "Number of electrodes in NWB file does not match number of channels in traces_as_iterator"
+    ), f"Number of electrodes in NWB file ({len(nwbfile.electrodes)}) does not match number of channels in traces_as_iterator ({num_channels})."
 
     # Create the electrode table region encompassing all electrodes
     electrode_table_region = nwbfile.create_electrode_table_region(

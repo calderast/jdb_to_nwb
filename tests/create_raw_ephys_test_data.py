@@ -20,8 +20,8 @@
 
 # The `structure.oebin` JSON file and `settings.xml` contains metadata for the recording.
 
-# To create test data of a reasonable size, we will trim the existing data and timestamps to 30,000 samples
-# (one second of data) and 6 channels and save it to a new directory.
+# To create test data of a reasonable size, we will trim the existing data and timestamps to 3,000 samples
+# (one second of data) and 264 channels and save it to a new directory.
 
 # We will manually edit the `structure.oebin` JSON file to remove the events and TTL channels and extra headstage
 # and ADC channels. We will also manually edit the `settings.xml` file to remove the events and TTL channels and
@@ -47,8 +47,8 @@ num_channels = 264
 sampling_rate_in_hz = 30_000
 
 # Specify the number of seconds and channels of the original data to keep
-num_seconds_to_keep = 1.0
-num_channels_to_keep = 6
+num_seconds_to_keep = 0.1
+num_channels_to_keep = 264
 
 # Create a new directory to store the trimmed data
 new_data_root = Path("./tests/test_data/raw_ephys")
