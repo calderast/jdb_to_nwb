@@ -360,11 +360,12 @@ def add_raw_ephys(
     required_ephys_keys = {"openephys_folder_path", "device", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
-        raise ValueError(
+        print(
             "The required ephys subfields do not exist in the metadata dictionary.\n"
             "Remove the 'ephys' field from metadata if you do not have ephys data "
-            "for this session, or specify the following missing subfields:\n {missing_keys}"
+            f"for this session, \nor specify the following missing subfields:{missing_keys}"
         )
+        return
 
     print("Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]

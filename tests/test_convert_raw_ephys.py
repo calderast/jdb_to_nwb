@@ -178,9 +178,6 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     metadata["ephys"] = {}
 
     # Check that add_raw_ephys raises a ValueError about missing fields in the metadata dictionary
-    try:
-        add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
-    except ValueError as e:
-        assert str(e).startswith("The required ephys subfields do not exist in the metadata dictionary")
-    else:
-        assert False, "Expected ValueError was not raised in response to missing ephys subfields in the metadata dict."
+    add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    captured = capsys.readouterr()
+    assert "The required ephys subfields do not exist in the metadata dictionary" in captured.out
