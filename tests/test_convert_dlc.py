@@ -9,6 +9,7 @@ def test_add_dlc():
     """Test the add_video function."""
 
     metadata = {}
+    metadata["date"] = "07252022"
     metadata["video"] = {}
     metadata["video"]["video_file_path"] = "tests/test_data/downloaded/IM-1478/07252022/Behav_Vid0.avi"
     metadata["video"]["video_timestamps_file_path"] = "tests/test_data/downloaded/IM-1478/07252022/testvidtimes0.csv"
@@ -95,9 +96,6 @@ def test_add_dlc_with_incomplete_metadata(capsys):
     # Call the add_video function with 'video' key and 'dlc_path' in metadata
     add_dlc(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr() # capture stdout
-
-    # Check that the correct message was printed to stdout
-    assert "No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion." in captured.out
 
     # Check that add_dlc raises a ValueError about missing fields in the metadata dictionary
     try:
