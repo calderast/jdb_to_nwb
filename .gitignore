@@ -181,4 +181,4 @@ frank_lab/data/*
 .env
 
 # Other
-test_plot_data/*
+example_data/*
