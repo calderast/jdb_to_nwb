@@ -18,23 +18,17 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
 
     metadata["photometry"]["excitation_sources"] = [
         {
-            "name": "Purple LED",
-            "excitation_wavelength_in_nm": 470.0,
-            "illumination_type": "LED",
+            "name": "Purple LED"
         },
     ]
     metadata["photometry"]["optic_fibers"] = [
         {
-            "name": "optic_fiber",
-            "numerical_aperture": 0.39,
-            "core_diameter_in_um": 200.0,
+            "name": "Optic Fiber"
         },
     ]
     metadata["photometry"]["photodetectors"] = [
         {
-            "name": "photodetector",
-            "detector_type": "Silicon PIN photodiode",
-            "detected_wavelength_in_nm": 0.0,
+            "name": "Newport Femtowatt Photoreceiver"
         },
     ]
     # metadata["photometry"]["optic_fiber_implant_sites"] = []
@@ -353,34 +347,20 @@ def test_add_photometry_metadata():
     metadata["photometry"] = {}
     metadata["photometry"]["excitation_sources"] = [
         {
-            "name": "Purple LED",
-            "excitation_wavelength_in_nm": 470.0,
-            "illumination_type": "LED",
-            "manufacturer": "ThorLabs",
-            "model": "M405FP1 M00508616",
+            "name": "Purple LED"
         },
         {
-            "name": "Blue LED",
-            "excitation_wavelength_in_nm": 405.0,
-            "illumination_type": "LED",
-            "manufacturer": "ThorLabs",
-            "model": "M470F3 M00511033",
+            "name": "Blue LED"
         },
     ]
     metadata["photometry"]["optic_fibers"] = [
         {
-            "name": "optic_fiber",
-            "numerical_aperture": 0.39,
-            "core_diameter_in_um": 200.0,
+            "name": "Optic Fiber"
         },
     ]
     metadata["photometry"]["photodetectors"] = [
         {
-            "name": "Newport Femtowatt Photoreceiver",
-            "manufacturer": "Newport",
-            "model": "2151",
-            "detector_type": "Silicon PIN photodiode",
-            "detected_wavelength_in_nm": 0.0,
+            "name": "Newport Femtowatt Photoreceiver"
         },
     ]
 
@@ -406,15 +386,15 @@ def test_add_photometry_metadata():
     assert nwbfile.devices["Purple LED"].excitation_wavelength_in_nm == 470.0
     assert nwbfile.devices["Purple LED"].illumination_type == "LED"
     assert nwbfile.devices["Purple LED"].manufacturer == "ThorLabs"
-    assert nwbfile.devices["Purple LED"].model == "M405FP1 M00508616"
+    assert nwbfile.devices["Purple LED"].model == "M405FP1"
     assert "Blue LED" in nwbfile.devices
     assert nwbfile.devices["Blue LED"].excitation_wavelength_in_nm == 405.0
     assert nwbfile.devices["Blue LED"].illumination_type == "LED"
     assert nwbfile.devices["Blue LED"].manufacturer == "ThorLabs"
-    assert nwbfile.devices["Blue LED"].model == "M470F3 M00511033"
-    assert "optic_fiber" in nwbfile.devices
-    assert nwbfile.devices["optic_fiber"].numerical_aperture == 0.39
-    assert nwbfile.devices["optic_fiber"].core_diameter_in_um == 200.0
+    assert nwbfile.devices["Blue LED"].model == "M470F3"
+    assert "Optic Fiber" in nwbfile.devices
+    assert nwbfile.devices["Optic Fiber"].numerical_aperture == 0.39
+    assert nwbfile.devices["Optic Fiber"].core_diameter_in_um == 200.0
     assert "Newport Femtowatt Photoreceiver" in nwbfile.devices
     assert nwbfile.devices["Newport Femtowatt Photoreceiver"].manufacturer == "Newport"
     assert nwbfile.devices["Newport Femtowatt Photoreceiver"].model == "2151"

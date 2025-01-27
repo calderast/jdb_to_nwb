@@ -60,28 +60,18 @@ photometry:
 
   # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
   # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
-  excitation_sources:
+  excitation_sources:  # reference existing excitation sources from resources/photometry_devices.yaml
     - name: Purple LED
-      excitation_wavelength_in_nm: 470.0
-      manufacturer: ThorLabs
-      model: M405FP1 M00508616
-      illumination_type: LED
     - name: Blue LED
-      excitation_wavelength_in_nm: 405.0
-      manufacturer: ThorLabs
-      model: M470F3 M00511033
-      illumination_type: LED
-  optic_fibers:
-    - name: optic_fiber
-      numerical_aperture: 0.39  # TODO get correct value for this
-      core_diameter_in_um: 200.0
+  optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
+    - name: Optic Fiber
   optic_fiber_implant_sites:
     - reference: bregma at the cortical surface
       hemisphere: right
       ap_in_mm: 1.7
       ml_in_mm: 1.7
       dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
-      optic_fiber: optic_fiber  # name of an optic fiber in the 'optic_fibers' field
+      optic_fiber: Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
       excitation_sources:  # names of excitation sources in the 'excitation_sources' field
         - Purple LED  
         - Blue LED
@@ -101,12 +91,8 @@ photometry:
       dv_in_mm: -6.2  # 6.2 mm deep for males, 6.0 mm deep for females
       volume_in_uL: 1.0
       virus: dLight  # name of a virus in the 'viruses' field
-  photodetectors:
+  photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
     - name: Newport Femtowatt Photoreceiver
-      manufacturer: Newport
-      model: 2151
-      detector_type: Silicon PIN photodiode
-      detected_wavelength_in_nm: 0.0  # TODO modify extension to allow range (320-1050 nm)
 
 behavior:
   arduino_text_file_path: "tests/test_data/behavior/arduinoraw0.txt"
