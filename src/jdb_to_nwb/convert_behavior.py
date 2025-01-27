@@ -38,8 +38,8 @@ def adjust_arduino_timestamps(arduino_timestamps: list):
     # Convert arduino timestamps to corresponding photometry sample number.
     # Target rate = 250 samples/sec from 10 KHz initial sample rate (same as photometry)
     # (This is named 'ardstamps' in the original conversion code)
-    photometry_sample_for_arduino_event = np.round(arduino_timestamps * (250 / 1000)).astype(int)
-    return photometry_sample_for_arduino_event, photometry_start
+    # photometry_sample_for_arduino_event = np.round(arduino_timestamps * (250 / 1000)).astype(int)
+    return arduino_timestamps, photometry_start
 
 
 def determine_session_type(block_data: list):
