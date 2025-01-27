@@ -4,15 +4,13 @@ The channel map for the probe electrodes depends on how the rat was plugged in.
 
 The `chip_first` column is the channel map for when the chip side (top in eagle) is plugged into first port (preferred). This is the assumed default unless otherwise specified. The `cable_first` column is the channel map for if the cable side (bottom in eagle) was plugged into first port. The cable_first map is simply the chip_first map shifted by ±128, and vice versa (to go from one to the other, subtract 128 from values greater than 128, and add 128 to values less than or equal to 128).
 
-### TODO: Figure out ECOG channels??
-Some info I found on ECOG channels so far:
-
-From `plot_impedance_geometry_v3_table`: "If ECoG channel 1+4 connected and plug sequence was "chip first", then channels 128 and 193 (one based) will be low impedance. For "cable first" it is 65 and 256."
+#### ECoG channels
+We currently do not use ECoG (electrocorticogram) channels for recordings in the hex maze. It is possible this may change in the future, in which case the ECoG channels will be as follows:
 ```
 ecogs.cable=[64 0 191 255]+1; %cable first ecog intan channels / screw 1-4
 ecogs.chip=[192 128 63 127]+1; %chip first ecog intan channels
 ```
-They are maybe already handled by being filtered out based on impedance? Check on that.
+If using ECoG, this is a useful check for how the rat was plugged in: If ECoG channel 1+4 connected and the plug sequence was "chip first", then channels 129 and 193 (one based) will be low impedance. If the plug sequence was "cable first", channels 65 and 256 will be low impedance.
 
 ## Electrode coordinates
 
