@@ -1,3 +1,4 @@
+import logging
 from pynwb import NWBFile
 import struct
 import pandas as pd
@@ -433,7 +434,7 @@ def import_ppd(ppd_file_path):
     return data_dict
 
 
-def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir=None):
+def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir=None, logger=None):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     
@@ -446,6 +447,8 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
     analog_2: 565 nm (rDA3m)
     analog_3: 405 nm (for ratiometric correction of gACh)
     """
+    
+    logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (gACh), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
     ppd_data = import_ppd(ppd_file_path)  
     raw_green = pd.Series(ppd_data['analog_1'])
     raw_red = pd.Series(ppd_data['analog_2'])
@@ -454,6 +457,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
 
     sampling_rate = ppd_data['sampling_rate']
     visits = ppd_data['pulse_inds_1'][1:]
+    logger.info(f"pyPhotometry sampling rate is {sampling_rate} Hz")
 
     # Plot the raw signals
     plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405, relative_raw_signal, 
@@ -466,6 +470,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
 
     # Low pass filter at 10Hz to remove high frequency noise
     print('Filtering data...')
+    logger.info('Filtering photometry signals with a low pass filter at 10Hz to remove high frequency noise...')
     b,a = butter(2, 10, btype='low', fs=sampling_rate)
     green_denoised = filtfilt(b,a, raw_green)
     red_denoised = filtfilt(b,a, raw_red)
@@ -474,6 +479,8 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
 
     # High pass filter at 0.001Hz to removes drift due to photobleaching
     # Note that this will also remove any physiological variation in the signal on very slow timescales
+    logger.info("Filtering photometry signals with a high pass filter at 0.001Hz "
+                "to remove drift due to photobleaching...")
     b,a = butter(2, 0.001, btype='high', fs=sampling_rate)
     green_highpass = filtfilt(b,a, green_denoised, padtype='even')
     red_highpass = filtfilt(b,a, red_denoised, padtype='even')
@@ -485,6 +492,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
     
     # Z-score each signal to normalize the data
     print('Z-scoring photometry signals...')
+    logger.info('Z-scoring filtered photometry signals...')
     green_zscored = np.divide(np.subtract(green_highpass,green_highpass.mean()),green_highpass.std())
     red_zscored = np.divide(np.subtract(red_highpass,red_highpass.mean()),red_highpass.std())
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
@@ -496,6 +504,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
     
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
+    logger.info("Adding photometry signals to NWB...")
 
     raw_470_response_series = FiberPhotometryResponseSeries(
         name="raw_470",
@@ -575,7 +584,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir
     return sampling_rate, visits
 
 
-def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
+def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     """
     Process LabVIEW signals and add the processed signals to the NWB file.
 
@@ -586,6 +595,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
 
     # Downsample the raw data from 10 kHz to 250 Hz by taking every 40th sample
     print("Downsampling raw LabVIEW data to 250 Hz...")
+    logger.info("Downsampling raw LabVIEW data from 10 kHz to 250 Hz by taking every 40th sample...")
     SR = 10000  # Original sampling rate of the photometry system (Hz)
     Fs = 250  # Target downsample frequency (Hz)
     # Use np.squeeze to deal with the fact that signals from our dict are 1D but signals.mat are 2D
@@ -594,9 +604,11 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
     port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
 
     # Smooth the signals using a rolling mean
-    print("Smoothing the photometry signals using a rolling mean...")
     smooth_window = int(Fs / 30)
     min_periods = 1  # Minimum number of observations required for a valid computation
+    print("Smoothing the photometry signals using a rolling mean...")
+    logger.info("Smoothing the photometry signals using a rolling mean "
+                f"with smooth_window={int(Fs / 30)} and min_periods={min_periods}...")
     reference = np.array(raw_reference.rolling(window=smooth_window, min_periods=min_periods).mean()).reshape(
         len(raw_reference), 1
     )
@@ -605,20 +617,24 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
     )
 
     # Calculate a smoothed baseline for each signal using airPLS
-    print("Calculating a smoothed baseline using airPLS...")
     lam = 1e8  # Parameter to control how smooth the resulting baseline should be
     max_iter = 50
+    print("Calculating a smoothed baseline using airPLS...")
+    logger.info("Calculating a smoothed baseline using airPLS with "
+                f"lambda={lam} and max_iterations={max_iter}...")
     ref_baseline = airPLS(data=raw_reference.T, lambda_=lam, max_iterations=max_iter).reshape(len(raw_reference), 1)
     green_baseline = airPLS(data=raw_green.T, lambda_=lam, max_iterations=max_iter).reshape(len(raw_green), 1)
 
     # Subtract the respective airPLS baseline from the smoothed signal and reference
     print("Subtracting the smoothed baseline...")
+    logger.info("Subtracting the smoothed baseline...")
     remove = 0  # Number of samples to remove from the beginning of the signals
     baseline_subtracted_ref = reference[remove:] - ref_baseline[remove:]
     baseline_subtracted_green = signal_green[remove:] - green_baseline[remove:]
 
     # Standardize by Z-scoring the signals (assumes signals are Gaussian distributed)
     print("Standardizing the signals by Z-scoring...")
+    logger.info("Standardizing the signals by Z-scoring (using median instead of mean)...")
     z_scored_reference = (baseline_subtracted_ref - np.median(baseline_subtracted_ref)) / np.std(
         baseline_subtracted_ref
     )
@@ -626,6 +642,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
         baseline_subtracted_green
     )
 
+    logger.info("Removing the contribution of movement artifacts from the green signal using a Lasso regression")
     # Remove the contribution of signal artifacts from the green signal using a Lasso regression
     alpha = 0.0001  # Parameter to control the regularization strength. A larger value means more regularization
     # Create the Lasso model (Lasso = type of linear regression that uses L1 regularization to prevent overfitting)
@@ -640,10 +657,12 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
 
     # Calculate deltaF/F for the green signal
     print("Calculating deltaF/F...")
+    logger.info("Calculating deltaF/F via subtraction (z_scored_green - z_scored_reference_fitted)...")
     z_scored_green_dFF = z_scored_green - z_scored_reference_fitted
 
     # Add photometry signals to the NWB
-    print("Adding photometry signals to NWB ...")
+    print("Adding photometry signals to NWB...")
+    logger.info("Adding photometry signals to NWB...")
 
     # Create NWB FiberPhotometryResponseSeries objects for the relevant photometry signals
     z_scored_green_dFF_response_series = FiberPhotometryResponseSeries(
@@ -685,7 +704,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
     return Fs, port_visits
 
 
-def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
+def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     """Add photometry metadata to the NWB file.
     
     The keys in the metadata YAML are assumed to be the same as the keyword arguments used for the corresponding
@@ -698,55 +717,71 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
 
     # For each type of device, overwrite any metadata from the resources/photometry_devices.yaml file
     # with the metadata from the metadata YAML file
-    
-    excitation_source_names = metadata["photometry"]["excitation_sources"]
-    for excitation_source_name in excitation_source_names:
-        # Find the matching device by name in the devices list
-        for device in devices["excitation_sources"]:
-            if device["name"] == excitation_source_name:
-                excitation_source_metadata = device
-                break
-        else:
-            raise ValueError(
-                f"Excitation source '{excitation_source_name}' not found in resources/photometry_devices.yaml"
-            )
-        excitation_source_obj = ExcitationSource(**excitation_source_metadata)
-        nwbfile.add_device(excitation_source_obj)
 
-    fiber_names = metadata["photometry"]["optic_fibers"]
-    for fiber_name in fiber_names:
-        # Find the matching device by name in the devices list
-        for device in devices["optic_fibers"]:
-            if device["name"] == fiber_name:
-                fiber_metadata = device
-                break
-        else:
-            raise ValueError(
-                f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
-            )
-        fiber_obj = OpticalFiber(**fiber_metadata)
-        nwbfile.add_device(fiber_obj)
+    if "excitation_sources" in metadata["photometry"]:
+        excitation_source_names = metadata["photometry"]["excitation_sources"]
+        for excitation_source_name in excitation_source_names:
+            logger.info(f"Excitation source '{excitation_source_name}' found in resources/photometry_devices.yaml")
+            # Find the matching device by name in the devices list
+            for device in devices["excitation_sources"]:
+                if device["name"] == excitation_source_name:
+                    excitation_source_metadata = device
+                    break
+            else:
+                logger.error(f"Excitation source '{excitation_source_name}' not found "
+                             "in resources/photometry_devices.yaml")
+                raise ValueError(
+                    f"Excitation source '{excitation_source_name}' not found in resources/photometry_devices.yaml"
+                )
+            excitation_source_obj = ExcitationSource(**excitation_source_metadata)
+            nwbfile.add_device(excitation_source_obj)
+    else:
+        logger.info("No 'excitation_sources' found in photometry metadata.")
+
+    if "optic_fibers" in metadata["photometry"]:
+        fiber_names = metadata["photometry"]["optic_fibers"]
+        for fiber_name in fiber_names:
+            logger.info(f"Optic fiber '{fiber_name}' found in resources/photometry_devices.yaml")
+            # Find the matching device by name in the devices list
+            for device in devices["optic_fibers"]:
+                if device["name"] == fiber_name:
+                    fiber_metadata = device
+                    break
+            else:
+                logger.error(f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml")
+                raise ValueError(
+                    f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
+                )
+            fiber_obj = OpticalFiber(**fiber_metadata)
+            nwbfile.add_device(fiber_obj)
+    else:
+        logger.info("No 'optic_fibers' found in photometry metadata.")
 
     # TODO: handle optic fiber implant sites
     # TODO: handle viruses
     # TODO: handle virus injections
 
-    photodetector_names = metadata["photometry"]["photodetectors"]
-    for photodetector_name in photodetector_names:
-        # Find the matching device by name in the devices list
-        for device in devices["photodetectors"]:
-            if device["name"] == photodetector_name:
-                photodetector_metadata = device
-                break
-        else:
-            raise ValueError(
-                f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
-            )
-        photodetector_obj = Photodetector(**photodetector_metadata)
-        nwbfile.add_device(photodetector_obj)
+    if "photodetectors" in metadata["photometry"]:
+        photodetector_names = metadata["photometry"]["photodetectors"]
+        for photodetector_name in photodetector_names:
+            logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
+            # Find the matching device by name in the devices list
+            for device in devices["photodetectors"]:
+                if device["name"] == photodetector_name:
+                    photodetector_metadata = device
+                    break
+            else:
+                logger.error(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
+                raise ValueError(
+                    f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
+                )
+            photodetector_obj = Photodetector(**photodetector_metadata)
+            nwbfile.add_device(photodetector_obj)
+    else:
+        logger.info("No 'photodetectors' found in photometry metadata.")
 
 
-def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None):
+def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None, logger=None):
     """
     Add photometry data to the NWB and return port visits 
     in downsampled photometry time to use for alignment.
@@ -775,37 +810,46 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None):
 
     if "photometry" not in metadata:
         print("No photometry metadata found for this session. Skipping photometry conversion.")
+        logger.info("No photometry metadata found for this session. Skipping photometry conversion.")
         return None, None
 
     # Add photometry metadata to the NWB
-    print("Adding photometry metadata to NWB ...")
-    add_photometry_metadata(nwbfile, metadata)
+    print("Adding photometry metadata to NWB...")
+    logger.info("Adding photometry metadata to NWB...")
+    add_photometry_metadata(nwbfile, metadata, logger)
 
     # If we have raw LabVIEW data (.phot and .box files)
     if "phot_file_path" in metadata["photometry"] and "box_file_path" in metadata["photometry"]:
         # Process photometry data from LabVIEW to create a signals dict of relevant photometry signals
+        logger.info("Using LabVIEW for photometry!")
+        logger.info("Processing raw .phot and .box files from LabVIEW...")
         print("Processing raw .phot and .box files from LabVIEW...")
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
         signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path)
-        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals)
+        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals, logger)
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
     elif "signals_mat_file_path" in metadata["photometry"]:
         # Load signals.mat created by external MATLAB photometry processing code
+        logger.info("Using LabVIEW for photometry!")
+        logger.info("Processing signals.mat file of photometry signals from LabVIEW...")
         print("Processing signals.mat file of photometry signals from LabVIEW...")
         signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
         signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
-        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals)
+        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals, logger)
       
     # If we have a ppd file from pyPhotometry
     elif "ppd_file_path" in metadata["photometry"]:
         # Process ppd file from pyPhotometry and add signals to the NWB
+        logger.info("Using pyPhotometry for photometry!")
+        logger.info("Processing ppd file from pyPhotometry...")
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, fig_dir)
+        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, fig_dir, logger)
 
     else:
+        logger.error("The required photometry subfields do not exist in the metadata dictionary.")
         raise ValueError(
             "The required photometry subfields do not exist in the metadata dictionary.\n"
             "Remove the 'photometry' field from metadata if you do not have photometry data "

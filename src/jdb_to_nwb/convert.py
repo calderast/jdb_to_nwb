@@ -1,3 +1,4 @@
+import logging
 import argparse
 from pathlib import Path
 import yaml
@@ -17,6 +18,48 @@ from .convert_raw_ephys import add_raw_ephys
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
+
+
+def setup_logger(log_name: str, path_logfile_all: str, path_logfile_warn: str) -> logging.Logger:
+    """
+    Sets up a logger that outputs to two different files:
+    - One file for all logs (INFO and above).
+    - Another file for warnings and above (WARNING and above).
+
+    Args:
+    log_name: Name of the logfile (for logger identification)
+    path_logfile_all: Path to the logfile for all messages (INFO and above).
+    path_logfile_warn: Path to the logfile for warning and above messages (WARNING and above).
+
+    Returns:
+    logging.Logger
+    """
+    # Create logger
+    logger = logging.getLogger(log_name)
+
+    # Define format for log messages
+    formatter = logging.Formatter("%(asctime)s %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+
+    # Handler for logging all messages (INFO and above) to file
+    fileHandler_all = logging.FileHandler(path_logfile_all, mode="w")
+    fileHandler_all.setFormatter(formatter)
+
+    # Handler for logging only warnings and above to file
+    fileHandler_warn = logging.FileHandler(path_logfile_warn, mode="w")
+    fileHandler_warn.setFormatter(formatter)
+
+    # Set different logging levels for handlers
+    fileHandler_all.setLevel(logging.INFO)  # Logs all messages (INFO, WARNING, ERROR, CRITICAL)
+    fileHandler_warn.setLevel(logging.WARNING)  # Logs warnings and above (WARNING, ERROR, CRITICAL)
+
+    # Set the logger level to INFO (this controls the global level)
+    logger.setLevel(logging.INFO)
+
+    # Add handlers to the logger
+    logger.addHandler(fileHandler_all)
+    logger.addHandler(fileHandler_warn)
+
+    return logger
 
 
 def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
@@ -39,10 +82,20 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Create directory for conversion log files
     log_dir = Path(output_nwb_dir) / f"{session_id}_logs"
     os.makedirs(log_dir, exist_ok=True)
+    
+    # Setup logger with paths to log files
+    info_log_file = Path(log_dir) / f"{session_id}_info_logs.log"
+    warning_log_file = Path(log_dir) / f"{session_id}_warning_logs.log"
+    logger = setup_logger("conversion_log", info_log_file, warning_log_file)
+
+    logger.info(f"Starting conversion for session_id {session_id}")
 
     # Save a copy of the metadata file to the logging directory
     metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"
     shutil.copy(metadata_file_path, metadata_copy_file_path)
+
+    logger.info(f"Original metadata file path was {metadata_file_path}")
+    logger.info(f"Saved a copy of metadata to {metadata_copy_file_path}")
 
     nwbfile = NWBFile(
         session_description="Placeholder description",  # Placeholder: updated in add_behavior
@@ -62,7 +115,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         source_script_file_name="convert.py",
     )
 
-    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
+    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
     add_behavior(nwbfile=nwbfile, metadata=metadata)
 
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
