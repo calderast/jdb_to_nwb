@@ -69,7 +69,10 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/jdb_to_nwb"]
+packages = [
+    "src/jdb_to_nwb",
+    "resources",
+]
 exclude = [
     ".git*",
     ".codecov.yml",
@@ -82,7 +85,7 @@ exclude = [
 # The resulting directory structure within the wheel will be:
 # jdb_to_nwb/
 # ├── __init__.py
-# ├── resources
+# ├── resources/
 # └── plotting
 [tool.hatch.build.targets.wheel.sources]
 "resources" = "jdb_to_nwb/resources"
