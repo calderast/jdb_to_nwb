@@ -1,0 +1,25 @@
+# A running list of devices used for photometry. Reference individual devices by name in the metadata yaml file.
+
+excitation_sources:
+  - name: Purple LED
+    excitation_wavelength_in_nm: 470.0
+    manufacturer: ThorLabs
+    model: M405FP1
+    illumination_type: LED
+  - name: Blue LED
+    excitation_wavelength_in_nm: 405.0
+    manufacturer: ThorLabs
+    model: M470F3
+    illumination_type: LED
+
+optic_fibers:
+  - name: Optic Fiber
+    numerical_aperture: 0.39  # TODO get correct value for this
+    core_diameter_in_um: 200.0
+
+photodetectors:
+  - name: Newport Femtowatt Photoreceiver
+    manufacturer: Newport
+    model: "2151"
+    detector_type: Silicon PIN photodiode
+    detected_wavelength_in_nm: 0.0  # TODO modify extension to allow range (320-1050 nm)

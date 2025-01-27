@@ -6,12 +6,15 @@ import os
 import json
 import warnings
 import scipy.io
+import yaml
+from pathlib import Path
+from importlib.resources import files
 from scipy.signal import butter, lfilter, hilbert, filtfilt
 from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
 
-from ndx_fiber_photometry import FiberPhotometryResponseSeries
+from ndx_fiber_photometry import FiberPhotometryResponseSeries, ExcitationSource, OpticalFiber, Photodetector
 from .plotting.plot_photometry import (
     plot_raw_photometry_signals,
     plot_405_470_correlation,
@@ -20,6 +23,17 @@ from .plotting.plot_photometry import (
     plot_ratio_565_correlation,
     plot_normalized_signals
 )
+
+# Get the location of the resources directory when the package is installed from pypi
+__location_of_this_file = Path(files(__name__))
+RESOURCES_DIR = __location_of_this_file / "resources"
+
+# If the resources directory does not exist, we are probably running the code from the source directory
+if not RESOURCES_DIR.exists():
+    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
+
+DEVICES_PATH = RESOURCES_DIR / "photometry_devices.yaml"
+
 
 def read_phot_data(phot_file_path):
     """Parse .phot file from Labview into a dict"""
@@ -672,9 +686,64 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
-    # TODO for Ryan - add photometry metadata to NWB :)
-    # https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
-    pass
+    """Add photometry metadata to the NWB file.
+    
+    The keys in the metadata YAML are assumed to be the same as the keyword arguments used for the corresponding
+    classes in the ndx-fiber-photometry extension. See the extension for more details:
+    https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
+    """
+
+    with open(DEVICES_PATH, "r") as f:
+        devices = yaml.safe_load(f)
+
+    # For each type of device, overwrite any metadata from the resources/photometry_devices.yaml file
+    # with the metadata from the metadata YAML file
+    
+    excitation_source_names = metadata["photometry"]["excitation_sources"]
+    for excitation_source_name in excitation_source_names:
+        # Find the matching device by name in the devices list
+        for device in devices["excitation_sources"]:
+            if device["name"] == excitation_source_name:
+                excitation_source_metadata = device
+                break
+        else:
+            raise ValueError(
+                f"Excitation source '{excitation_source_name}' not found in resources/photometry_devices.yaml"
+            )
+        excitation_source_obj = ExcitationSource(**excitation_source_metadata)
+        nwbfile.add_device(excitation_source_obj)
+
+    fiber_names = metadata["photometry"]["optic_fibers"]
+    for fiber_name in fiber_names:
+        # Find the matching device by name in the devices list
+        for device in devices["optic_fibers"]:
+            if device["name"] == fiber_name:
+                fiber_metadata = device
+                break
+        else:
+            raise ValueError(
+                f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
+            )
+        fiber_obj = OpticalFiber(**fiber_metadata)
+        nwbfile.add_device(fiber_obj)
+
+    # TODO: handle optic fiber implant sites
+    # TODO: handle viruses
+    # TODO: handle virus injections
+
+    photodetector_names = metadata["photometry"]["photodetectors"]
+    for photodetector_name in photodetector_names:
+        # Find the matching device by name in the devices list
+        for device in devices["photodetectors"]:
+            if device["name"] == photodetector_name:
+                photodetector_metadata = device
+                break
+        else:
+            raise ValueError(
+                f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
+            )
+        photodetector_obj = Photodetector(**photodetector_metadata)
+        nwbfile.add_device(photodetector_obj)
 
 
 def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None):
