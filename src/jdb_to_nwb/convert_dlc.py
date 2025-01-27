@@ -70,14 +70,17 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps
     dlc_position = pd.read_hdf(deeplabcut_file_path)
 
     # Remove the multi-level column names so we are left with column names 'x', 'y', 'likelihood'
-    dlc_position.columns = [col[-1] for col in dlc_position.columns]
+    dlc_position.columns = dlc_position.columns.get_level_values(-1)
     assert set(dlc_position.columns) == {'x', 'y', 'likelihood'}, (
         f"Expected DLC file columns x, y, and likelihood, got {dlc_position.columns}"
     )
 
-    # Replace x, y coordinates where DLC has low confidence with NaN
     position = dlc_position[['x', 'y', 'likelihood']].copy()
-    position.loc[dlc_position['likelihood'] < likelihood_cutoff, ['x', 'y']] = np.nan
+    # Remove duplicate columns for now
+    position = position.loc[:, ~position.columns.duplicated()]
+
+    # Replace x, y coordinates where DLC has low confidence with NaN
+    position.loc[position['likelihood'] < likelihood_cutoff, ['x', 'y']] = np.nan
 
     # Remove abrupt jumps of position bigger than a body of rat (30cm)
     pixel_jump_cutoff = 30 * pixels_per_cm
