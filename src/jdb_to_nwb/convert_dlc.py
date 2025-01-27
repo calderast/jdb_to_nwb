@@ -55,49 +55,64 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps
     """
     Read position data from the DeepLabCut file that contains algorithm name and position data
 
-    Position data is under the column names cap_back and cap_front:
+    For ephys, data is under the column names 'cap_back' and 'cap_front':
     cap_back is the back of the rat implant (red)
     cap_front is the front of the rat implant (green)
+    For photometry, data is under the single column 'cap'
+    The correct column(s) are detected and handled automatically.
 
     After reading the position data, calculate velocity and acceleration 
-    based on the camera fps and pixels_per_cm
+    based on the camera fps and pixels_per_cm (currently unused, but keeping for now)
 
     Returns:
-    position (pd.Dataframe): Dataframe with columns x, y, likelihood, velocity, and acceleration
+    list of tuples: list of (string, pd.DataFrame) tuples specifying the named bodypart \
+        tracked by DeepLabCut and its dataframe with columns x, y, likelihood, velocity, and acceleration
     """
 
-    # Read deeplabcut file into a dataframe
+    # Read DeepLabCut file into a dataframe
     dlc_position = pd.read_hdf(deeplabcut_file_path)
+    
+    # The bodypart names are stored as second-level columns
+    body_part_names = set(dlc_position.columns.get_level_values('bodyparts'))
+    print("Found DeepLabCut bodyparts:", body_part_names)
 
-    # Remove the multi-level column names so we are left with column names 'x', 'y', 'likelihood'
-    dlc_position.columns = dlc_position.columns.get_level_values(-1)
-    assert set(dlc_position.columns) == {'x', 'y', 'likelihood'}, (
-        f"Expected DLC file columns x, y, and likelihood, got {dlc_position.columns}"
-    )
+    body_part_dfs = []
+    for body_part in list(body_part_names):
+        print(f"Processing DLC bodypart {body_part}...")
+    
+        # Split the dataframe based on the body part
+        bodypart_df = dlc_position.loc[:, dlc_position.columns.get_level_values('bodyparts') == body_part]
+        bodypart_df.columns = bodypart_df.columns.get_level_values(-1)
+    
+        # Make sure we have the correct columns for this bodypart
+        assert set(bodypart_df.columns) == {'x', 'y', 'likelihood'}, (
+            f"Expected {body_part} columns x, y, and likelihood, got {bodypart_df.columns}"
+        )
 
-    position = dlc_position[['x', 'y', 'likelihood']].copy()
-    # Remove duplicate columns for now
-    position = position.loc[:, ~position.columns.duplicated()]
+        # Replace x, y coordinates where DLC has low confidence with NaN
+        position = bodypart_df[['x', 'y', 'likelihood']].copy()
+        position.loc[position['likelihood'] < likelihood_cutoff, ['x', 'y']] = np.nan
 
-    # Replace x, y coordinates where DLC has low confidence with NaN
-    position.loc[position['likelihood'] < likelihood_cutoff, ['x', 'y']] = np.nan
-
-    # Remove abrupt jumps of position bigger than a body of rat (30cm)
-    pixel_jump_cutoff = 30 * pixels_per_cm
-    position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
+        # Remove abrupt jumps of position bigger than a body of rat (30cm)
+        pixel_jump_cutoff = 30 * pixels_per_cm
+        position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
         position.loc[position.x.notnull(),['x','y']].values, pixel_jump_cutoff)
 
-    # Fill the missing gaps
-    position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
+        # Fill the missing gaps
+        position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
-    # Calculate velocity and acceleration
-    velocity, acceleration = calculate_velocity_acceleration(position['x'].values, 
-        position['y'].values, fps=cam_fps, pixels_per_cm=pixels_per_cm)
+        # Calculate velocity and acceleration
+        velocity, acceleration = calculate_velocity_acceleration(position['x'].values, 
+            position['y'].values, fps=cam_fps, pixels_per_cm=pixels_per_cm)
     
-    # Add velocity and acceleration columns to df
-    position['velocity'] = velocity
-    position['acceleration'] = acceleration
-    return position
+        # Add velocity and acceleration columns to df
+        position['velocity'] = velocity
+        position['acceleration'] = acceleration
+        
+        # Add each body part name and its corresponding position dataframe
+        body_part_dfs.append((body_part, position))
+    
+    return body_part_dfs
 
 
 def detect_and_replace_jumps(coordinates, pixel_jump_cutoff):
@@ -171,13 +186,14 @@ def calculate_velocity_acceleration(x, y, fps, pixels_per_cm):
     return velocity, acceleration
 
 
-def add_position_to_nwb(nwbfile: NWBFile, position_data: pd.DataFrame, pixels_per_cm, video_timestamps):
+def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per_cm, video_timestamps):
     """
     Add position data to the nwbfile as a SpatialSeries in the behavior processing module.
     
     Args:
     nwbfile: the nwb
-    position_data: Dataframe with columns x, y, and likelihood
+    position_data: List of (string, pd.DataFrame) tuples. \
+        String names tracked bodypart, DataFrame has position tracking columns x, y, and likelihood
     pixels_per_cm: pixels per cm conversion rate of the position data
     video_timestamps: timestamps of each camera frame (aka position datapoint) in ms
     """
@@ -194,32 +210,35 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: pd.DataFrame, pixels_pe
             name="behavior", description="Contains all behavior-related data"
         )
 
-    # Add x,y position to the nwb as a SpatialSeries
     position = Position(name="position")
-    position.create_spatial_series(
-        name="rat_head_position",
-        description="xloc, yloc",
-        data=np.asarray(position_data[["x", "y"]]),
-        unit="meters",
-        conversion=meters_per_pixel,
-        reference_frame="Upper left corner of video frame",
-        timestamps=video_timestamps_seconds,
-    )
-
-    # Add DLC position likelihood as a timeseries to the behavior processing module
-    # We may want this in the future if we adjust our likelihood threshold
-    # It may also be helpful to know which coordinates are "real" and which were interpolated
-    nwbfile.processing["behavior"].add(
-        TimeSeries(
-            name="DLC_likelihood",
-            description="DeepLabCut position tracking likelihood",
-            data=np.asarray(position_data["likelihood"]),
-            unit="fraction",
-            comments="Likelihood of each returned x,y coordinate. "
-            "Coordinates with likelihood <0.9 were interpolated from surrounding coordinates.",
+    
+    # Add x,y position to the nwb as a SpatialSeries for each tracked body part
+    for body_part_name, body_part_position_df in position_data:
+        print(f"Adding position data for {body_part_name} to the nwb...")
+        position.create_spatial_series(
+            name=f"{body_part_name}_position",
+            description="xloc, yloc",
+            data=np.asarray(body_part_position_df[["x", "y"]]),
+            unit="meters",
+            conversion=meters_per_pixel,
+            reference_frame="Upper left corner of video frame",
             timestamps=video_timestamps_seconds,
         )
-    )
+
+        # Add DLC position likelihood as a timeseries to the behavior processing module
+        # We may want this in the future if we adjust our likelihood threshold
+        # It may also be helpful to know which coordinates are "real" and which were interpolated
+        nwbfile.processing["behavior"].add(
+            TimeSeries(
+                name=f"DLC_likelihood_{body_part_name}",
+                description="DeepLabCut position tracking likelihood",
+                data=np.asarray(body_part_position_df["likelihood"]),
+                unit="fraction",
+                comments=f"Likelihood of each x,y coordinate for tracked bodypart '{body_part_name}'. "
+                "Coordinates with likelihood <0.9 were interpolated from surrounding coordinates.",
+                timestamps=video_timestamps_seconds,
+            )
+        )
 
     # TODO: The Frank Lab does a lot of checks based on video frame timestamps.
     # Do we need to do this? How often do we see the video frame timestamps skip or repeat?
@@ -269,8 +288,8 @@ def add_dlc(nwbfile: NWBFile, metadata: dict):
         print(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
 
     # Read x, y position data and calculate velocity and acceleration
-    position_df = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, likelihood_cutoff=0.9, cam_fps=15)
+    position_dfs = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, likelihood_cutoff=0.9, cam_fps=15)
 
     # Add x, y position data to the nwbfile
-    add_position_to_nwb(nwbfile, position_data=position_df, 
+    add_position_to_nwb(nwbfile, position_data=position_dfs, 
                         pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps)
