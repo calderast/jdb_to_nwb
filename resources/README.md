@@ -1,3 +1,4 @@
+# Electrophysiology resources
 ## Channel map
 The `channel_map` csv has 256 entries, mapping each electrode to the intan channel it corresponds to.
 The channel map for the probe electrodes depends on how the rat was plugged in.  
@@ -42,3 +43,7 @@ Extra 8 channels for 6mm probe:
 2880,61
 2880,31
 2880,1
+
+# Photometry resources
+The `photometry_devices.yaml` file contains a running list of excitation sources (i.e. LEDs and their metadata/wavelengths), optic fibers, and photodetectors used by the Berke Lab for the hex maze task. Note that this list is currently in-progress and some values are placeholders. The ndx-fiber-photometry extension for nwb is still in development, so how we specify these values is subject to change.
+
