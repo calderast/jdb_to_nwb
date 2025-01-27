@@ -92,8 +92,8 @@ photometry:
       manufacturer: Vigene
       titer_in_vg_per_ml: 2e12
   virus_injections:
-    - description: Injection of dLight AAV virus into right hippocampus CA1
-      location: Hippocampus CA1
+    - description: Injection of dLight AAV virus into right nucleus accumbens core
+      location: NAcc
       hemisphere: right
       reference: bregma at the cortical surface
       ap_in_mm: 1.7
