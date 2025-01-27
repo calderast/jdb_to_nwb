@@ -25,9 +25,9 @@ def compress_avi_to_mp4(input_video_path, output_video_path, crf=23, preset="ult
             .run(overwrite_output=True, capture_stdout=False, capture_stderr=True)
         )
         print(f"Compressed video at {input_video_path} to {output_video_path}")
-    except ffmpeg.Error as e:
-        print("An error occurred while processing the video:")
-        print(e.stderr.decode())
+    except Exception as e:
+        print("An error occurred during video compression:")
+        print(str(e))
 
 
 def add_video(nwbfile: NWBFile, metadata: dict, output_video_path):

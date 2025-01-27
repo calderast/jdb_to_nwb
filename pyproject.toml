@@ -31,6 +31,8 @@ dependencies = [
     "ndx_franklab_novela",
     "scikit-learn",
     "matplotlib",
+    "ffmpeg",
+    "tables",
 ]
 dynamic = ["version"]
 
