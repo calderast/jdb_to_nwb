@@ -75,8 +75,11 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps
         f"Expected DLC file columns x, y, and likelihood, got {dlc_position.columns}"
     )
 
-    # Replace x, y coordinates where DLC has low confidence with NaN
     position = dlc_position[['x', 'y', 'likelihood']].copy()
+    # Fix split column names if needed
+    position.columns = [''.join(col) if isinstance(col, tuple) else col for col in position.columns]
+
+    # Replace x, y coordinates where DLC has low confidence with NaN
     position.loc[position['likelihood'] < likelihood_cutoff, ['x', 'y']] = np.nan
 
     # Remove abrupt jumps of position bigger than a body of rat (30cm)
