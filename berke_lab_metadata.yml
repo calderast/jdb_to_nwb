@@ -1,9 +1,0 @@
-# Metadata file with the basic data required to initialize the NWB
-experiment_description: Hex maze task
-session_description: Barrier change session with 3 blocks, ephys and photometry
-session_id: IM-1478_07192022 # {rat}_{date} format
-session_start_time: 2022-07-19T00:00:00 # This is required to create the NWB but will probably be overwritten by exact ephys or photometry start
-experimenter:
-  - Tim Krausz
-institution: UCSF
-lab: Berke Lab

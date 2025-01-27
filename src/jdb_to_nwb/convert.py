@@ -10,6 +10,8 @@ from datetime import datetime
 from dateutil import tz
 
 from . import __version__
+from .convert_video import add_video
+from .convert_dlc import add_dlc
 from .convert_raw_ephys import add_raw_ephys
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
@@ -38,8 +40,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     os.makedirs(log_dir, exist_ok=True)
 
     nwbfile = NWBFile(
-        session_description="Mock session",  # TODO: replace this from behavior data
-        session_start_time=datetime.now(tz.tzlocal()),  # Will be updated later 
+        session_description="Placeholder description",  # Placeholder: updated in add_behavior
+        session_start_time=datetime.now(tz.tzlocal()),  # Placeholder: updated as the start of the earliest datastream
         identifier=str(uuid.uuid4()),
         institution=metadata.get("institution"),
         lab=metadata.get("lab"),
@@ -55,19 +57,25 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         source_script_file_name="convert.py",
     )
 
-    # If photometry is present, timestamps should be aligned to the photometry
-    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
+    phot_sampling_rate, port_visits = add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
     photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
+
+    output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
+    add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path)
+    add_dlc(nwbfile=nwbfile, metadata=metadata)
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
 
     # TODO: time alignment
+    # If photometry is present, timestamps should be aligned to the photometry
+    # Otherwise ephys
+    # Otherwise behavior
 
     # TODO: Reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
 
-    print("Writing file, including iterative read from raw ephys data...")
+    print("Writing file...")
     output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
     with NWBHDF5IO(output_nwb_file_path, mode="w") as io:
         io.write(nwbfile)
