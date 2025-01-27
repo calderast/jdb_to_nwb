@@ -25,7 +25,7 @@ def test_add_dlc():
 
     add_dlc(nwbfile=nwbfile, metadata=metadata)
 
-    # Checlk that behavior processing module has been added
+    # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
 
     # Check that the "position" object exists in the behavior processing module
