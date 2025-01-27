@@ -58,6 +58,55 @@ photometry:
 # signals_mat_file_path: "tests/test_data/downloaded/IM-1478/07252022/signals.mat"
 # ppd_file_path: "tests/test_data/downloaded/IM-1770_corvette/11062024/Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
 
+  # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
+  # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
+  excitation_sources:
+    - name: Purple LED
+      excitation_wavelength_in_nm: 470.0
+      manufacturer: ThorLabs
+      model: M405FP1 M00508616
+      illumination_type: LED
+    - name: Blue LED
+      excitation_wavelength_in_nm: 405.0
+      manufacturer: ThorLabs
+      model: M470F3 M00511033
+      illumination_type: LED
+  optic_fibers:
+    - name: optic_fiber
+      numerical_aperture: 0.39  # TODO get correct value for this
+      core_diameter_in_um: 200.0
+  optic_fiber_implant_sites:
+    - reference: bregma at the cortical surface
+      hemisphere: right
+      ap_in_mm: 1.7
+      ml_in_mm: 1.7
+      dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
+      optic_fiber: optic_fiber  # name of an optic fiber in the 'optic_fibers' field
+      excitation_sources:  # names of excitation sources in the 'excitation_sources' field
+        - Purple LED  
+        - Blue LED
+  viruses:
+    - name: dLight
+      construct_name: AAVDJ-CAG-dLight1.3b
+      description: AAV virus with dLight1.3b sensor
+      manufacturer: Vigene
+      titer_in_vg_per_ml: 2e12
+  virus_injections:
+    - description: Injection of dLight AAV virus into right hippocampus CA1
+      location: Hippocampus CA1
+      hemisphere: right
+      reference: bregma at the cortical surface
+      ap_in_mm: 1.7
+      ml_in_mm: 1.7
+      dv_in_mm: -6.2  # 6.2 mm deep for males, 6.0 mm deep for females
+      volume_in_uL: 1.0
+      virus: dLight  # name of a virus in the 'viruses' field
+  photodetectors:
+    - name: Newport Femtowatt Photoreceiver
+      manufacturer: Newport
+      model: 2151
+      detector_type: Silicon PIN photodiode
+      detected_wavelength_in_nm: 0.0  # TODO modify extension to allow range (320-1050 nm)
 
 behavior:
   arduino_text_file_path: "tests/test_data/behavior/arduinoraw0.txt"

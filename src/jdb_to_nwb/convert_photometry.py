@@ -11,7 +11,7 @@ from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
 
-from ndx_fiber_photometry import FiberPhotometryResponseSeries
+from ndx_fiber_photometry import FiberPhotometryResponseSeries, ExcitationSource, OpticalFiber, Photodetector
 from .plotting.plot_photometry import (
     plot_raw_photometry_signals,
     plot_405_470_correlation,
@@ -672,9 +672,31 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals):
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
-    # TODO for Ryan - add photometry metadata to NWB :)
-    # https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
-    pass
+    """Add photometry metadata to the NWB file.
+    
+    The keys in the metadata YAML are assumed to be the same as the keyword arguments used for the corresponding
+    classes in the ndx-fiber-photometry extension. See the extension for more details:
+    https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
+    """
+    
+    excitation_sources_list = metadata["photometry"]["excitation_sources"]
+    for excitation_source_metadata in excitation_sources_list:
+        excitation_source_obj = ExcitationSource(**excitation_source_metadata)
+        nwbfile.add_device(excitation_source_obj)
+
+    fibers_list = metadata["photometry"]["optic_fibers"]
+    for fiber_metadata in fibers_list:
+        fiber_obj = OpticalFiber(**fiber_metadata)
+        nwbfile.add_device(fiber_obj)
+
+    # TODO: handle optic fiber implant sites
+    # TODO: handle viruses
+    # TODO: handle virus injections
+
+    photodetectors_list = metadata["photometry"]["photodetectors"]
+    for photodetector_metadata in photodetectors_list:
+        photodetector_obj = Photodetector(**photodetector_metadata)
+        nwbfile.add_device(photodetector_obj)
 
 
 def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None):
