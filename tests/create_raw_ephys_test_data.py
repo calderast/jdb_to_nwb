@@ -20,8 +20,8 @@
 
 # The `structure.oebin` JSON file and `settings.xml` contains metadata for the recording.
 
-# To create test data of a reasonable size, we will trim the existing data and timestamps to 30,000 samples
-# (one second of data) and 6 channels and save it to a new directory.
+# To create test data of a reasonable size, we will trim the existing data and timestamps to 3,000 samples
+# (one second of data) and 264 channels and save it to a new directory.
 
 # We will manually edit the `structure.oebin` JSON file to remove the events and TTL channels and extra headstage
 # and ADC channels. We will also manually edit the `settings.xml` file to remove the events and TTL channels and
@@ -33,12 +33,13 @@
 # Then run this script from the command line from the root of the repo:
 #   python tests/test_data/create_raw_ephys_test_data.py
 
-from pathlib import Path
-
 import numpy as np
+from pathlib import Path
+import shutil
 
 # NOTE: Adjust this path to point to the location of Tim's sorted data for IM-1478/2022-07-25_15-30-00
 open_ephys_data_root = Path("/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00")
+
 continuous_dat_file_path = open_ephys_data_root / "experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
 timestamps_file_path = open_ephys_data_root / "experiment1/recording1/continuous/Rhythm_FPGA-100.0/timestamps.npy"
 
@@ -47,12 +48,13 @@ num_channels = 264
 sampling_rate_in_hz = 30_000
 
 # Specify the number of seconds and channels of the original data to keep
-num_seconds_to_keep = 1.0
-num_channels_to_keep = 6
+num_seconds_to_keep = 0.1
+num_channels_to_keep = 264
 
 # Create a new directory to store the trimmed data
-new_data_root = Path("./tests/test_data/raw_ephys")
-new_data_dir = new_data_root / "2022-07-25_15-30-00/experiment1/recording1/continuous/Rhythm_FPGA-100.0"
+new_data_root = Path("./tests/test_data/raw_ephys/2022-07-25_15-30-00")
+new_data_root.mkdir(parents=True, exist_ok=True)
+new_data_dir = new_data_root / "experiment1/recording1/continuous/Rhythm_FPGA-100.0"
 new_data_dir.mkdir(parents=True, exist_ok=True)
 
 # Load the data from the continuous.dat file into a memory-mapped numpy array
@@ -86,5 +88,20 @@ assert (
 ), f"Data length does not match expected length: {num_samples_to_keep * num_channels_to_keep}"
 read_data = read_data.reshape(num_samples_to_keep, num_channels_to_keep)
 assert np.allclose(data, read_data), "Data does not match original data"
+
+# If we trimmed the data to the full number of channels, we can copy the original structure.oebin JSON file
+# and settings.xml file to the new directory
+if num_channels_to_keep == num_channels:
+    original_structure_oebin_file_path = open_ephys_data_root / "experiment1/recording1/structure.oebin"
+    new_structure_oebin_file_path = new_data_root / "experiment1/recording1/structure.oebin"
+    shutil.copy(original_structure_oebin_file_path, new_structure_oebin_file_path)
+    
+    original_settings_xml_file_path = open_ephys_data_root / "settings.xml"
+    new_settings_xml_file_path = new_data_root / "settings.xml"
+    shutil.copy(original_settings_xml_file_path, new_settings_xml_file_path)
+else:
+    print("Data was trimmed to fewer channels than the original data, so we did not copy the structure.oebin "
+          "JSON file or settings.xml file to the new directory. Make sure to manually edit these files "
+          "to remove the channels that were trimmed.")
 
 print(f"Trimmed raw ephys data saved to: {new_data_root}")

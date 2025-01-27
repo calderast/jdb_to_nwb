@@ -50,6 +50,11 @@ Then run the download script:
 python tests/download_test_data.py
 ```
 
+You can pass the `--overwrite` flag to overwrite existing files:
+```bash
+python tests/download_test_data.py --overwrite
+```
+
 Notes:
 - Run `python tests/test_data/create_raw_ephys_test_data.py` to re-create the test data for `raw_ephys`.
 - Run `python tests/test_data/create_processed_ephys_test_data.py` to re-create the test data for `processed_ephys`.

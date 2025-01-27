@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
     "spikeinterface >= 0.101.0",
     "tqdm",
-    "neuroconv == 0.6.5",
+    "neuroconv",
     "pynwb >= 2.8.1",
     "ndx_fiber_photometry",
     "ndx_franklab_novela",
@@ -41,6 +41,7 @@ dev = [
     "black",
     "ruff",
     "codespell",
+    "tqdm",
 ]
 test = ["pytest", "pytest-cov"]
 
@@ -68,7 +69,10 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/jdb_to_nwb"]
+packages = [
+    "src/jdb_to_nwb",
+    "resources",
+]
 exclude = [
     ".git*",
     ".codecov.yml",
@@ -76,12 +80,22 @@ exclude = [
     ".pre-commit-config.yaml",
 ]
 
+# Rewrite the path to the `resources` directory to `jdb_to_nwb/resources`.
+# `jdb_to_nwb/__init__.py` will look there first for the spec files.
+# The resulting directory structure within the wheel will be:
+# jdb_to_nwb/
+# ├── __init__.py
+# ├── resources/
+# └── plotting
+[tool.hatch.build.targets.wheel.sources]
+"resources" = "jdb_to_nwb/resources"
+
 # [tool.interrogate]
 # fail-under = 95
 # verbose = 1
 
 [tool.codespell]
-skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs"
+skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs,./tests/test_data/*,*.h264"
 ignore-words-list = "datas,assertIn,lockin,SEMs"
 
 [tool.coverage.run]

@@ -9,7 +9,7 @@
         "source_processor_sub_idx": 0,
         "recorded_processor": "Rhythm FPGA",
         "recorded_processor_id": 100,
-        "num_channels": 6,
+        "num_channels": 264,
         "channels": [
           {
             "channel_name": "CH1",
@@ -52,14 +52,2534 @@
             "recorded_processor_index": 3
           },
           {
+            "channel_name": "CH5",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 4,
+            "recorded_processor_index": 4
+          },
+          {
+            "channel_name": "CH6",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 5,
+            "recorded_processor_index": 5
+          },
+          {
+            "channel_name": "CH7",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 6,
+            "recorded_processor_index": 6
+          },
+          {
+            "channel_name": "CH8",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 7,
+            "recorded_processor_index": 7
+          },
+          {
+            "channel_name": "CH9",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 8,
+            "recorded_processor_index": 8
+          },
+          {
+            "channel_name": "CH10",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 9,
+            "recorded_processor_index": 9
+          },
+          {
+            "channel_name": "CH11",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 10,
+            "recorded_processor_index": 10
+          },
+          {
+            "channel_name": "CH12",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 11,
+            "recorded_processor_index": 11
+          },
+          {
+            "channel_name": "CH13",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 12,
+            "recorded_processor_index": 12
+          },
+          {
+            "channel_name": "CH14",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 13,
+            "recorded_processor_index": 13
+          },
+          {
+            "channel_name": "CH15",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 14,
+            "recorded_processor_index": 14
+          },
+          {
+            "channel_name": "CH16",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 15,
+            "recorded_processor_index": 15
+          },
+          {
+            "channel_name": "CH17",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 16,
+            "recorded_processor_index": 16
+          },
+          {
+            "channel_name": "CH18",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 17,
+            "recorded_processor_index": 17
+          },
+          {
+            "channel_name": "CH19",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 18,
+            "recorded_processor_index": 18
+          },
+          {
+            "channel_name": "CH20",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 19,
+            "recorded_processor_index": 19
+          },
+          {
+            "channel_name": "CH21",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 20,
+            "recorded_processor_index": 20
+          },
+          {
+            "channel_name": "CH22",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 21,
+            "recorded_processor_index": 21
+          },
+          {
+            "channel_name": "CH23",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 22,
+            "recorded_processor_index": 22
+          },
+          {
+            "channel_name": "CH24",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 23,
+            "recorded_processor_index": 23
+          },
+          {
+            "channel_name": "CH25",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 24,
+            "recorded_processor_index": 24
+          },
+          {
+            "channel_name": "CH26",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 25,
+            "recorded_processor_index": 25
+          },
+          {
+            "channel_name": "CH27",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 26,
+            "recorded_processor_index": 26
+          },
+          {
+            "channel_name": "CH28",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 27,
+            "recorded_processor_index": 27
+          },
+          {
+            "channel_name": "CH29",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 28,
+            "recorded_processor_index": 28
+          },
+          {
+            "channel_name": "CH30",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 29,
+            "recorded_processor_index": 29
+          },
+          {
+            "channel_name": "CH31",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 30,
+            "recorded_processor_index": 30
+          },
+          {
+            "channel_name": "CH32",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 31,
+            "recorded_processor_index": 31
+          },
+          {
+            "channel_name": "CH33",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 32,
+            "recorded_processor_index": 32
+          },
+          {
+            "channel_name": "CH34",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 33,
+            "recorded_processor_index": 33
+          },
+          {
+            "channel_name": "CH35",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 34,
+            "recorded_processor_index": 34
+          },
+          {
+            "channel_name": "CH36",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 35,
+            "recorded_processor_index": 35
+          },
+          {
+            "channel_name": "CH37",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 36,
+            "recorded_processor_index": 36
+          },
+          {
+            "channel_name": "CH38",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 37,
+            "recorded_processor_index": 37
+          },
+          {
+            "channel_name": "CH39",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 38,
+            "recorded_processor_index": 38
+          },
+          {
+            "channel_name": "CH40",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 39,
+            "recorded_processor_index": 39
+          },
+          {
+            "channel_name": "CH41",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 40,
+            "recorded_processor_index": 40
+          },
+          {
+            "channel_name": "CH42",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 41,
+            "recorded_processor_index": 41
+          },
+          {
+            "channel_name": "CH43",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 42,
+            "recorded_processor_index": 42
+          },
+          {
+            "channel_name": "CH44",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 43,
+            "recorded_processor_index": 43
+          },
+          {
+            "channel_name": "CH45",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 44,
+            "recorded_processor_index": 44
+          },
+          {
+            "channel_name": "CH46",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 45,
+            "recorded_processor_index": 45
+          },
+          {
+            "channel_name": "CH47",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 46,
+            "recorded_processor_index": 46
+          },
+          {
+            "channel_name": "CH48",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 47,
+            "recorded_processor_index": 47
+          },
+          {
+            "channel_name": "CH49",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 48,
+            "recorded_processor_index": 48
+          },
+          {
+            "channel_name": "CH50",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 49,
+            "recorded_processor_index": 49
+          },
+          {
+            "channel_name": "CH51",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 50,
+            "recorded_processor_index": 50
+          },
+          {
+            "channel_name": "CH52",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 51,
+            "recorded_processor_index": 51
+          },
+          {
+            "channel_name": "CH53",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 52,
+            "recorded_processor_index": 52
+          },
+          {
+            "channel_name": "CH54",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 53,
+            "recorded_processor_index": 53
+          },
+          {
+            "channel_name": "CH55",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 54,
+            "recorded_processor_index": 54
+          },
+          {
+            "channel_name": "CH56",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 55,
+            "recorded_processor_index": 55
+          },
+          {
+            "channel_name": "CH57",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 56,
+            "recorded_processor_index": 56
+          },
+          {
+            "channel_name": "CH58",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 57,
+            "recorded_processor_index": 57
+          },
+          {
+            "channel_name": "CH59",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 58,
+            "recorded_processor_index": 58
+          },
+          {
+            "channel_name": "CH60",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 59,
+            "recorded_processor_index": 59
+          },
+          {
+            "channel_name": "CH61",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 60,
+            "recorded_processor_index": 60
+          },
+          {
+            "channel_name": "CH62",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 61,
+            "recorded_processor_index": 61
+          },
+          {
+            "channel_name": "CH63",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 62,
+            "recorded_processor_index": 62
+          },
+          {
+            "channel_name": "CH64",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 63,
+            "recorded_processor_index": 63
+          },
+          {
+            "channel_name": "CH65",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 64,
+            "recorded_processor_index": 64
+          },
+          {
+            "channel_name": "CH66",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 65,
+            "recorded_processor_index": 65
+          },
+          {
+            "channel_name": "CH67",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 66,
+            "recorded_processor_index": 66
+          },
+          {
+            "channel_name": "CH68",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 67,
+            "recorded_processor_index": 67
+          },
+          {
+            "channel_name": "CH69",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 68,
+            "recorded_processor_index": 68
+          },
+          {
+            "channel_name": "CH70",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 69,
+            "recorded_processor_index": 69
+          },
+          {
+            "channel_name": "CH71",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 70,
+            "recorded_processor_index": 70
+          },
+          {
+            "channel_name": "CH72",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 71,
+            "recorded_processor_index": 71
+          },
+          {
+            "channel_name": "CH73",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 72,
+            "recorded_processor_index": 72
+          },
+          {
+            "channel_name": "CH74",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 73,
+            "recorded_processor_index": 73
+          },
+          {
+            "channel_name": "CH75",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 74,
+            "recorded_processor_index": 74
+          },
+          {
+            "channel_name": "CH76",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 75,
+            "recorded_processor_index": 75
+          },
+          {
+            "channel_name": "CH77",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 76,
+            "recorded_processor_index": 76
+          },
+          {
+            "channel_name": "CH78",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 77,
+            "recorded_processor_index": 77
+          },
+          {
+            "channel_name": "CH79",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 78,
+            "recorded_processor_index": 78
+          },
+          {
+            "channel_name": "CH80",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 79,
+            "recorded_processor_index": 79
+          },
+          {
+            "channel_name": "CH81",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 80,
+            "recorded_processor_index": 80
+          },
+          {
+            "channel_name": "CH82",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 81,
+            "recorded_processor_index": 81
+          },
+          {
+            "channel_name": "CH83",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 82,
+            "recorded_processor_index": 82
+          },
+          {
+            "channel_name": "CH84",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 83,
+            "recorded_processor_index": 83
+          },
+          {
+            "channel_name": "CH85",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 84,
+            "recorded_processor_index": 84
+          },
+          {
+            "channel_name": "CH86",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 85,
+            "recorded_processor_index": 85
+          },
+          {
+            "channel_name": "CH87",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 86,
+            "recorded_processor_index": 86
+          },
+          {
+            "channel_name": "CH88",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 87,
+            "recorded_processor_index": 87
+          },
+          {
+            "channel_name": "CH89",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 88,
+            "recorded_processor_index": 88
+          },
+          {
+            "channel_name": "CH90",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 89,
+            "recorded_processor_index": 89
+          },
+          {
+            "channel_name": "CH91",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 90,
+            "recorded_processor_index": 90
+          },
+          {
+            "channel_name": "CH92",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 91,
+            "recorded_processor_index": 91
+          },
+          {
+            "channel_name": "CH93",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 92,
+            "recorded_processor_index": 92
+          },
+          {
+            "channel_name": "CH94",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 93,
+            "recorded_processor_index": 93
+          },
+          {
+            "channel_name": "CH95",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 94,
+            "recorded_processor_index": 94
+          },
+          {
+            "channel_name": "CH96",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 95,
+            "recorded_processor_index": 95
+          },
+          {
+            "channel_name": "CH97",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 96,
+            "recorded_processor_index": 96
+          },
+          {
+            "channel_name": "CH98",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 97,
+            "recorded_processor_index": 97
+          },
+          {
+            "channel_name": "CH99",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 98,
+            "recorded_processor_index": 98
+          },
+          {
+            "channel_name": "CH100",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 99,
+            "recorded_processor_index": 99
+          },
+          {
+            "channel_name": "CH101",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 100,
+            "recorded_processor_index": 100
+          },
+          {
+            "channel_name": "CH102",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 101,
+            "recorded_processor_index": 101
+          },
+          {
+            "channel_name": "CH103",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 102,
+            "recorded_processor_index": 102
+          },
+          {
+            "channel_name": "CH104",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 103,
+            "recorded_processor_index": 103
+          },
+          {
+            "channel_name": "CH105",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 104,
+            "recorded_processor_index": 104
+          },
+          {
+            "channel_name": "CH106",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 105,
+            "recorded_processor_index": 105
+          },
+          {
+            "channel_name": "CH107",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 106,
+            "recorded_processor_index": 106
+          },
+          {
+            "channel_name": "CH108",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 107,
+            "recorded_processor_index": 107
+          },
+          {
+            "channel_name": "CH109",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 108,
+            "recorded_processor_index": 108
+          },
+          {
+            "channel_name": "CH110",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 109,
+            "recorded_processor_index": 109
+          },
+          {
+            "channel_name": "CH111",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 110,
+            "recorded_processor_index": 110
+          },
+          {
+            "channel_name": "CH112",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 111,
+            "recorded_processor_index": 111
+          },
+          {
+            "channel_name": "CH113",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 112,
+            "recorded_processor_index": 112
+          },
+          {
+            "channel_name": "CH114",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 113,
+            "recorded_processor_index": 113
+          },
+          {
+            "channel_name": "CH115",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 114,
+            "recorded_processor_index": 114
+          },
+          {
+            "channel_name": "CH116",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 115,
+            "recorded_processor_index": 115
+          },
+          {
+            "channel_name": "CH117",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 116,
+            "recorded_processor_index": 116
+          },
+          {
+            "channel_name": "CH118",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 117,
+            "recorded_processor_index": 117
+          },
+          {
+            "channel_name": "CH119",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 118,
+            "recorded_processor_index": 118
+          },
+          {
+            "channel_name": "CH120",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 119,
+            "recorded_processor_index": 119
+          },
+          {
+            "channel_name": "CH121",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 120,
+            "recorded_processor_index": 120
+          },
+          {
+            "channel_name": "CH122",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 121,
+            "recorded_processor_index": 121
+          },
+          {
+            "channel_name": "CH123",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 122,
+            "recorded_processor_index": 122
+          },
+          {
+            "channel_name": "CH124",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 123,
+            "recorded_processor_index": 123
+          },
+          {
+            "channel_name": "CH125",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 124,
+            "recorded_processor_index": 124
+          },
+          {
+            "channel_name": "CH126",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 125,
+            "recorded_processor_index": 125
+          },
+          {
+            "channel_name": "CH127",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 126,
+            "recorded_processor_index": 126
+          },
+          {
+            "channel_name": "CH128",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 127,
+            "recorded_processor_index": 127
+          },
+          {
+            "channel_name": "CH129",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 128,
+            "recorded_processor_index": 128
+          },
+          {
+            "channel_name": "CH130",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 129,
+            "recorded_processor_index": 129
+          },
+          {
+            "channel_name": "CH131",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 130,
+            "recorded_processor_index": 130
+          },
+          {
+            "channel_name": "CH132",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 131,
+            "recorded_processor_index": 131
+          },
+          {
+            "channel_name": "CH133",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 132,
+            "recorded_processor_index": 132
+          },
+          {
+            "channel_name": "CH134",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 133,
+            "recorded_processor_index": 133
+          },
+          {
+            "channel_name": "CH135",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 134,
+            "recorded_processor_index": 134
+          },
+          {
+            "channel_name": "CH136",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 135,
+            "recorded_processor_index": 135
+          },
+          {
+            "channel_name": "CH137",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 136,
+            "recorded_processor_index": 136
+          },
+          {
+            "channel_name": "CH138",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 137,
+            "recorded_processor_index": 137
+          },
+          {
+            "channel_name": "CH139",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 138,
+            "recorded_processor_index": 138
+          },
+          {
+            "channel_name": "CH140",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 139,
+            "recorded_processor_index": 139
+          },
+          {
+            "channel_name": "CH141",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 140,
+            "recorded_processor_index": 140
+          },
+          {
+            "channel_name": "CH142",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 141,
+            "recorded_processor_index": 141
+          },
+          {
+            "channel_name": "CH143",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 142,
+            "recorded_processor_index": 142
+          },
+          {
+            "channel_name": "CH144",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 143,
+            "recorded_processor_index": 143
+          },
+          {
+            "channel_name": "CH145",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 144,
+            "recorded_processor_index": 144
+          },
+          {
+            "channel_name": "CH146",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 145,
+            "recorded_processor_index": 145
+          },
+          {
+            "channel_name": "CH147",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 146,
+            "recorded_processor_index": 146
+          },
+          {
+            "channel_name": "CH148",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 147,
+            "recorded_processor_index": 147
+          },
+          {
+            "channel_name": "CH149",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 148,
+            "recorded_processor_index": 148
+          },
+          {
+            "channel_name": "CH150",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 149,
+            "recorded_processor_index": 149
+          },
+          {
+            "channel_name": "CH151",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 150,
+            "recorded_processor_index": 150
+          },
+          {
+            "channel_name": "CH152",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 151,
+            "recorded_processor_index": 151
+          },
+          {
+            "channel_name": "CH153",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 152,
+            "recorded_processor_index": 152
+          },
+          {
+            "channel_name": "CH154",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 153,
+            "recorded_processor_index": 153
+          },
+          {
+            "channel_name": "CH155",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 154,
+            "recorded_processor_index": 154
+          },
+          {
+            "channel_name": "CH156",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 155,
+            "recorded_processor_index": 155
+          },
+          {
+            "channel_name": "CH157",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 156,
+            "recorded_processor_index": 156
+          },
+          {
+            "channel_name": "CH158",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 157,
+            "recorded_processor_index": 157
+          },
+          {
+            "channel_name": "CH159",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 158,
+            "recorded_processor_index": 158
+          },
+          {
+            "channel_name": "CH160",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 159,
+            "recorded_processor_index": 159
+          },
+          {
+            "channel_name": "CH161",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 160,
+            "recorded_processor_index": 160
+          },
+          {
+            "channel_name": "CH162",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 161,
+            "recorded_processor_index": 161
+          },
+          {
+            "channel_name": "CH163",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 162,
+            "recorded_processor_index": 162
+          },
+          {
+            "channel_name": "CH164",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 163,
+            "recorded_processor_index": 163
+          },
+          {
+            "channel_name": "CH165",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 164,
+            "recorded_processor_index": 164
+          },
+          {
+            "channel_name": "CH166",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 165,
+            "recorded_processor_index": 165
+          },
+          {
+            "channel_name": "CH167",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 166,
+            "recorded_processor_index": 166
+          },
+          {
+            "channel_name": "CH168",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 167,
+            "recorded_processor_index": 167
+          },
+          {
+            "channel_name": "CH169",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 168,
+            "recorded_processor_index": 168
+          },
+          {
+            "channel_name": "CH170",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 169,
+            "recorded_processor_index": 169
+          },
+          {
+            "channel_name": "CH171",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 170,
+            "recorded_processor_index": 170
+          },
+          {
+            "channel_name": "CH172",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 171,
+            "recorded_processor_index": 171
+          },
+          {
+            "channel_name": "CH173",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 172,
+            "recorded_processor_index": 172
+          },
+          {
+            "channel_name": "CH174",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 173,
+            "recorded_processor_index": 173
+          },
+          {
+            "channel_name": "CH175",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 174,
+            "recorded_processor_index": 174
+          },
+          {
+            "channel_name": "CH176",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 175,
+            "recorded_processor_index": 175
+          },
+          {
+            "channel_name": "CH177",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 176,
+            "recorded_processor_index": 176
+          },
+          {
+            "channel_name": "CH178",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 177,
+            "recorded_processor_index": 177
+          },
+          {
+            "channel_name": "CH179",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 178,
+            "recorded_processor_index": 178
+          },
+          {
+            "channel_name": "CH180",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 179,
+            "recorded_processor_index": 179
+          },
+          {
+            "channel_name": "CH181",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 180,
+            "recorded_processor_index": 180
+          },
+          {
+            "channel_name": "CH182",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 181,
+            "recorded_processor_index": 181
+          },
+          {
+            "channel_name": "CH183",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 182,
+            "recorded_processor_index": 182
+          },
+          {
+            "channel_name": "CH184",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 183,
+            "recorded_processor_index": 183
+          },
+          {
+            "channel_name": "CH185",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 184,
+            "recorded_processor_index": 184
+          },
+          {
+            "channel_name": "CH186",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 185,
+            "recorded_processor_index": 185
+          },
+          {
+            "channel_name": "CH187",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 186,
+            "recorded_processor_index": 186
+          },
+          {
+            "channel_name": "CH188",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 187,
+            "recorded_processor_index": 187
+          },
+          {
+            "channel_name": "CH189",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 188,
+            "recorded_processor_index": 188
+          },
+          {
+            "channel_name": "CH190",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 189,
+            "recorded_processor_index": 189
+          },
+          {
+            "channel_name": "CH191",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 190,
+            "recorded_processor_index": 190
+          },
+          {
+            "channel_name": "CH192",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 191,
+            "recorded_processor_index": 191
+          },
+          {
+            "channel_name": "CH193",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 192,
+            "recorded_processor_index": 192
+          },
+          {
+            "channel_name": "CH194",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 193,
+            "recorded_processor_index": 193
+          },
+          {
+            "channel_name": "CH195",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 194,
+            "recorded_processor_index": 194
+          },
+          {
+            "channel_name": "CH196",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 195,
+            "recorded_processor_index": 195
+          },
+          {
+            "channel_name": "CH197",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 196,
+            "recorded_processor_index": 196
+          },
+          {
+            "channel_name": "CH198",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 197,
+            "recorded_processor_index": 197
+          },
+          {
+            "channel_name": "CH199",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 198,
+            "recorded_processor_index": 198
+          },
+          {
+            "channel_name": "CH200",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 199,
+            "recorded_processor_index": 199
+          },
+          {
+            "channel_name": "CH201",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 200,
+            "recorded_processor_index": 200
+          },
+          {
+            "channel_name": "CH202",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 201,
+            "recorded_processor_index": 201
+          },
+          {
+            "channel_name": "CH203",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 202,
+            "recorded_processor_index": 202
+          },
+          {
+            "channel_name": "CH204",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 203,
+            "recorded_processor_index": 203
+          },
+          {
+            "channel_name": "CH205",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 204,
+            "recorded_processor_index": 204
+          },
+          {
+            "channel_name": "CH206",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 205,
+            "recorded_processor_index": 205
+          },
+          {
+            "channel_name": "CH207",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 206,
+            "recorded_processor_index": 206
+          },
+          {
+            "channel_name": "CH208",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 207,
+            "recorded_processor_index": 207
+          },
+          {
+            "channel_name": "CH209",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 208,
+            "recorded_processor_index": 208
+          },
+          {
+            "channel_name": "CH210",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 209,
+            "recorded_processor_index": 209
+          },
+          {
+            "channel_name": "CH211",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 210,
+            "recorded_processor_index": 210
+          },
+          {
+            "channel_name": "CH212",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 211,
+            "recorded_processor_index": 211
+          },
+          {
+            "channel_name": "CH213",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 212,
+            "recorded_processor_index": 212
+          },
+          {
+            "channel_name": "CH214",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 213,
+            "recorded_processor_index": 213
+          },
+          {
+            "channel_name": "CH215",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 214,
+            "recorded_processor_index": 214
+          },
+          {
+            "channel_name": "CH216",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 215,
+            "recorded_processor_index": 215
+          },
+          {
+            "channel_name": "CH217",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 216,
+            "recorded_processor_index": 216
+          },
+          {
+            "channel_name": "CH218",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 217,
+            "recorded_processor_index": 217
+          },
+          {
+            "channel_name": "CH219",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 218,
+            "recorded_processor_index": 218
+          },
+          {
+            "channel_name": "CH220",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 219,
+            "recorded_processor_index": 219
+          },
+          {
+            "channel_name": "CH221",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 220,
+            "recorded_processor_index": 220
+          },
+          {
+            "channel_name": "CH222",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 221,
+            "recorded_processor_index": 221
+          },
+          {
+            "channel_name": "CH223",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 222,
+            "recorded_processor_index": 222
+          },
+          {
+            "channel_name": "CH224",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 223,
+            "recorded_processor_index": 223
+          },
+          {
+            "channel_name": "CH225",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 224,
+            "recorded_processor_index": 224
+          },
+          {
+            "channel_name": "CH226",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 225,
+            "recorded_processor_index": 225
+          },
+          {
+            "channel_name": "CH227",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 226,
+            "recorded_processor_index": 226
+          },
+          {
+            "channel_name": "CH228",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 227,
+            "recorded_processor_index": 227
+          },
+          {
+            "channel_name": "CH229",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 228,
+            "recorded_processor_index": 228
+          },
+          {
+            "channel_name": "CH230",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 229,
+            "recorded_processor_index": 229
+          },
+          {
+            "channel_name": "CH231",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 230,
+            "recorded_processor_index": 230
+          },
+          {
+            "channel_name": "CH232",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 231,
+            "recorded_processor_index": 231
+          },
+          {
+            "channel_name": "CH233",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 232,
+            "recorded_processor_index": 232
+          },
+          {
+            "channel_name": "CH234",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 233,
+            "recorded_processor_index": 233
+          },
+          {
+            "channel_name": "CH235",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 234,
+            "recorded_processor_index": 234
+          },
+          {
+            "channel_name": "CH236",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 235,
+            "recorded_processor_index": 235
+          },
+          {
+            "channel_name": "CH237",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 236,
+            "recorded_processor_index": 236
+          },
+          {
+            "channel_name": "CH238",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 237,
+            "recorded_processor_index": 237
+          },
+          {
+            "channel_name": "CH239",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 238,
+            "recorded_processor_index": 238
+          },
+          {
+            "channel_name": "CH240",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 239,
+            "recorded_processor_index": 239
+          },
+          {
+            "channel_name": "CH241",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 240,
+            "recorded_processor_index": 240
+          },
+          {
+            "channel_name": "CH242",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 241,
+            "recorded_processor_index": 241
+          },
+          {
+            "channel_name": "CH243",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 242,
+            "recorded_processor_index": 242
+          },
+          {
+            "channel_name": "CH244",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 243,
+            "recorded_processor_index": 243
+          },
+          {
+            "channel_name": "CH245",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 244,
+            "recorded_processor_index": 244
+          },
+          {
+            "channel_name": "CH246",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 245,
+            "recorded_processor_index": 245
+          },
+          {
+            "channel_name": "CH247",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 246,
+            "recorded_processor_index": 246
+          },
+          {
+            "channel_name": "CH248",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 247,
+            "recorded_processor_index": 247
+          },
+          {
+            "channel_name": "CH249",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 248,
+            "recorded_processor_index": 248
+          },
+          {
+            "channel_name": "CH250",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 249,
+            "recorded_processor_index": 249
+          },
+          {
+            "channel_name": "CH251",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 250,
+            "recorded_processor_index": 250
+          },
+          {
+            "channel_name": "CH252",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 251,
+            "recorded_processor_index": 251
+          },
+          {
+            "channel_name": "CH253",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 252,
+            "recorded_processor_index": 252
+          },
+          {
+            "channel_name": "CH254",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 253,
+            "recorded_processor_index": 253
+          },
+          {
+            "channel_name": "CH255",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 254,
+            "recorded_processor_index": 254
+          },
+          {
+            "channel_name": "CH256",
+            "description": "Headstage data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.19499999284744263,
+            "units": "uV",
+            "source_processor_index": 255,
+            "recorded_processor_index": 255
+          },
+          {
             "channel_name": "ADC1",
             "description": "ADC data channel",
             "identifier": "genericdata.continuous",
             "history": "Rhythm FPGA",
             "bit_volts": 0.000152587890625,
             "units": "uV",
-            "source_processor_index": 4,
-            "recorded_processor_index": 4
+            "source_processor_index": 256,
+            "recorded_processor_index": 256
           },
           {
             "channel_name": "ADC2",
@@ -68,12 +2588,93 @@
             "history": "Rhythm FPGA",
             "bit_volts": 0.000152587890625,
             "units": "uV",
-            "source_processor_index": 5,
-            "recorded_processor_index": 5
+            "source_processor_index": 257,
+            "recorded_processor_index": 257
+          },
+          {
+            "channel_name": "ADC3",
+            "description": "ADC data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.000152587890625,
+            "units": "uV",
+            "source_processor_index": 258,
+            "recorded_processor_index": 258
+          },
+          {
+            "channel_name": "ADC4",
+            "description": "ADC data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.000152587890625,
+            "units": "uV",
+            "source_processor_index": 259,
+            "recorded_processor_index": 259
+          },
+          {
+            "channel_name": "ADC5",
+            "description": "ADC data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.000152587890625,
+            "units": "uV",
+            "source_processor_index": 260,
+            "recorded_processor_index": 260
+          },
+          {
+            "channel_name": "ADC6",
+            "description": "ADC data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.000152587890625,
+            "units": "uV",
+            "source_processor_index": 261,
+            "recorded_processor_index": 261
+          },
+          {
+            "channel_name": "ADC7",
+            "description": "ADC data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.000152587890625,
+            "units": "uV",
+            "source_processor_index": 262,
+            "recorded_processor_index": 262
+          },
+          {
+            "channel_name": "ADC8",
+            "description": "ADC data channel",
+            "identifier": "genericdata.continuous",
+            "history": "Rhythm FPGA",
+            "bit_volts": 0.000152587890625,
+            "units": "uV",
+            "source_processor_index": 263,
+            "recorded_processor_index": 263
           }
         ]
       }
     ],
-    "events": [],
+    "events": [
+      {
+        "folder_name": "Rhythm_FPGA-100.0/TTL_1/",
+        "channel_name": "Rhythm FPGA source TTL events input",
+        "description": "TTL Events coming from the hardware source processor \"Rhythm FPGA\"",
+        "identifier": "sourceevent",
+        "sample_rate": 30000,
+        "type": "int16",
+        "num_channels": 8,
+        "source_processor": "Rhythm FPGA"
+      },
+      {
+        "folder_name": "Message_Center-904.0/TEXT_group_1/",
+        "channel_name": "GUI Messages",
+        "description": "Messages from the GUI Message Center",
+        "identifier": "genericevent",
+        "sample_rate": 30000,
+        "type": "string",
+        "num_channels": 1,
+        "source_processor": "Message Center"
+      }
+    ],
     "spikes": []
   }

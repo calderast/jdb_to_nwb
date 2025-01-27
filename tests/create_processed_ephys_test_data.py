@@ -29,7 +29,7 @@ sampling_frequency = 30_000
 sorting = read_mda_sorting(firings_mda_file_path, sampling_frequency=sampling_frequency)
 
 # Trim the spike times to only those in the first 30,000 samples
-sorting_trimmed = sorting.frame_slice(start_frame=0, end_frame=30_000)
+sorting_trimmed = sorting.frame_slice(start_frame=0, end_frame=3_000)
 
 # Create a new directory to store the trimmed data
 new_data_dir = Path("./tests/test_data/processed_ephys")
