@@ -63,7 +63,7 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps
     based on the camera fps and pixels_per_cm
 
     Returns:
-    positon (pd.Dataframe): Dataframe with columns x, y, likelihood, velocity, and acceleration
+    position (pd.Dataframe): Dataframe with columns x, y, likelihood, velocity, and acceleration
     """
 
     # Read deeplabcut file into a dataframe
@@ -186,7 +186,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: pd.DataFrame, pixels_pe
     video_timestamps_seconds = video_timestamps / 1000
 
     # Make a processing module for behavior and add to the nwbfile
-    if not "behavior" in nwbfile.processing:
+    if "behavior" not in nwbfile.processing:
         nwbfile.create_processing_module(
             name="behavior", description="Contains all behavior-related data"
         )
@@ -234,12 +234,12 @@ def add_dlc(nwbfile: NWBFile, metadata: dict):
 
     # It is ok if we have video field in metadata but not DLC data
     # The user may wish to only convert the raw video file and do position tracking later
-    if not "dlc_path" in metadata["video"]:
+    if "dlc_path" not in metadata["video"]:
         print("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
         return
 
     # If we do have dlc_path, we must also have video timestamps for DLC conversion
-    if not "video_timestamps_file_path" in metadata["video"]:
+    if "video_timestamps_file_path" not in metadata["video"]:
         raise ValueError("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
             "This is required along with 'dlc_path' for DLC position conversion. \n"
             "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata.")

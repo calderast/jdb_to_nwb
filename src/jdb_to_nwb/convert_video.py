@@ -36,7 +36,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path):
         print("No video metadata found for this session. Skipping video conversion.")
         return None
 
-    if not "video_file_path" in metadata["video"] and "video_timestamps_file_path" in metadata["video"]:
+    if "video_file_path" not in metadata["video"] or "video_timestamps_file_path" not in metadata["video"]:
         print("Skipping video file conversion (requires both 'video_file_path' and 'video_timestamps_file_path')")
         # Don't raise an error here because it is technically ok for a user to specify the "video"
         # field in metadata but not the actual video data, because DLC also lives under the video field.
