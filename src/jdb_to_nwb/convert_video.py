@@ -36,6 +36,9 @@ def add_video(nwbfile: NWBFile, metadata: dict):
     # Read x and y position data and calculate velocity and acceleration
     x, y, velocity, acceleration = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, 
                                             cutoff=0.9, cam_fps=15)
+    
+    # TODO: remove print and add path to video
+    print(f"Video file path: {video_file_path}")
 
     return video_timestamps, x, y, velocity, acceleration
 
