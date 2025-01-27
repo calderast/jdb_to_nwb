@@ -1,4 +1,4 @@
-# A running list of devices used for photometry. Reference individual devices by keys in the metadata yaml file.
+# A running list of devices used for photometry. Reference individual devices by name in the metadata yaml file.
 
 excitation_sources:
   - name: Purple LED

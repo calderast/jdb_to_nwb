@@ -61,10 +61,10 @@ photometry:
   # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
   # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
   excitation_sources:  # reference existing excitation sources from resources/photometry_devices.yaml
-    - name: Purple LED
-    - name: Blue LED
+    - Purple LED
+    - Blue LED
   optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
-    - name: Optic Fiber
+    - Optic Fiber
   optic_fiber_implant_sites:
     - reference: bregma at the cortical surface
       hemisphere: right
@@ -92,7 +92,7 @@ photometry:
       volume_in_uL: 1.0
       virus: dLight  # name of a virus in the 'viruses' field
   photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
-    - name: Newport Femtowatt Photoreceiver
+    - Newport Femtowatt Photoreceiver
 
 behavior:
   arduino_text_file_path: "tests/test_data/behavior/arduinoraw0.txt"

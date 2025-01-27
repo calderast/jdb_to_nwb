@@ -17,19 +17,13 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
     """
 
     metadata["photometry"]["excitation_sources"] = [
-        {
-            "name": "Purple LED"
-        },
+        "Purple LED",
     ]
     metadata["photometry"]["optic_fibers"] = [
-        {
-            "name": "Optic Fiber"
-        },
+        "Optic Fiber",
     ]
     metadata["photometry"]["photodetectors"] = [
-        {
-            "name": "Newport Femtowatt Photoreceiver"
-        },
+        "Newport Femtowatt Photoreceiver",
     ]
     # metadata["photometry"]["optic_fiber_implant_sites"] = []
     # metadata["photometry"]["viruses"] = []
@@ -346,22 +340,14 @@ def test_add_photometry_metadata():
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["excitation_sources"] = [
-        {
-            "name": "Purple LED"
-        },
-        {
-            "name": "Blue LED"
-        },
+        "Purple LED",
+        "Blue LED",
     ]
     metadata["photometry"]["optic_fibers"] = [
-        {
-            "name": "Optic Fiber"
-        },
+        "Optic Fiber",
     ]
     metadata["photometry"]["photodetectors"] = [
-        {
-            "name": "Newport Femtowatt Photoreceiver"
-        },
+        "Newport Femtowatt Photoreceiver",
     ]
 
     # Create a test NWBFile

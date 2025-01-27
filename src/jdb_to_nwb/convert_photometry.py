@@ -699,56 +699,50 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict):
     # For each type of device, overwrite any metadata from the resources/photometry_devices.yaml file
     # with the metadata from the metadata YAML file
     
-    excitation_sources_list = metadata["photometry"]["excitation_sources"]
-    for new_excitation_source_metadata in excitation_sources_list:
-        excitation_source_name = new_excitation_source_metadata["name"]
+    excitation_source_names = metadata["photometry"]["excitation_sources"]
+    for excitation_source_name in excitation_source_names:
         # Find the matching device by name in the devices list
         for device in devices["excitation_sources"]:
             if device["name"] == excitation_source_name:
-                original_excitation_source_metadata = device
+                excitation_source_metadata = device
                 break
         else:
             raise ValueError(
                 f"Excitation source '{excitation_source_name}' not found in resources/photometry_devices.yaml"
             )
-        combined_excitation_source_metadata = original_excitation_source_metadata | new_excitation_source_metadata
-        excitation_source_obj = ExcitationSource(**combined_excitation_source_metadata)
+        excitation_source_obj = ExcitationSource(**excitation_source_metadata)
         nwbfile.add_device(excitation_source_obj)
 
-    fibers_list = metadata["photometry"]["optic_fibers"]
-    for new_fiber_metadata in fibers_list:
-        fiber_name = new_fiber_metadata["name"]
+    fiber_names = metadata["photometry"]["optic_fibers"]
+    for fiber_name in fiber_names:
         # Find the matching device by name in the devices list
         for device in devices["optic_fibers"]:
             if device["name"] == fiber_name:
-                original_fiber_metadata = device
+                fiber_metadata = device
                 break
         else:
             raise ValueError(
                 f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
             )
-        combined_fiber_metadata = original_fiber_metadata | new_fiber_metadata
-        fiber_obj = OpticalFiber(**combined_fiber_metadata)
+        fiber_obj = OpticalFiber(**fiber_metadata)
         nwbfile.add_device(fiber_obj)
 
     # TODO: handle optic fiber implant sites
     # TODO: handle viruses
     # TODO: handle virus injections
 
-    photodetectors_list = metadata["photometry"]["photodetectors"]
-    for new_photodetector_metadata in photodetectors_list:
-        photodetector_name = new_photodetector_metadata["name"]
+    photodetector_names = metadata["photometry"]["photodetectors"]
+    for photodetector_name in photodetector_names:
         # Find the matching device by name in the devices list
         for device in devices["photodetectors"]:
             if device["name"] == photodetector_name:
-                original_photodetector_metadata = device
+                photodetector_metadata = device
                 break
         else:
             raise ValueError(
                 f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
             )
-        combined_photodetector_metadata = original_photodetector_metadata | new_photodetector_metadata
-        photodetector_obj = Photodetector(**combined_photodetector_metadata)
+        photodetector_obj = Photodetector(**photodetector_metadata)
         nwbfile.add_device(photodetector_obj)
 
 
