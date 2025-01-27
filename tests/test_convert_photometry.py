@@ -10,6 +10,26 @@ from ndx_fiber_photometry import FiberPhotometryResponseSeries
 from jdb_to_nwb.convert_photometry import add_photometry, process_raw_labview_photometry_signals
 
 
+def add_dummy_photometry_metadata_to_metadata(metadata):
+    """
+    Add dummy values to the metadata dictionary so that the tests can run. These values are not tested.
+    test_add_photometry_metadata tests that the values are added correctly.
+    """
+
+    metadata["photometry"]["excitation_sources"] = [
+        "Purple LED",
+    ]
+    metadata["photometry"]["optic_fibers"] = [
+        "Optic Fiber",
+    ]
+    metadata["photometry"]["photodetectors"] = [
+        "Newport Femtowatt Photoreceiver",
+    ]
+    # metadata["photometry"]["optic_fiber_implant_sites"] = []
+    # metadata["photometry"]["viruses"] = []
+    # metadata["photometry"]["virus_injections"] = []
+
+
 def test_process_raw_labview_photometry_signals():
     """
     Test that the process_raw_labview_photometry_signals function 
@@ -83,6 +103,7 @@ def test_add_photometry_from_signals_mat():
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
+    add_dummy_photometry_metadata_to_metadata(metadata)
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
@@ -158,6 +179,7 @@ def test_add_photometry_from_raw_labview():
     metadata["photometry"] = {}
     metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
     metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    add_dummy_photometry_metadata_to_metadata(metadata)
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
@@ -239,6 +261,7 @@ def test_add_photometry_from_pyphotometry():
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+    add_dummy_photometry_metadata_to_metadata(metadata)
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "sampleframe.csv"
@@ -308,6 +331,63 @@ def test_add_photometry_from_pyphotometry():
         )
 
 
+def test_add_photometry_metadata():
+    """
+    Test that the add_photometry_metadata function adds the expected metadata to the NWB file.
+    """
+
+    # Create a test metadata dictionary
+    metadata = {}
+    metadata["photometry"] = {}
+    metadata["photometry"]["excitation_sources"] = [
+        "Purple LED",
+        "Blue LED",
+    ]
+    metadata["photometry"]["optic_fibers"] = [
+        "Optic Fiber",
+    ]
+    metadata["photometry"]["photodetectors"] = [
+        "Newport Femtowatt Photoreceiver",
+    ]
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # We do not provide any photometry data to the add_photometry function, so it should raise a ValueError
+    try:
+        add_photometry(nwbfile=nwbfile, metadata=metadata)
+    except ValueError as e:
+        assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
+    else:
+        assert False, (
+            "Expected ValueError was not raised in response to "
+            "missing photometry subfields in the metadata dict."
+        )
+
+    assert "Purple LED" in nwbfile.devices
+    assert nwbfile.devices["Purple LED"].excitation_wavelength_in_nm == 470.0
+    assert nwbfile.devices["Purple LED"].illumination_type == "LED"
+    assert nwbfile.devices["Purple LED"].manufacturer == "ThorLabs"
+    assert nwbfile.devices["Purple LED"].model == "M405FP1"
+    assert "Blue LED" in nwbfile.devices
+    assert nwbfile.devices["Blue LED"].excitation_wavelength_in_nm == 405.0
+    assert nwbfile.devices["Blue LED"].illumination_type == "LED"
+    assert nwbfile.devices["Blue LED"].manufacturer == "ThorLabs"
+    assert nwbfile.devices["Blue LED"].model == "M470F3"
+    assert "Optic Fiber" in nwbfile.devices
+    assert nwbfile.devices["Optic Fiber"].numerical_aperture == 0.39
+    assert nwbfile.devices["Optic Fiber"].core_diameter_in_um == 200.0
+    assert "Newport Femtowatt Photoreceiver" in nwbfile.devices
+    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].manufacturer == "Newport"
+    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].model == "2151"
+    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].detector_type == "Silicon PIN photodiode"
+    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].detected_wavelength_in_nm == 0.0
+
+
 def test_add_photometry_with_incomplete_metadata(capsys):
     """
     Test that the add_photometry function responds appropriately to missing or incomplete metadata.
@@ -343,8 +423,9 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     assert sampling_rate is None
     assert visits is None
     
-    # Create a test metadata dictionary with a photometry field but no photometry data
+    # Create a test metadata dictionary with a photometry field and metadata but no photometry data
     metadata["photometry"] = {}
+    add_dummy_photometry_metadata_to_metadata(metadata)
     
     # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
     try:
