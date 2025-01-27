@@ -57,8 +57,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         source_script_file_name="convert.py",
     )
 
-    phot_sampling_rate, port_visits = add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
-    photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata)
+    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
+    add_behavior(nwbfile=nwbfile, metadata=metadata)
 
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path)
@@ -67,10 +67,12 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
 
-    # TODO: time alignment
+    # TODO: Time alignment? Or just assign the same time=0 and let NWB do the rest?
     # If photometry is present, timestamps should be aligned to the photometry
-    # Otherwise ephys
-    # Otherwise behavior
+    # otherwise ephys, otherwise behavior
+    # For this alignment, add_photometry returns: phot_sampling_rate, port_visits
+    # and add_behavior returns photometry_start_in_arduino_time
+    # For now, ignore that these functions return values because we don't use them yet
 
     # TODO: Reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
