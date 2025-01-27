@@ -357,6 +357,8 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     nwbfile.fields["session_description"] = (
         f"{session_type} session for the hex maze task with {len(block_data)} blocks and {len(trial_data)} trials."
     )
+    
+    # Convert times from arduino time (ms) to seconds for NWB
 
     # Add each block to the block table in the NWB
     for block in block_data:
@@ -369,8 +371,8 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
             pC=block["pC"],
             num_trials=block["num_trials"],
             task_type=block["task_type"],
-            start_time=block["start_time"],
-            stop_time=block["end_time"],
+            start_time=block["start_time"]/1000,
+            stop_time=block["end_time"]/1000,
         )
  
     # Add each trial to the NWB
@@ -385,10 +387,10 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
             reward=trial["reward"],
             opto_condition="None", # For now, Berke Lab has no opto
             duration=(trial["end_time"]-trial["start_time"])/1000,
-            poke_in=trial["beam_break_start"],
-            poke_out=trial["beam_break_end"],
-            start_time=trial["start_time"],
-            stop_time=trial["end_time"],
+            poke_in=trial["beam_break_start"]/1000,
+            poke_out=trial["beam_break_end"]/1000,
+            start_time=trial["start_time"]/1000,
+            stop_time=trial["end_time"]/1000,
         )
 
     # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects
