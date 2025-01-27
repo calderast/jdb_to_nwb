@@ -32,7 +32,7 @@ dependencies = [
     "scikit-learn",
     "matplotlib",
     "ffmpeg",
-    "pytables",
+    "tables",
 ]
 dynamic = ["version"]
 
