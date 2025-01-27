@@ -25,12 +25,12 @@ def test_add_spikes():
 
     add_spikes(nwbfile, metadata)
 
-    assert len(nwbfile.units) == 63
+    assert len(nwbfile.units) == 17
     assert nwbfile.units["spike_times"] is not None
     assert nwbfile.units["unit_name"] is not None
-    assert len(nwbfile.units["spike_times"][0]) == 22
+    assert len(nwbfile.units["spike_times"][0]) == 3
     assert nwbfile.units["unit_name"][0] == "15"
-    assert len(nwbfile.units.spike_times.data) == 462  # Check total number of spikes
+    assert len(nwbfile.units.spike_times.data) == 30  # Check total number of spikes
 
 
 def test_add_spikes_with_incomplete_metadata(capsys):

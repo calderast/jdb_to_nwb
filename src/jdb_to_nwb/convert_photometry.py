@@ -710,7 +710,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None):
 
     # Add photometry metadata to the NWB
     print("Adding photometry metadata to NWB ...")
-    add_photometry_metadata(NWBFile, metadata)
+    add_photometry_metadata(nwbfile, metadata)
 
     # If we have raw LabVIEW data (.phot and .box files)
     if "phot_file_path" in metadata["photometry"] and "box_file_path" in metadata["photometry"]:
