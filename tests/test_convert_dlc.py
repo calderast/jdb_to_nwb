@@ -93,10 +93,6 @@ def test_add_dlc_with_incomplete_metadata(capsys):
         "tests/test_data/downloaded/IM-1478/07252022/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
     )
 
-    # Call the add_video function with 'video' key and 'dlc_path' in metadata
-    add_dlc(nwbfile=nwbfile, metadata=metadata)
-    captured = capsys.readouterr() # capture stdout
-
     # Check that add_dlc raises a ValueError about missing fields in the metadata dictionary
     try:
         add_dlc(nwbfile=nwbfile, metadata=metadata)
