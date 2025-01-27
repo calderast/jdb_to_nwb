@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 import uuid
 import os
+import shutil
 
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
@@ -39,6 +40,10 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     log_dir = Path(output_nwb_dir) / f"{session_id}_logs"
     os.makedirs(log_dir, exist_ok=True)
 
+    # Save a copy of the metadata file to the logging directory
+    metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"
+    shutil.copy(metadata_file_path, metadata_copy_file_path)
+
     nwbfile = NWBFile(
         session_description="Placeholder description",  # Placeholder: updated in add_behavior
         session_start_time=datetime.now(tz.tzlocal()),  # Placeholder: updated as the start of the earliest datastream
@@ -63,7 +68,6 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path)
     add_dlc(nwbfile=nwbfile, metadata=metadata)
-
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
