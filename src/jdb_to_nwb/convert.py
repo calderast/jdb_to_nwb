@@ -20,44 +20,49 @@ from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
 
 
-def setup_logger(log_name: str, path_logfile_all: str, path_logfile_warn: str) -> logging.Logger:
+def setup_logger(log_name, path_logfile_info, path_logfile_warn, path_logfile_debug) -> logging.Logger:
     """
-    Sets up a logger that outputs to two different files:
-    - One file for all logs (INFO and above).
-    - Another file for warnings and above (WARNING and above).
+    Sets up a logger that outputs to 3 different files:
+    - File for all general logs (log level INFO and above).
+    - File for warnings and errors (log level WARNING and above).
+    - File for detailed debug output (log level DEBUG and above)
 
     Args:
     log_name: Name of the logfile (for logger identification)
-    path_logfile_all: Path to the logfile for all messages (INFO and above).
-    path_logfile_warn: Path to the logfile for warning and above messages (WARNING and above).
+    path_logfile_info: Path to the logfile for info messages
+    path_logfile_warn: Path to the logfile for warning and error messages
+    path_logfile_debug: Path to the logfile for debug messages
 
     Returns:
     logging.Logger
     """
+
     # Create logger
     logger = logging.getLogger(log_name)
+    logger.setLevel(logging.DEBUG)  # Capture all levels (DEBUG and above)
 
     # Define format for log messages
-    formatter = logging.Formatter("%(asctime)s %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%d-%b-%y %H:%M:%S")
 
-    # Handler for logging all messages (INFO and above) to file
-    fileHandler_all = logging.FileHandler(path_logfile_all, mode="w")
-    fileHandler_all.setFormatter(formatter)
+    # Handler for logging messages INFO and above to file
+    fileHandler_info = logging.FileHandler(path_logfile_info, mode="w")
+    fileHandler_info.setFormatter(formatter)
+    fileHandler_info.setLevel(logging.INFO)
 
-    # Handler for logging only warnings and above to file
+    # Handler for logging messages WARNING and above to file
     fileHandler_warn = logging.FileHandler(path_logfile_warn, mode="w")
     fileHandler_warn.setFormatter(formatter)
+    fileHandler_warn.setLevel(logging.WARNING)
 
-    # Set different logging levels for handlers
-    fileHandler_all.setLevel(logging.INFO)  # Logs all messages (INFO, WARNING, ERROR, CRITICAL)
-    fileHandler_warn.setLevel(logging.WARNING)  # Logs warnings and above (WARNING, ERROR, CRITICAL)
-
-    # Set the logger level to INFO (this controls the global level)
-    logger.setLevel(logging.INFO)
+    # Handler for logging messages (incuding DEBUG) to a file
+    fileHandler_debug = logging.FileHandler(path_logfile_debug, mode="w")
+    fileHandler_debug.setFormatter(formatter)
+    fileHandler_debug.setLevel(logging.DEBUG)
 
     # Add handlers to the logger
-    logger.addHandler(fileHandler_all)
+    logger.addHandler(fileHandler_info)
     logger.addHandler(fileHandler_warn)
+    logger.addHandler(fileHandler_debug)
 
     return logger
 
@@ -86,7 +91,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Setup logger with paths to log files
     info_log_file = Path(log_dir) / f"{session_id}_info_logs.log"
     warning_log_file = Path(log_dir) / f"{session_id}_warning_logs.log"
-    logger = setup_logger("conversion_log", info_log_file, warning_log_file)
+    debug_log_file = Path(log_dir) / f"{session_id}_debug_logs.log"
+    logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
 
     logger.info(f"Starting conversion for session_id {session_id}")
 

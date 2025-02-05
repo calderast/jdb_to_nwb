@@ -200,11 +200,16 @@ def lockin_detection(input_signal, exc1, exc2, Fs, tau=10, filter_order=5, detre
     return sig1, sig2
 
 
-def run_lockin_detection(phot):
+def run_lockin_detection(phot, logger):
     """Run lockin detection to extract the modulated photometry signals"""
     # Default args for lockin detection
     tau = 10
     filter_order = 5
+    detrend=False
+    full=True
+    
+    logger.info(f"Running lockin detection to extract modulated photometry signals with args: \n"
+                f"tau={tau}, filter_order={filter_order}, detrend={detrend}, full={full}")
 
     # Get the necessary data from the phot structure
     detector = phot["data"][5, :]
@@ -213,7 +218,7 @@ def run_lockin_detection(phot):
 
     # Call lockin_detection function
     sig1, ref = lockin_detection(
-        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=False, full=True
+        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=detrend, full=full
     )
 
     detector = phot["data"][2, :]
@@ -222,7 +227,7 @@ def run_lockin_detection(phot):
 
     # Call lockin_detection function for the second set of signals
     sig2, ref2 = lockin_detection(
-        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=False, full=True
+        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=detrend, full=full
     )
 
     # Cut off the beginning of the signals to match behavioral data
@@ -241,20 +246,36 @@ def run_lockin_detection(phot):
     return signals
 
 
-def process_raw_labview_photometry_signals(phot_file_path, box_file_path):
+def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger):
     """
     Process the .phot and .box files from Labview into a "signals" dict, 
     replacing former MATLAB preprocessing code that created signals.mat
     """
 
     # Read .phot file from Labview into a dict
+    logger.info("Reading LabVIEW .phot file into a dictionary...")
     phot_dict = read_phot_data(phot_file_path)
+    
+    # Print .phot file values to debug file
+    logger.debug(f"Data read from LabVIEW .phot file at {phot_file_path}:")
+    for phot_key in phot_dict:
+        if phot_key == "pad":
+            continue
+        logger.debug(f"{phot_key}: {phot_dict[phot_key]}")
 
     # Read .box file from Labview into a dict
+    logger.info("Reading LabVIEW .box file into a dictionary...")
     box_dict = read_box_data(box_file_path)
+    
+    # Print .box file values to debug file
+    logger.debug(f"Data read from LabVIEW .box file at {box_file_path}:")
+    for box_key in box_dict:
+        if box_key == "pad":
+            continue
+        logger.debug(f"{box_key}: {box_dict[box_key]}")
 
     # Run lockin detection to extract the modulated photometry signals
-    signals = run_lockin_detection(phot_dict)
+    signals = run_lockin_detection(phot_dict, logger)
 
     # Get timestamps of port visits in 10 kHz photometry sample time
     visits = process_pulses(box_dict)
@@ -434,7 +455,7 @@ def import_ppd(ppd_file_path):
     return data_dict
 
 
-def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, fig_dir=None, logger=None):
+def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger, fig_dir=None):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
     
@@ -736,7 +757,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             excitation_source_obj = ExcitationSource(**excitation_source_metadata)
             nwbfile.add_device(excitation_source_obj)
     else:
-        logger.info("No 'excitation_sources' found in photometry metadata.")
+        logger.warning("No 'excitation_sources' found in photometry metadata.")
 
     if "optic_fibers" in metadata["photometry"]:
         fiber_names = metadata["photometry"]["optic_fibers"]
@@ -755,7 +776,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             fiber_obj = OpticalFiber(**fiber_metadata)
             nwbfile.add_device(fiber_obj)
     else:
-        logger.info("No 'optic_fibers' found in photometry metadata.")
+        logger.warning("No 'optic_fibers' found in photometry metadata.")
 
     # TODO: handle optic fiber implant sites
     # TODO: handle viruses
@@ -778,10 +799,10 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             photodetector_obj = Photodetector(**photodetector_metadata)
             nwbfile.add_device(photodetector_obj)
     else:
-        logger.info("No 'photodetectors' found in photometry metadata.")
+        logger.warning("No 'photodetectors' found in photometry metadata.")
 
 
-def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None, logger=None):
+def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """
     Add photometry data to the NWB and return port visits 
     in downsampled photometry time to use for alignment.
@@ -826,7 +847,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, fig_dir=None, logger=None):
         print("Processing raw .phot and .box files from LabVIEW...")
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
-        signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path)
+        signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
         sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals, logger)
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
