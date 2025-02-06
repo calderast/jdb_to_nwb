@@ -14,12 +14,14 @@ excitation_sources:
 
 optic_fibers:
   - name: Optic Fiber
-    numerical_aperture: 0.39  # TODO get correct value for this
+    manufacturer: DORIC
+    model: MFC_200/250-0.66_40mm_MF2.5_FLT
+    numerical_aperture: 0.66
     core_diameter_in_um: 200.0
 
 photodetectors:
-  - name: Newport Femtowatt Photoreceiver
-    manufacturer: Newport
-    model: "2151"
-    detector_type: Silicon PIN photodiode
-    detected_wavelength_in_nm: 0.0  # TODO modify extension to allow range (320-1050 nm)
+  - name: 7 ports Fluorescence Mini Cube - Three Fluorophores
+    manufacturer: DORIC
+    model: iFMC7-G2_E1(400-410)_F1(420-450)_E2(460-490)_F2(500-540)_E3(555-570)_F3(580-680)_S
+    detector_type: Silicon photodiode
+    detected_wavelength_in_nm: 350 to 1100 nm
