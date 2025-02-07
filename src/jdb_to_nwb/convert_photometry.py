@@ -479,7 +479,13 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     sampling_rate = ppd_data['sampling_rate']
     visits = ppd_data['pulse_inds_1'][1:]
-    logger.info(f"pyPhotometry sampling rate is {sampling_rate} Hz")
+    photometry_start = ppd_data['date_time']
+    logger.info(f"pyPhotometry sampling rate: {sampling_rate} Hz")
+    logger.info(f"pyPhotometry start time: {photometry_start}")
+    
+    logger.debug("Read data from ppd file:")
+    for phot_key in ppd_data:
+        logger.debug(f"{phot_key}: {ppd_data[phot_key]}")
 
     # Plot the raw signals
     plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405, relative_raw_signal, 
@@ -871,7 +877,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         logger.info("Processing ppd file from pyPhotometry...")
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, fig_dir, logger)
+        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, logger, fig_dir)
 
     else:
         logger.error("The required photometry subfields do not exist in the metadata dictionary.")

@@ -74,8 +74,8 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9,
     
     # The bodypart names are stored as second-level columns
     body_part_names = set(dlc_position.columns.get_level_values('bodyparts'))
-    print("Found DeepLabCut bodyparts:", body_part_names)
-    logger.info("Found DeepLabCut bodyparts:", body_part_names)
+    print(f"Found DeepLabCut bodyparts: {body_part_names}")
+    logger.info(f"Found DeepLabCut bodyparts: {body_part_names}")
 
     body_part_dfs = []
     for body_part in list(body_part_names):

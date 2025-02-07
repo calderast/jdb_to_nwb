@@ -54,7 +54,7 @@ def setup_logger(log_name, path_logfile_info, path_logfile_warn, path_logfile_de
     fileHandler_warn.setFormatter(formatter)
     fileHandler_warn.setLevel(logging.WARNING)
 
-    # Handler for logging messages (incuding DEBUG) to a file
+    # Handler for logging messages DEBUG and above to a file
     fileHandler_debug = logging.FileHandler(path_logfile_debug, mode="w")
     fileHandler_debug.setFormatter(formatter)
     fileHandler_debug.setLevel(logging.DEBUG)
@@ -137,6 +137,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # For this alignment, add_photometry returns: phot_sampling_rate, port_visits
     # and add_behavior returns: photometry_start_in_arduino_time
     # For now, ignore that these functions return values because we don't use them yet
+    
+    # DLC / spatial series currently start at photometry start, so we want to subtract that out!
+    
 
     # TODO: Reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
