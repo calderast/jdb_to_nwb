@@ -1,4 +1,3 @@
-import logging
 from pynwb import NWBFile
 import struct
 import pandas as pd
@@ -8,6 +7,8 @@ import json
 import warnings
 import scipy.io
 import yaml
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from importlib.resources import files
 from scipy.signal import butter, lfilter, hilbert, filtfilt
@@ -282,6 +283,11 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
     visits = process_pulses(box_dict)
     signals["visits"] = visits
 
+    # Convert Labview photometry start time to datetime object and set timezone to Pacific Time
+    photometry_start = datetime.strptime(f"{phot_dict['date']} {phot_dict['time']}".strip(), "%Y-%m-%d %H-%M-%S")
+    photometry_start = photometry_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
+    logger.info(f"LabVIEW photometry start time: {photometry_start}")
+    
     # Return signals dict equivalent to signals.mat
     return signals
 
@@ -623,6 +629,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     sig1: 470 nm (dLight)
     ref: 405 nm (isosbestic wavelength)
     """
+    logger.debug("Using signals mat: ")
+    logger.debug(signals)
 
     # Downsample the raw data from 10 kHz to 250 Hz by taking every 40th sample
     SR = 10000  # Original sampling rate of the photometry system (Hz)
