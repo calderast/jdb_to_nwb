@@ -30,7 +30,7 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
     # metadata["photometry"]["virus_injections"] = []
 
 
-def test_process_raw_labview_photometry_signals():
+def test_process_raw_labview_photometry_signals(dummy_logger):
     """
     Test that the process_raw_labview_photometry_signals function 
     returns a signals dictionary equivalent to signals.mat.
@@ -46,7 +46,7 @@ def test_process_raw_labview_photometry_signals():
     # Process the raw .phot and .box files from Labview into an equivalent signals dict
     phot_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
     box_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
-    signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path)
+    signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, dummy_logger)
 
     # Ensure all relevant keys are present in both the reference and created signals dict
     expected_keys = {"sig1", "sig2", "loc", "ref", "visits"}
@@ -90,7 +90,7 @@ def test_process_raw_labview_photometry_signals():
     )
 
 
-def test_add_photometry_from_signals_mat():
+def test_add_photometry_from_signals_mat(dummy_logger):
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
@@ -117,7 +117,7 @@ def test_add_photometry_from_signals_mat():
     )
 
     # Add photometry data to the nwbfile
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
@@ -165,7 +165,7 @@ def test_add_photometry_from_signals_mat():
     )
 
 
-def test_add_photometry_from_raw_labview():
+def test_add_photometry_from_raw_labview(dummy_logger):
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
@@ -193,7 +193,7 @@ def test_add_photometry_from_raw_labview():
     )
 
     # Add photometry data to the nwbfile
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
@@ -249,7 +249,7 @@ def test_add_photometry_from_raw_labview():
     # )
 
 
-def test_add_photometry_from_pyphotometry():
+def test_add_photometry_from_pyphotometry(dummy_logger):
     """
     Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
 
@@ -275,7 +275,7 @@ def test_add_photometry_from_pyphotometry():
     )
 
     # Add photometry data to the nwbfile
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", 
@@ -331,7 +331,7 @@ def test_add_photometry_from_pyphotometry():
         )
 
 
-def test_add_photometry_metadata():
+def test_add_photometry_metadata(dummy_logger):
     """
     Test that the add_photometry_metadata function adds the expected metadata to the NWB file.
     """
@@ -359,7 +359,7 @@ def test_add_photometry_metadata():
 
     # We do not provide any photometry data to the add_photometry function, so it should raise a ValueError
     try:
-        add_photometry(nwbfile=nwbfile, metadata=metadata)
+        add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     except ValueError as e:
         assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
     else:
@@ -388,7 +388,7 @@ def test_add_photometry_metadata():
     assert nwbfile.devices["Newport Femtowatt Photoreceiver"].detected_wavelength_in_nm == 0.0
 
 
-def test_add_photometry_with_incomplete_metadata(capsys):
+def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
     """
     Test that the add_photometry function responds appropriately to missing or incomplete metadata.
     
@@ -415,7 +415,7 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     # valid way to specify that we have no photometry data for this session.
     
     # Call the add_photometry function with no 'photometry' key in metadata
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
     
     # Check that the correct message was printed to stdout and returned sampling_rate and visits is None
@@ -429,7 +429,7 @@ def test_add_photometry_with_incomplete_metadata(capsys):
     
     # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
     try:
-        sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata)
+        sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     except ValueError as e:
         assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
     else:

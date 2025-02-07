@@ -1,8 +1,10 @@
+import logging
 import argparse
 from pathlib import Path
 import yaml
 import uuid
 import os
+import shutil
 
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
@@ -16,6 +18,53 @@ from .convert_raw_ephys import add_raw_ephys
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
+
+
+def setup_logger(log_name, path_logfile_info, path_logfile_warn, path_logfile_debug) -> logging.Logger:
+    """
+    Sets up a logger that outputs to 3 different files:
+    - File for all general logs (log level INFO and above).
+    - File for warnings and errors (log level WARNING and above).
+    - File for detailed debug output (log level DEBUG and above)
+
+    Args:
+    log_name: Name of the logfile (for logger identification)
+    path_logfile_info: Path to the logfile for info messages
+    path_logfile_warn: Path to the logfile for warning and error messages
+    path_logfile_debug: Path to the logfile for debug messages
+
+    Returns:
+    logging.Logger
+    """
+
+    # Create logger
+    logger = logging.getLogger(log_name)
+    logger.setLevel(logging.DEBUG)  # Capture all levels (DEBUG and above)
+
+    # Define format for log messages
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+
+    # Handler for logging messages INFO and above to file
+    fileHandler_info = logging.FileHandler(path_logfile_info, mode="w")
+    fileHandler_info.setFormatter(formatter)
+    fileHandler_info.setLevel(logging.INFO)
+
+    # Handler for logging messages WARNING and above to file
+    fileHandler_warn = logging.FileHandler(path_logfile_warn, mode="w")
+    fileHandler_warn.setFormatter(formatter)
+    fileHandler_warn.setLevel(logging.WARNING)
+
+    # Handler for logging messages DEBUG and above to a file
+    fileHandler_debug = logging.FileHandler(path_logfile_debug, mode="w")
+    fileHandler_debug.setFormatter(formatter)
+    fileHandler_debug.setLevel(logging.DEBUG)
+
+    # Add handlers to the logger
+    logger.addHandler(fileHandler_info)
+    logger.addHandler(fileHandler_warn)
+    logger.addHandler(fileHandler_debug)
+
+    return logger
 
 
 def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
@@ -38,6 +87,21 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Create directory for conversion log files
     log_dir = Path(output_nwb_dir) / f"{session_id}_logs"
     os.makedirs(log_dir, exist_ok=True)
+    
+    # Setup logger with paths to log files
+    info_log_file = Path(log_dir) / f"{session_id}_info_logs.log"
+    warning_log_file = Path(log_dir) / f"{session_id}_warning_logs.log"
+    debug_log_file = Path(log_dir) / f"{session_id}_debug_logs.log"
+    logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
+
+    logger.info(f"Starting conversion for session_id {session_id}")
+
+    # Save a copy of the metadata file to the logging directory
+    metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"
+    shutil.copy(metadata_file_path, metadata_copy_file_path)
+
+    logger.info(f"Original metadata file path was {metadata_file_path}")
+    logger.info(f"Saved a copy of metadata to {metadata_copy_file_path}")
 
     nwbfile = NWBFile(
         session_description="Placeholder description",  # Placeholder: updated in add_behavior
@@ -57,13 +121,12 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         source_script_file_name="convert.py",
     )
 
-    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
-    add_behavior(nwbfile=nwbfile, metadata=metadata)
+    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
+    add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
-    add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path)
-    add_dlc(nwbfile=nwbfile, metadata=metadata)
-
+    add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path, logger=logger)
+    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     add_raw_ephys(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
     add_spikes(nwbfile=nwbfile, metadata=metadata)
@@ -74,6 +137,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # For this alignment, add_photometry returns: phot_sampling_rate, port_visits
     # and add_behavior returns: photometry_start_in_arduino_time
     # For now, ignore that these functions return values because we don't use them yet
+    
+    # DLC / spatial series currently start at photometry start, so we want to subtract that out!
+    
 
     # TODO: Reset the session start time to the earliest of the data streams
     nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())

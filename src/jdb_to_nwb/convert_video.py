@@ -7,7 +7,7 @@ from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
 
 
-def compress_avi_to_mp4(input_video_path, output_video_path, crf=23, preset="ultrafast"):
+def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, preset="ultrafast"):
     """
     Compress an AVI video file to MP4 using ffmpeg.
 
@@ -24,25 +24,31 @@ def compress_avi_to_mp4(input_video_path, output_video_path, crf=23, preset="ult
             ffmpeg.input(str(input_video_path)).output(str(output_video_path), vcodec="libx264", crf=crf, preset=preset)
             .run(overwrite_output=True, capture_stdout=False, capture_stderr=True)
         )
+        logger.info(f"Compressed video at {input_video_path} to {output_video_path}")
         print(f"Compressed video at {input_video_path} to {output_video_path}")
     except Exception as e:
+        logger.error(f"An error occurred during video compression: {str(e)}")
         print("An error occurred during video compression:")
         print(str(e))
 
 
-def add_video(nwbfile: NWBFile, metadata: dict, output_video_path):
+def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
 
     if "video" not in metadata:
         print("No video metadata found for this session. Skipping video conversion.")
+        logger.warning("No video metadata found for this session. Skipping video conversion.")
         return None
 
     if "video_file_path" not in metadata["video"] or "video_timestamps_file_path" not in metadata["video"]:
         print("Skipping video file conversion (requires both 'video_file_path' and 'video_timestamps_file_path')")
+        logger.warning("Skipping video file conversion "
+                       "(requires both 'video_file_path' and 'video_timestamps_file_path')")
         # Don't raise an error here because it is technically ok for a user to specify the "video"
         # field in metadata but not the actual video data, because DLC also lives under the video field.
         return None
 
     print("Adding video...")
+    logger.info("Adding video...")
 
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["video_file_path"]
@@ -57,7 +63,8 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path):
 
     # Convert video from .avi to .mp4 and copy it to the nwb output directory
     print("Compressing video from .avi to .mp4 and copying to nwb output directory...")
-    compress_avi_to_mp4(input_video_path=video_file_path, output_video_path=output_video_path)
+    logger.info("Compressing video from .avi to .mp4 and copying to nwb output directory...")
+    compress_avi_to_mp4(input_video_path=video_file_path, output_video_path=output_video_path, logger=logger)
 
     # Create nwb processing module for video files
     nwbfile.create_processing_module(
@@ -82,3 +89,4 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path):
     )
 
     nwbfile.processing["video_files"].add(video)
+    logger.info("Created nwb processing module for video files and added behavior_video as an nwb ImageSeries")

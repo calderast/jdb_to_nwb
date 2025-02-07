@@ -35,11 +35,13 @@ def adjust_arduino_timestamps(arduino_timestamps: list):
     # Adjust all arduino timestamps so the photometry starts at time zero
     arduino_timestamps = np.subtract(arduino_timestamps, photometry_start)
 
-    # Convert arduino timestamps to corresponding photometry sample number.
+    # In our previous pipeline, we converted arduino timestamps to corresponding photometry sample number (below)
     # Target rate = 250 samples/sec from 10 KHz initial sample rate (same as photometry)
     # (This is named 'ardstamps' in the original conversion code)
-    photometry_sample_for_arduino_event = np.round(arduino_timestamps * (250 / 1000)).astype(int)
-    return photometry_sample_for_arduino_event, photometry_start
+    # photometry_sample_for_arduino_event = np.round(arduino_timestamps * (250 / 1000)).astype(int)
+    # Removing this part because we now do alignment differently,
+    # but keeping for posterity for now and forever in git history :)
+    return arduino_timestamps, photometry_start
 
 
 def determine_session_type(block_data: list):
@@ -71,7 +73,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
     Beam breaks span multiple indices in the text file (the beam stays broken the
     entire time the rat's head is in the port, and will continuously print "beam break").
     Trials end when the rat removes their head from the reward port (end of beam break)
-    In the arduino text file, a block is triggered by the beam break of the last trial in a block.
+    In the arduino text file, a new block is triggered by the beam break of the last trial in a block.
     However, we don't want to start the block at the exact moment the "Block" text appears
     because this is still in the middle of the beam break. We want the new block to start
     once the beam break has ended, so it aligns with the end of the last trial in the block.
@@ -165,52 +167,94 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
     return trial_data, block_data
 
 
-def validate_trial_and_block_data(trial_data: list, block_data: list):
+def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
     """Run basic tests to check that trial and block data is valid."""
 
     # The number of the last trial/block must match the number of trials/blocks
-    assert len(trial_data) == trial_data[-1].get("trial_within_session")
-    assert len(block_data) == block_data[-1].get("block")
+    assert len(trial_data) == trial_data[-1].get("trial_within_session"), (
+        f"Found {len(trial_data)} trials, but the last trial number is {trial_data[-1].get("trial_within_session")}"
+    )
+    logger.debug(f"The last trial number {trial_data[-1].get("trial_within_session")} "
+                 f"matches the total number of trials {len(trial_data)}")
+    
+    assert len(block_data) == block_data[-1].get("block"), (
+        f"Found {len(block_data)} blocks, but the last block number is {block_data[-1].get("block")}"
+    )
+    logger.debug(f"The last block number {block_data[-1].get("block")} "
+                 f"matches the total number of blocks {len(block_data)}")
 
     # All trial numbers must be unique and match the range 1 to [num trials in session]
     trial_numbers = {trial.get("trial_within_session") for trial in trial_data}
-    assert trial_numbers == set(range(1, len(trial_data) + 1))
+    assert trial_numbers == set(range(1, len(trial_data) + 1)), (
+        "Trial numbers are not unique and/or do not match the range 1 to [num trials in session]\n"
+        f"Expected trial numbers: {set(range(1, len(trial_data) + 1))}\n"
+        f"Got trial numbers {trial_numbers}"
+    )
+    logger.debug(f"All trial numbers are unique and match the range 1 to {len(trial_data)}")
 
     # All block numbers must be unique and match the range 1 to [num blocks in session]
     block_numbers = {block.get("block") for block in block_data}
-    assert block_numbers == set(range(1, len(block_data) + 1))
+    assert block_numbers == set(range(1, len(block_data) + 1)), (
+        "Block numbers are not unique and/or do not match the range 1 to [num blocks in session]\n"
+        f"Expected block numbers: {set(range(1, len(block_data) + 1))}\n"
+        f"Got block numbers {block_numbers}"
+    )
+    logger.debug(f"All block numbers are unique and match the range 1 to {len(block_data)}")
 
     # There must be a legitimate reward value (1 or 0) for all trials (instead of default None)
-    assert all(trial.get("reward") in {0, 1} for trial in trial_data)
+    assert all(trial.get("reward") in {0, 1} for trial in trial_data), (
+        "Not all trials have a legitimate reward value (1 or 0)"
+    )
+    logger.debug("All trials have a legitimate reward value (1 or 0)")
 
     # There must be a legitimate p(reward) value for each block at ports A, B, and C
-    assert all(0 <= block.get(key) <= 100 for block in block_data for key in ["pA", "pB", "pC"])
+    assert all(0 <= block.get(key) <= 100 for block in block_data for key in ["pA", "pB", "pC"]), (
+        "Not all blocks have a legitimate p(reward) value for pA, pB, or pC (must be in range 0-100)"
+    )
+    logger.debug("All blocks have a legitimate value for pA, pB, or pC (value in range 0-100)")
 
     # There must be a not-null maze_configuration for each block
-    assert all(block.get("maze_configuration") not in ([], None) for block in block_data)
-    
+    assert all(block.get("maze_configuration") not in ([], None) for block in block_data), (
+        "Not all blocks have a non-null maze configuration"
+    )
+    logger.debug("All blocks have a non-null maze configuration")
+
     # There must be a valid task type for each block
-    assert all(block.get("task_type") in ["probability change", "barrier change"] for block in block_data)
+    valid_task_types = ["probability change", "barrier change", "single block"]
+    assert all(block.get("task_type") in valid_task_types for block in block_data), (
+        f"Not all blocks have a valid task_type. Must be one of: {valid_task_types}"
+    )
     # The task type must be the same for all blocks
-    assert len({block["task_type"] for block in block_data}) == 1
-    
+    assert len({block["task_type"] for block in block_data}) == 1, (
+        f"All blocks must have the same task_type. Must be one of: {valid_task_types}"
+    )
+    logger.debug(f"All blocks have the same task_type ({block_data[0]["task_type"]})")
+
     # In a probability change session, reward probabilities vary and maze configs do not
     if block_data[0]["task_type"] == "probability change":
         # All maze configs should be the same
-        assert len({block["maze_configuration"] for block in block_data}) == 1
+        assert len({block["maze_configuration"] for block in block_data}) == 1, (
+            "All maze configurations must be the same for a probability change session"
+        )
         # Reward probabilities should vary
         # They may eventually repeat with many blocks, so minimum 1 change is ok
-        assert len({block["pA"] for block in block_data}) > 1
-        assert len({block["pB"] for block in block_data}) > 1
-        assert len({block["pC"] for block in block_data}) > 1
+        assert len({block["pA"] for block in block_data}) > 1, "pA must vary in a probability change session"
+        assert len({block["pB"] for block in block_data}) > 1, "pB must vary in a probability change session"
+        assert len({block["pC"] for block in block_data}) > 1, "pC must vary in a probability change session"
+        logger.debug("All maze configurations are the same and all reward probabilities vary across blocks")
+    
     # In a barrier change session, maze configs vary and reward probabilities do not
     elif block_data[0]["task_type"] == "barrier change":
-        # All reward probabilities should be the same for all blocks
-        assert len({block["pA"] for block in block_data}) == 1
-        assert len({block["pB"] for block in block_data}) == 1
-        assert len({block["pC"] for block in block_data}) == 1
         # Maze configurations should be different for each block
-        assert len({block["maze_configuration"] for block in block_data}) == len(block_data)
+        assert len({block["maze_configuration"] for block in block_data}) == len(block_data), (
+            "Maze configurations must be different for each block in a barrier change session"
+        )
+        # All reward probabilities should be the same for all blocks
+        assert len({block["pA"] for block in block_data}) == 1, "pA should not vary in a barrier change session"
+        assert len({block["pB"] for block in block_data}) == 1, "pB should not vary in a barrier change session"
+        assert len({block["pC"] for block in block_data}) == 1, "pC should not vary in a barrier change session"
+        logger.debug("All maze configurations are different "
+                     "and all reward probabilities stay the same across blocks")
 
     summed_trials = 0
     # Check trials within each block
@@ -220,8 +264,15 @@ def validate_trial_and_block_data(trial_data: list, block_data: list):
 
         # All trial numbers in the block must be unique and match the range 1 to [num trials in block]
         num_trials_expected = block.get("num_trials")
-        assert len(set(trial_numbers)) == len(trial_numbers) == num_trials_expected
-        assert set(trial_numbers) == set(range(1, num_trials_expected + 1))
+        assert len(set(trial_numbers)) == len(trial_numbers) == num_trials_expected, (
+            f"Expected {num_trials_expected} trials in this block from the block data, got {len(trial_numbers)}"
+        )
+        assert set(trial_numbers) == set(range(1, num_trials_expected + 1)), (
+            "Trial numbers within this block are not unique and/or do not match the range 1 to [num trials in block]\n"
+            f"Expected trial numbers: {set(range(1, num_trials_expected + 1))}\n"
+            f"Got trial numbers {set(trial_numbers)}"
+        )
+        logger.debug(f"All trial numbers in this block are unique and match the range 1 to {num_trials_expected}")
 
         # Check time alignment between trials and blocks
         first_trial = min(trials_in_block, key=lambda t: t.get("trial_within_block"))
@@ -230,12 +281,14 @@ def validate_trial_and_block_data(trial_data: list, block_data: list):
         block_end = block.get("end_time")
 
         # The start of the first trial and end of the last trial must exactly match the start and end of the block
-        assert (
-            first_trial.get("start_time") == block_start
-        ), f"First trial start {first_trial.get('start_time')} does not match block start {block_start}"
-        assert (
-            last_trial.get("end_time") == block_end
-        ), f"Last trial end {last_trial.get('end_time')} does not match block end {block_end}"
+        assert first_trial.get("start_time") == block_start, (
+            f"First trial start {first_trial.get('start_time')} does not match block start {block_start}"
+        )
+        logger.debug(f"The start time of the first trial in the block matches the block start {block_start}")
+        assert last_trial.get("end_time") == block_end, (
+            f"Last trial end {last_trial.get('end_time')} does not match block end {block_end}"
+        )
+        logger.debug(f"The end time of the last trial in the block matches the block end {block_end}")
 
         # The start and end time of each trial in the block must be within the block time bounds
         for trial in trials_in_block:
@@ -247,14 +300,19 @@ def validate_trial_and_block_data(trial_data: list, block_data: list):
                 f"Trial {trial.get('trial_within_block')} end_time {trial.get('end_time')} "
                 f"is outside block bounds ({block_start} to {block_end})"
             )
+        logger.debug("The start and end time of each trial in the block is within the block time bounds")
 
         summed_trials += block.get("num_trials")
 
     # The summed number of trials in each block must match the total number of trials
-    assert summed_trials == len(trial_data)
+    assert summed_trials == len(trial_data), (
+        f"The summed number of trials in each block {summed_trials} "
+        f"does not match the total number of trials {len(trial_data)}"
+    )
+    logger.debug(f"The number of trials in each block sums to the total number of trials {len(trial_data)}")
 
 
-def add_behavior(nwbfile: NWBFile, metadata: dict):
+def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     print("Adding behavior...")
 
     # Get file paths for behavior from metadata file
@@ -272,6 +330,10 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
 
     # Make sure arduino text and arduino timestamps are the same length
     if len(arduino_text) != len(arduino_timestamps):
+        logger.error(
+            f"Mismatch in list lengths: arduino text has {len(arduino_text)} entries, "
+            f"but timestamps have {len(arduino_timestamps)} entries."
+        )
         raise ValueError(
             f"Mismatch in list lengths: arduino text has {len(arduino_text)} entries, "
             f"but timestamps have {len(arduino_timestamps)} entries."
@@ -279,17 +341,22 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
 
     # Convert arduino timestamps to corresponding photometry sample number
     arduino_timestamps, photometry_start_in_arduino_time = adjust_arduino_timestamps(arduino_timestamps)
+    logger.debug(f"Photometry start in arduino time: {photometry_start_in_arduino_time}")
 
     # Read through the arduino text and timestamps to get trial and block data
+    logger.debug("Parsing arduino text file...")
     trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps)
+    logger.debug(f"There are {len(block_data)} blocks and {len(trial_data)} trials")
 
     # Use block data to determine if this is a probability change or barrier change session
     session_type = determine_session_type(block_data)
     for block in block_data:
         block["task_type"] = session_type
+    logger.info(f"This is a {session_type} session")
 
     # Load maze configurations for each block from the maze configuration file
     maze_configurations = load_maze_configurations(maze_configuration_file_path)
+    logger.debug(f"Found {len(maze_configurations)} maze(s) in the maze configuration file")
 
     # Make sure the number of blocks matches the number of loaded maze configurations
     if len(block_data) != len(maze_configurations):
@@ -298,6 +365,10 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
         if len(maze_configurations) == 1 and session_type == "probability change":
             maze_configurations = maze_configurations * len(block_data)
         else:
+            logger.error(
+                f"There are {len(block_data)} blocks in the arduino text file, "
+                f"but {len(maze_configurations)} mazes in the maze configuration file. "
+            )
             raise ValueError(
                 f"There are {len(block_data)} blocks in the arduino text file, "
                 f"but {len(maze_configurations)} mazes in the maze configuration file. "
@@ -312,10 +383,13 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
 
     # Add the maze configuration to the metadata for each block
     for block, maze in zip(block_data, maze_configurations):
+        logger.debug(f"Found maze configuration: {barrier_set_to_string(maze)}")
         block["maze_configuration"] = barrier_set_to_string(maze)
 
     # Do some checks on trial and block data before adding to the NWB
-    validate_trial_and_block_data(trial_data, block_data)
+    logger.debug("Validating trial and block data...")
+    validate_trial_and_block_data(trial_data, block_data, logger)
+    logger.debug("All validation checks passed.")
 
     # Add columns for block data to the NWB file
     block_table = nwbfile.create_time_intervals(
@@ -361,6 +435,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     # Convert times from arduino time (ms) to seconds for NWB
 
     # Add each block to the block table in the NWB
+    logger.debug("Adding each block to the block table in the NWB")
     for block in block_data:
         block_table.add_row(
             epoch=1, # Berke Lab only has one epoch (session) per day
@@ -376,6 +451,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
         )
  
     # Add each trial to the NWB
+    logger.debug("Adding each trial to the trial table in the NWB")
     for trial in trial_data:
         nwbfile.add_trial(
             epoch=1, # Berke Lab only has one epoch (session) per day
@@ -394,6 +470,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
         )
 
     # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects
+    logger.debug("Saving the arduino text file and arduino timestamps file as AssociatedFiles objects")
     with open(arduino_text_file_path, "r") as arduino_text_file:
         raw_arduino_text = arduino_text_file.read()
     with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
@@ -421,5 +498,3 @@ def add_behavior(nwbfile: NWBFile, metadata: dict):
     
     # Return photometry start in arduino time for video/DLC and behavioral alignment with photometry
     return photometry_start_in_arduino_time
-
-    # NOTE: the start/end times are in photometry samples, but NWB wants seconds relative to the start of the recording

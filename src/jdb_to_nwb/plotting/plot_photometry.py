@@ -11,8 +11,8 @@ def plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405,
     """
     Plots the raw 470, 405, 565 and ratiometric 470/405 fluorescence signals.
     """
-    xvals = np.arange(0,len(raw_green))/sampling_rate/60 
-    pulse_times_in_mins = [time / 60000 for time in visits]
+    xvals = np.arange(0,len(raw_green)) / sampling_rate / 60 
+    pulse_times_in_mins = [time / sampling_rate / 60 for time in visits]
 
     raw = plt.figure(figsize=(16, 10))
     plt.suptitle('Raw & ratiometric 470/405 fluorescence signals', fontsize=16)
@@ -25,6 +25,8 @@ def plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405,
 
     ax2 = raw.add_subplot(412, sharex=ax1)
     ax2.plot(xvals,raw_405,color='purple',lw=1.5,label='raw 405 (V)')
+    ax1.plot(pulse_times_in_mins, np.full(np.size(pulse_times_in_mins), np.max(raw_green)), 
+             label='Reward Cue', color='w', marker="|", mec='k', ms=10)
     ax2.legend()
 
     ax3 = raw.add_subplot(413, sharex=ax1)
@@ -146,8 +148,8 @@ def plot_normalized_signals(visits, green_zscored, zscored_405, red_zscored,
                             ratio_zscored, sampling_rate, fig_dir=None):
     """
     """
-    xvals = np.arange(0,len(green_zscored))/sampling_rate/60
-    pulse_times_in_mins = [time / 60000 for time in visits]
+    xvals = np.arange(0,len(green_zscored))/ sampling_rate / 60
+    pulse_times_in_mins = [time / sampling_rate / 60 for time in visits]
     
     zscrd = plt.figure(figsize=(16, 10))
     plt.suptitle("Z-scored signals calculated after preprocessing raw signals \n "

@@ -5,7 +5,7 @@ from pynwb import NWBFile
 from jdb_to_nwb.convert_video import add_video
 
 
-def test_add_video():
+def test_add_video(dummy_logger):
     """Test the add_video function."""
 
     metadata = {}
@@ -21,7 +21,8 @@ def test_add_video():
         identifier="mock_session",
     )
 
-    add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=test_output_video_path)
+    add_video(nwbfile=nwbfile, metadata=metadata, 
+              output_video_path=test_output_video_path, logger=dummy_logger)
 
     # Test that the nwbfile has the expected associated video file
     assert "video_files" in nwbfile.processing
@@ -39,7 +40,7 @@ def test_add_video():
     assert behavior_video.description == "Video of animal behavior in the hex maze"
 
 
-def test_add_video_with_incomplete_metadata(capsys):
+def test_add_video_with_incomplete_metadata(capsys, dummy_logger):
     """
     Test that the add_video function responds appropriately to missing or incomplete metadata.
     
@@ -64,7 +65,8 @@ def test_add_video_with_incomplete_metadata(capsys):
     test_output_video_path = "tests/test_data/downloaded/output/test_video.mp4"
 
     # Call the add_video function with no 'video' key in metadata
-    add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=test_output_video_path)
+    add_video(nwbfile=nwbfile, metadata=metadata, 
+              output_video_path=test_output_video_path, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
 
     # Check that the correct message was printed to stdout
@@ -74,7 +76,8 @@ def test_add_video_with_incomplete_metadata(capsys):
     metadata["video"] = {}
 
     # Call the add_video function with 'video' key in metadata, but no video subfields
-    add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=test_output_video_path)
+    add_video(nwbfile=nwbfile, metadata=metadata, 
+              output_video_path=test_output_video_path, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
 
     # Check that the skip message was printed to stdout

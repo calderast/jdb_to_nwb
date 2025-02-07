@@ -5,7 +5,7 @@ from pynwb import NWBFile
 from jdb_to_nwb.convert_behavior import add_behavior
 
 
-def test_convert_behavior():
+def test_convert_behavior(dummy_logger):
     """Test the add_behavior function."""
 
     # Test data is copied from /Volumes/Tim/Photometry/IM-1478/07252022/
@@ -21,7 +21,7 @@ def test_convert_behavior():
         identifier="mock_session",
     )
 
-    photometry_start_in_arduino_time = add_behavior(nwbfile, metadata)
+    photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     
     # Test that we got the expected photometry start time for this session
     assert photometry_start_in_arduino_time == 55520059.6736
