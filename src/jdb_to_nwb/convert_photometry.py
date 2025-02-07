@@ -239,6 +239,7 @@ def run_lockin_detection(phot, logger):
     ref2 = ref2[remove:]
 
     loc = phot["channels"][2]["location"][:15]  # First 15 characters of the location
+    logger.debug(f"The location of the fiber is: {loc}")
 
     # Create a dict with the relevant signals to match signals.mat returned by the original MATLAB processing code
     # NOTE: We don't use sig2 and ref2 - these may be removed in a future PR but are kept for posterity for now
@@ -491,8 +492,10 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     # Low pass filter at 10Hz to remove high frequency noise
     print('Filtering data...')
-    logger.info('Filtering photometry signals with a low pass filter at 10Hz to remove high frequency noise...')
-    b,a = butter(2, 10, btype='low', fs=sampling_rate)
+    lowpass_cutoff = 10
+    logger.info(f'Filtering photometry signals with a low pass filter at {lowpass_cutoff} Hz'
+                ' to remove high frequency noise...')
+    b,a = butter(2, lowpass_cutoff, btype='low', fs=sampling_rate)
     green_denoised = filtfilt(b,a, raw_green)
     red_denoised = filtfilt(b,a, raw_red)
     ratio_denoised = filtfilt(b,a, relative_raw_signal)
@@ -500,9 +503,10 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     # High pass filter at 0.001Hz to removes drift due to photobleaching
     # Note that this will also remove any physiological variation in the signal on very slow timescales
-    logger.info("Filtering photometry signals with a high pass filter at 0.001Hz "
+    highpass_cutoff = 0.001
+    logger.info(f"Filtering photometry signals with a high pass filter at {highpass_cutoff} Hz "
                 "to remove drift due to photobleaching...")
-    b,a = butter(2, 0.001, btype='high', fs=sampling_rate)
+    b,a = butter(2, highpass_cutoff, btype='high', fs=sampling_rate)
     green_highpass = filtfilt(b,a, green_denoised, padtype='even')
     red_highpass = filtfilt(b,a, red_denoised, padtype='even')
     ratio_highpass = filtfilt(b,a, ratio_denoised, padtype='even')
@@ -615,10 +619,10 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     """
 
     # Downsample the raw data from 10 kHz to 250 Hz by taking every 40th sample
-    print("Downsampling raw LabVIEW data to 250 Hz...")
-    logger.info("Downsampling raw LabVIEW data from 10 kHz to 250 Hz by taking every 40th sample...")
     SR = 10000  # Original sampling rate of the photometry system (Hz)
     Fs = 250  # Target downsample frequency (Hz)
+    print(f"Downsampling raw LabVIEW data to {Fs} Hz...")
+    logger.info(f"Downsampling raw LabVIEW data from 10 kHz to {Fs} Hz by taking every {int(SR / Fs)}th sample...")
     # Use np.squeeze to deal with the fact that signals from our dict are 1D but signals.mat are 2D
     raw_reference = pd.Series(np.squeeze(signals["ref"])[:: int(SR / Fs)])
     raw_green = pd.Series(np.squeeze(signals["sig1"])[:: int(SR / Fs)])
