@@ -51,7 +51,7 @@ def assign_pixels_per_cm(date_str):
     return pixels_per_cm
 
 
-def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps=15):
+def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9, cam_fps=15):
     """
     Read position data from the DeepLabCut file that contains algorithm name and position data
 
@@ -75,10 +75,11 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps
     # The bodypart names are stored as second-level columns
     body_part_names = set(dlc_position.columns.get_level_values('bodyparts'))
     print("Found DeepLabCut bodyparts:", body_part_names)
+    logger.info("Found DeepLabCut bodyparts:", body_part_names)
 
     body_part_dfs = []
     for body_part in list(body_part_names):
-        print(f"Processing DLC bodypart {body_part}...")
+        logger.info(f"Processing DLC bodypart {body_part}...")
     
         # Split the dataframe based on the body part
         bodypart_df = dlc_position.loc[:, dlc_position.columns.get_level_values('bodyparts') == body_part]
@@ -88,17 +89,21 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, likelihood_cutoff=0.9, cam_fps
         assert set(bodypart_df.columns) == {'x', 'y', 'likelihood'}, (
             f"Expected {body_part} columns x, y, and likelihood, got {bodypart_df.columns}"
         )
+        logger.debug(f"Found expected columns {set(bodypart_df.columns)} for bodypart {body_part}")
 
         # Replace x, y coordinates where DLC has low confidence with NaN
+        logger.debug(f"Replacing x, y coordinates where DLC has likelihood<{likelihood_cutoff} with NaN")
         position = bodypart_df[['x', 'y', 'likelihood']].copy()
         position.loc[position['likelihood'] < likelihood_cutoff, ['x', 'y']] = np.nan
 
         # Remove abrupt jumps of position bigger than a body of rat (30cm)
         pixel_jump_cutoff = 30 * pixels_per_cm
+        logger.debug(f"Removing abrupt position jumps larger than 30cm ({pixel_jump_cutoff} pixels)")
         position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
         position.loc[position.x.notnull(),['x','y']].values, pixel_jump_cutoff)
 
         # Fill the missing gaps
+        logger.debug("Filling missing gaps with interpolated position values")
         position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
         # Calculate velocity and acceleration
@@ -186,7 +191,7 @@ def calculate_velocity_acceleration(x, y, fps, pixels_per_cm):
     return velocity, acceleration
 
 
-def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per_cm, video_timestamps):
+def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per_cm, video_timestamps, logger):
     """
     Add position data to the nwbfile as a SpatialSeries in the behavior processing module.
     
@@ -200,11 +205,13 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     
     # Convert pixels_per_cm to meters_per_pixel for consistency with Frank Lab
     meters_per_pixel = 0.01 / pixels_per_cm
+    logger.debug(f"Meters per pixel: {meters_per_pixel}")
 
     # Convert video timestamps to seconds to match NWB standard
     video_timestamps_seconds = video_timestamps / 1000
 
     # Make a processing module for behavior and add to the nwbfile
+    logger.debug("Creating nwb behavior processing module for position data")
     if "behavior" not in nwbfile.processing:
         nwbfile.create_processing_module(
             name="behavior", description="Contains all behavior-related data"
@@ -214,6 +221,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     
     # Add x,y position to the nwb as a SpatialSeries for each tracked body part
     for body_part_name, body_part_position_df in position_data:
+        logger.info(f"Adding position data for {body_part_name} to the nwb...")
         print(f"Adding position data for {body_part_name} to the nwb...")
         position.create_spatial_series(
             name=f"{body_part_name}_position",
@@ -228,6 +236,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
         # Add DLC position likelihood as a timeseries to the behavior processing module
         # We may want this in the future if we adjust our likelihood threshold
         # It may also be helpful to know which coordinates are "real" and which were interpolated
+        logger.debug("Adding DLC position likelihood as a timeseries to the behavior processing module")
         nwbfile.processing["behavior"].add(
             TimeSeries(
                 name=f"DLC_likelihood_{body_part_name}",
@@ -248,7 +257,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     nwbfile.processing["behavior"].add(position)
 
 
-def add_dlc(nwbfile: NWBFile, metadata: dict):
+def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
 
     if "video" not in metadata:
         # Do not print "no video metadata found" message, because we already print that in add_video
@@ -258,13 +267,19 @@ def add_dlc(nwbfile: NWBFile, metadata: dict):
     # The user may wish to only convert the raw video file and do position tracking later
     if "dlc_path" not in metadata["video"]:
         print("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
+        logger.info("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
         return
 
     # If we do have dlc_path, we must also have video timestamps for DLC conversion
     if "video_timestamps_file_path" not in metadata["video"]:
+        logger.error("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
+            "This is required along with 'dlc_path' for DLC position conversion. \n"
+            "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
+            )
         raise ValueError("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
             "This is required along with 'dlc_path' for DLC position conversion. \n"
-            "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata.")
+            "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
+            )
     else:
         # Read timestamps of each camera frame (in ms)
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
@@ -272,6 +287,7 @@ def add_dlc(nwbfile: NWBFile, metadata: dict):
             video_timestamps = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
 
     print("Adding position data from DeepLabCut...")
+    logger.info("Adding position data from DeepLabCut...")
 
     # Metadata should include the full path to the DLC h5 file
     # e.g. Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
@@ -280,16 +296,17 @@ def add_dlc(nwbfile: NWBFile, metadata: dict):
     # If pixels_per_cm exists in metadata, use that value
     if "pixels_per_cm" in metadata["video"]:
         PIXELS_PER_CM = metadata["video"]["pixels_per_cm"]
-        print(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
+        logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
     # Otherwise, assign it based on the date of the experiment
     else:
         PIXELS_PER_CM = assign_pixels_per_cm(metadata["date"])
-        print("No 'pixels_per_cm' value found in video metadata.")
-        print(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
+        logger.info("No 'pixels_per_cm' value found in video metadata.")
+        logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
 
     # Read x, y position data and calculate velocity and acceleration
-    position_dfs = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, likelihood_cutoff=0.9, cam_fps=15)
+    position_dfs = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, logger=logger, 
+                            likelihood_cutoff=0.9, cam_fps=15)
 
     # Add x, y position data to the nwbfile
     add_position_to_nwb(nwbfile, position_data=position_dfs, 
-                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps)
+                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps, logger=logger)
