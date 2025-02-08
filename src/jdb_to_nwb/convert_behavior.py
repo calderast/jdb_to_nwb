@@ -153,16 +153,44 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                         block_data.append(previous_block)
                         previous_block = current_block
                         trial_within_block = 1
-
+                # If we have reached the last timestamp of the file while in the middle of a beam break,
+                # make the trial end time the last timestamp
+                elif i == len(arduino_timestamps)-1:
+                    # Add the last trial
+                    trial_data.append(current_trial)
+                    # Reset trial data (make current_trial = None) so we don't add it twice
+                    previous_trial = current_trial
+                    current_trial = {}
+                    
+                    # We sometimes have the case where the last trial in the session triggers a new block
+                    # (if we choose to stop the recording after the rat has completed a full block)
+                    # This new block does not actually have any trials, so don't add it.
+                    # But make sure to add the previous block
+                    if not current_block["start_time"]:
+                        # Add the previous block (the block that ends at the end of this session)
+                        previous_block["end_time"] = float(arduino_timestamps[i])
+                        previous_block["num_trials"] = previous_trial.get("trial_within_block")
+                        block_data.append(previous_block)
+                        # Make the current block (the new block that this trial started) empty
+                        # so we don't add it. 
+                        current_block = {}
+    
     # Append the last trial if it exists
     if current_trial:
         trial_data.append(current_trial)
         previous_trial = current_trial
+        
+    # If the last trial in the session triggered a new block,
+    # but there are not actually any trials in that block, do not add it.
+    # This is the case if the start time of our block is the end time of our last trial.
+    if previous_trial.get("end_time") == current_block.get("start_time"):
+        current_block = {}
 
-    # Append the last block
-    current_block["end_time"] = float(previous_trial["end_time"])
-    current_block["num_trials"] = previous_trial.get("trial_within_block")
-    block_data.append(current_block)
+    # Append the last block if it exists
+    if current_block:
+        current_block["end_time"] = float(previous_trial["end_time"])
+        current_block["num_trials"] = previous_trial.get("trial_within_block")
+        block_data.append(current_block)
 
     return trial_data, block_data
 
@@ -236,13 +264,16 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
         assert len({block["maze_configuration"] for block in block_data}) == 1, (
             "All maze configurations must be the same for a probability change session"
         )
-        # Reward probabilities should vary
-        # They may eventually repeat with many blocks, so minimum 1 change is ok
-        assert len({block["pA"] for block in block_data}) > 1, "pA must vary in a probability change session"
-        assert len({block["pB"] for block in block_data}) > 1, "pB must vary in a probability change session"
-        assert len({block["pC"] for block in block_data}) > 1, "pC must vary in a probability change session"
+        # Reward probabilities should vary.
+        # We check for any changes instead of all because of cases like where we have only 2 
+        # blocks and only 2 of the probabilities change (e.g. pA and pB switch, pC stays the same)
+        assert any([
+            len({block["pA"] for block in block_data}) > 1,
+            len({block["pB"] for block in block_data}) > 1,
+            len({block["pC"] for block in block_data}) > 1
+        ]), "pA, pB, or pC must vary in a probability change session"
         logger.debug("All maze configurations are the same and all reward probabilities vary across blocks")
-    
+
     # In a barrier change session, maze configs vary and reward probabilities do not
     elif block_data[0]["task_type"] == "barrier change":
         # Maze configurations should be different for each block
