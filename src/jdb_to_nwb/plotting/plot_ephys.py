@@ -17,7 +17,7 @@ def plot_channel_map(probe_name, channel_map, channel_geometry, fig_dir=None):
     # First establish the plot limits using scatter (otherwise the text labels will take forever to draw)
     x_coords = channel_geometry.iloc[channel_map]['x']
     y_coords = channel_geometry.iloc[channel_map]['y']
-    plt.scatter(x_coords, y_coords, alpha=0)  # invisible points to set boundaries
+    plt.scatter(x_coords, y_coords, color='black')  # visible points
     
     # Then plot the text labels
     for channel_num in channel_map:
@@ -33,3 +33,4 @@ def plot_channel_map(probe_name, channel_map, channel_geometry, fig_dir=None):
         save_path = os.path.join(fig_dir, "channel_map.png")
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
+
