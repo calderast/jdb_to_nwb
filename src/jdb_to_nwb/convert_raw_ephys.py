@@ -304,7 +304,7 @@ def get_raw_ephys_data(
                 )
             else:
                 filtering[channel.attrib["number"]] = "No filtering"
-                raise ValueError(f"Channel {channel.attrib['number']}: No filtering")
+                #raise ValueError(f"Channel {channel.attrib['number']}: No filtering")
     else:
         raise ValueError("No bandpass filter found in the settings.xml file.")
 
