@@ -252,6 +252,9 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
     """
     Process the .phot and .box files from Labview into a "signals" dict, 
     replacing former MATLAB preprocessing code that created signals.mat
+    
+    Also adds the start time of the Labview recording as a datetime object 
+    to the returned signals dict
     """
 
     # Read .phot file from Labview into a dict
@@ -287,8 +290,9 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
     photometry_start = datetime.strptime(f"{phot_dict['date']} {phot_dict['time']}".strip(), "%Y-%m-%d %H-%M-%S")
     photometry_start = photometry_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"LabVIEW photometry start time: {photometry_start}")
+    signals["photometry_start"] = photometry_start
     
-    # Return signals dict equivalent to signals.mat
+    # Return signals dict equivalent to signals.mat (with added photometry_start datetime object)
     return signals
 
 
@@ -474,6 +478,12 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     analog_1: 470 nm (gACh)
     analog_2: 565 nm (rDA3m)
     analog_3: 405 nm (for ratiometric correction of gACh)
+    
+    Returns: 
+    dict with keys
+    - sampling_rate: int (Hz)
+    - port_visits: list of port visits in photometry time
+    - photometry_start: datetime object marking the start time of photometry recording
     """
     
     logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (gACh), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
@@ -483,12 +493,16 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     raw_405 = pd.Series(ppd_data['analog_3'])
     relative_raw_signal = raw_green / raw_405
 
-    sampling_rate = ppd_data['sampling_rate']
     visits = ppd_data['pulse_inds_1'][1:]
-    photometry_start = ppd_data['date_time']
+    logger.debug(f"There were {len(visits)} port visits recorded by pyPhotometry")
+    sampling_rate = ppd_data['sampling_rate']
     logger.info(f"pyPhotometry sampling rate: {sampling_rate} Hz")
+
+    # Convert pyphotometry photometry start time to datetime object and set timezone to Pacific Time
+    photometry_start = datetime.strptime(ppd_data['date_time'], "%Y-%m-%dT%H:%M:%S.%f")
+    photometry_start = photometry_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"pyPhotometry start time: {photometry_start}")
-    
+
     logger.debug("Read data from ppd file:")
     for phot_key in ppd_data:
         logger.debug(f"{phot_key}: {ppd_data[phot_key]}")
@@ -618,16 +632,23 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     nwbfile.add_acquisition(z_scored_ratio_response_series)
 
     # Return sampling rate and port visits in downsampled photometry time (86 Hz) to use for alignment
-    return sampling_rate, visits
+    return {'sampling_rate': sampling_rate, 'port_visits': visits, 'photometry_start': photometry_start}
 
 
 def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     """
     Process LabVIEW signals and add the processed signals to the NWB file.
 
-    Assumes:
+    Assumes
     sig1: 470 nm (dLight)
     ref: 405 nm (isosbestic wavelength)
+    
+    Returns: 
+    dict with keys
+    - sampling_rate: int (Hz)
+    - port_visits: list of port visits in photometry time
+    - photometry_start: datetime object marking the start time of photometry recording,
+    or None if we are starting from processed signals.mat so no start time was found
     """
     logger.debug("Using signals mat: ")
     logger.debug(signals)
@@ -739,8 +760,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     nwbfile.add_acquisition(raw_green_response_series)
     nwbfile.add_acquisition(raw_reference_response_series)
 
-    # Return port visits in downsampled photometry time (250 Hz) to use for alignment
-    return Fs, port_visits
+    # Return sampling rate and port visits in downsampled photometry time (250 Hz) to use for alignment
+    return {'sampling_rate': Fs, 'port_visits': port_visits, 'photometry_start': signals.get('photometry_start')}
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
@@ -850,7 +871,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     if "photometry" not in metadata:
         print("No photometry metadata found for this session. Skipping photometry conversion.")
         logger.info("No photometry metadata found for this session. Skipping photometry conversion.")
-        return None, None
+        return {}
 
     # Add photometry metadata to the NWB
     print("Adding photometry metadata to NWB...")
@@ -866,18 +887,20 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
         signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
-        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals, logger)
+        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger)
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
     elif "signals_mat_file_path" in metadata["photometry"]:
         # Load signals.mat created by external MATLAB photometry processing code
         logger.info("Using LabVIEW for photometry!")
         logger.info("Processing signals.mat file of photometry signals from LabVIEW...")
+        logger.warning("Using signals.mat instead of raw .phot and .box file means the exact photometry start time\n"
+                       "(time of day) is not recorded. Using the raw LabVIEW data is preferred for this reason.")
         print("Processing signals.mat file of photometry signals from LabVIEW...")
         signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
         signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
-        sampling_rate, visits = process_and_add_labview_to_nwb(nwbfile, signals, logger)
-      
+        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger)
+    
     # If we have a ppd file from pyPhotometry
     elif "ppd_file_path" in metadata["photometry"]:
         # Process ppd file from pyPhotometry and add signals to the NWB
@@ -885,7 +908,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         logger.info("Processing ppd file from pyPhotometry...")
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        sampling_rate, visits = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, logger, fig_dir)
+        photometry_data_dict = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, logger, fig_dir)
 
     else:
         logger.error("The required photometry subfields do not exist in the metadata dictionary.")
@@ -899,4 +922,4 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             "If you are using pyPhotometry, you must include 'ppd_file_path'."
         )
 
-    return sampling_rate, visits
+    return photometry_data_dict

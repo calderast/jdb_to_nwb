@@ -121,7 +121,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         source_script_file_name="convert.py",
     )
 
-    add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
     add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
@@ -134,15 +134,22 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # TODO: Time alignment? Or just assign the same time=0 and let NWB do the rest?
     # If photometry is present, timestamps should be aligned to the photometry
     # otherwise ephys, otherwise behavior
-    # For this alignment, add_photometry returns: phot_sampling_rate, port_visits
+    #
+    # For this alignment, add_photometry returns a photometry_data_dict with keys:
+    # - sampling_rate: int (Hz)
+    # - port visits: list of port visits in photometry time
+    # - photometry_start: datetime object marking the start time of photometry recording
     # and add_behavior returns: photometry_start_in_arduino_time
     # For now, ignore that these functions return values because we don't use them yet
     
     # DLC / spatial series currently start at photometry start, so we want to subtract that out!
     
-
-    # TODO: Reset the session start time to the earliest of the data streams
-    nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
+    # If we have a recorded photometry start time, use that as the session start time
+    if photometry_data_dict.get('photometry_start') is not None:
+        nwbfile.fields["session_start_time"] = photometry_data_dict.get('photometry_start')
+    else:
+        # Placeholder
+        nwbfile.fields["session_start_time"] = datetime.now(tz.tzlocal())
 
     print("Writing file...")
     output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
