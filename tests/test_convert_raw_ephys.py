@@ -178,7 +178,7 @@ def test_add_ephys_with_incomplete_metadata(capsys):
 
     # Check that the correct message was printed to stdout
     assert "No ephys metadata found for this session. Skipping ephys conversion." in captured.out
-    assert ephys_start == None
+    assert ephys_start is None
 
     # Create a test metadata dictionary with an ephys field but no ephys data
     metadata["ephys"] = {}
@@ -186,5 +186,5 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     # Check that add_raw_ephys raises a ValueError about missing fields in the metadata dictionary
     ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr()
-    assert ephys_start == None
+    assert ephys_start is None
     assert "The required ephys subfields do not exist in the metadata dictionary" in captured.out
