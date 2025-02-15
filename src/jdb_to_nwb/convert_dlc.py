@@ -2,49 +2,33 @@ import csv
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
 
 
-def parse_date(date_str):
-    """Return a datetime object from a date in either MMDDYYYY or YYYYMMDD format."""
-    if len(date_str) != 8:
-        raise ValueError("Date string must be exactly 8 characters long.")
-    
-    # Auto-detect the date format: if date starts with "20", it must be YYYYMMDD format
-    if date_str.startswith("20"):
-        date_format = "%Y%m%d"
-    # Otherwise, assume MMDDYYYY
-    else:
-        date_format = "%m%d%Y"
-    return datetime.strptime(date_str, date_format)
-
-
-def assign_pixels_per_cm(date_str):
+def assign_pixels_per_cm(session_date):
     """
-    Assigns constant PIXELS_PER_CM based on the provided date string in MMDDYYYY or YYYYMMDD format.
+    Assigns default PIXELS_PER_CM based on the date of the session.
     PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01/01/2023), 
     2.3 before (01/11/2024), or 2.688 after (old maze)
 
     Args:
-    date_str (str): Date string in MMDDYYYY or YYMMDDDD format.
+    session_date (datetime): Datetime object for the date of this session
 
     Returns:
     float: The corresponding PIXELS_PER_CM value.
     """
 
-    # Convert date from MMDDYYYY or YYYYMMDD format to datetime object
-    date = parse_date(str(date_str))
-
     # Define cutoff dates
-    cutoff1 = datetime.strptime("12312022", "%m%d%Y")  # December 31, 2022
-    cutoff2 = datetime.strptime("01112024", "%m%d%Y")  # January 11, 2024
+    cutoff1 = datetime.strptime("12312022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Dec 31, 2022
+    cutoff2 = datetime.strptime("01112024", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Jan 11, 2024
 
-    # Assign pixels per cm based on the date
-    if date <= cutoff1:
+    # Assign pixels per cm based on the session date
+    if session_date <= cutoff1:
         pixels_per_cm = 3.14
-    elif cutoff1 < date <= cutoff2:
+    elif cutoff1 < session_date <= cutoff2:
         pixels_per_cm = 2.3
     else:
         pixels_per_cm = 2.688 # After January 11, 2024
@@ -299,7 +283,7 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
         logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
     # Otherwise, assign it based on the date of the experiment
     else:
-        PIXELS_PER_CM = assign_pixels_per_cm(metadata["date"])
+        PIXELS_PER_CM = assign_pixels_per_cm(metadata["datetime"])
         logger.info("No 'pixels_per_cm' value found in video metadata.")
         logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
 

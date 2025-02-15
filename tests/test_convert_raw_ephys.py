@@ -2,6 +2,7 @@ from datetime import datetime
 
 import numpy as np
 from dateutil import tz
+from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 
 from jdb_to_nwb.convert_raw_ephys import add_electrode_data, add_raw_ephys, get_raw_ephys_data
@@ -125,7 +126,7 @@ def test_add_raw_ephys():
         "manufacturer": "Test Manufacturer",
     }
 
-    add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
     assert len(nwbfile.electrodes) == 256
     assert len(nwbfile.electrode_groups) == 1
@@ -141,6 +142,10 @@ def test_add_raw_ephys():
     assert es.electrodes.data == list(range(256))
     assert es.timestamps.shape == (3_000,)
     assert es.conversion == 0.19499999284744263 * 1e-6
+    
+    expected_ephys_start = datetime.strptime("2022-07-25_15-30-00", "%Y-%m-%d_%H-%M-%S")
+    expected_ephys_start = expected_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
+    assert ephys_start == expected_ephys_start
 
 
 def test_add_ephys_with_incomplete_metadata(capsys):
@@ -168,16 +173,18 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     # It should print that we are skipping ephys conversion
     # This should not raise any errors, as omitting the 'ephys' key is a 
     # valid way to specify that we have no ephys data for this session.
-    add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr() # capture stdout
 
     # Check that the correct message was printed to stdout
     assert "No ephys metadata found for this session. Skipping ephys conversion." in captured.out
+    assert ephys_start == None
 
     # Create a test metadata dictionary with an ephys field but no ephys data
     metadata["ephys"] = {}
 
     # Check that add_raw_ephys raises a ValueError about missing fields in the metadata dictionary
-    add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr()
+    assert ephys_start == None
     assert "The required ephys subfields do not exist in the metadata dictionary" in captured.out
