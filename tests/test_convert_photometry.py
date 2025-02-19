@@ -48,6 +48,11 @@ def test_process_raw_labview_photometry_signals(dummy_logger):
     box_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
     signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, dummy_logger)
 
+    # Returned signals dict should include photometry_start as a datetime object
+    assert isinstance(signals.get('photometry_start'), datetime), (
+        f"Expected signals dict to include 'photometry_start' as a datetime object, "
+        f"got 'photometry_start'={signals.get('photometry_start')}")
+
     # Ensure all relevant keys are present in both the reference and created signals dict
     expected_keys = {"sig1", "sig2", "loc", "ref", "visits"}
     for key in expected_keys:
@@ -117,15 +122,23 @@ def test_add_photometry_from_signals_mat(dummy_logger):
     )
 
     # Add photometry data to the nwbfile
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
     expected_sampling_rate = 250  # Hz
 
     # Assert that we have returned the correct sampling rate
-    assert sampling_rate == expected_sampling_rate, (
-        f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz")
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    # We expect photometry_start = None when starting photometry conversion from signals.mat
+    assert photometry_data_dict.get('photometry_start') is None, (
+        f"Expected 'photometry_start' = None when starting from signals.mat, "
+        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
+    # Assert that the returned photometry_data_dict includes port_visits as a list or array
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
+    )
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -193,15 +206,23 @@ def test_add_photometry_from_raw_labview(dummy_logger):
     )
 
     # Add photometry data to the nwbfile
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_green", "raw_reference", "z_scored_green_dFF", "z_scored_reference_fitted"}
     expected_sampling_rate = 250  # Hz
 
     # Assert that we have returned the correct sampling rate
-    assert sampling_rate == expected_sampling_rate, (
-        f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz")
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    # Assert that we have returned photometry_start as a datetime object
+    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
+        f"Expected photometry data dict to include 'photometry_start' as a datetime object, "
+        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
+    # Assert that the returned photometry_data_dict includes port_visits as a list or array
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
+    )
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -275,7 +296,7 @@ def test_add_photometry_from_pyphotometry(dummy_logger):
     )
 
     # Add photometry data to the nwbfile
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
     expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565", 
@@ -283,8 +304,16 @@ def test_add_photometry_from_pyphotometry(dummy_logger):
     expected_sampling_rate = 86 # Hz
 
     # Assert that we have returned the correct sampling rate
-    assert sampling_rate == expected_sampling_rate, (
-        f"Expected sampling rate {expected_sampling_rate} Hz, got {sampling_rate} Hz")
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    # Assert that we have returned photometry_start as a datetime object
+    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
+        f"Expected photometry data dict to include 'photometry_start' as a datetime object, "
+        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
+    # Assert that the returned photometry_data_dict includes port_visits as a list or array
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
+    )
 
     # Assert that all expected photometry series are present in the acquisition field of the nwbfile
     actual_photometry_series = set(nwbfile.acquisition.keys())
@@ -415,13 +444,14 @@ def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
     # valid way to specify that we have no photometry data for this session.
     
     # Call the add_photometry function with no 'photometry' key in metadata
-    sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
     
-    # Check that the correct message was printed to stdout and returned sampling_rate and visits is None
+    # Check that the correct message was printed to stdout and returned dict is empty
     assert "No photometry metadata found for this session. Skipping photometry conversion." in captured.out
-    assert sampling_rate is None
-    assert visits is None
+    assert photometry_data_dict.get('sampling_rate') is None
+    assert photometry_data_dict.get('port_visits') is None
+    assert photometry_data_dict.get('photometry_start') is None
     
     # Create a test metadata dictionary with a photometry field and metadata but no photometry data
     metadata["photometry"] = {}
@@ -429,7 +459,7 @@ def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
     
     # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
     try:
-        sampling_rate, visits = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+        photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     except ValueError as e:
         assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
     else:

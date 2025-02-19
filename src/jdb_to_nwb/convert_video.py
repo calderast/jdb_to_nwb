@@ -58,6 +58,9 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
         video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
 
+    # Adjust video timestamps so photometry starts at time 0
+    video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
+
     # Convert video timestamps to seconds to match NWB standard
     video_timestamps_seconds = video_timestamps_ms / 1000
 
