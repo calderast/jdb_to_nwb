@@ -28,20 +28,17 @@ def load_maze_configurations(maze_configuration_file_path: Path):
 
 
 def adjust_arduino_timestamps(arduino_timestamps: list):
-    """Convert arduino timestamps to corresponding photometry sample number."""
+    """Convert arduino timestamps to seconds and make photometry start at time 0"""
     # The photometry start time is always the second timestamp in arduino_timestamps
-    photometry_start = arduino_timestamps[1]
+    photometry_start_in_arduino_ms = arduino_timestamps[1]
 
     # Adjust all arduino timestamps so the photometry starts at time zero
-    arduino_timestamps = np.subtract(arduino_timestamps, photometry_start)
+    arduino_timestamps = np.subtract(arduino_timestamps, photometry_start_in_arduino_ms)
 
-    # In our previous pipeline, we converted arduino timestamps to corresponding photometry sample number (below)
-    # Target rate = 250 samples/sec from 10 KHz initial sample rate (same as photometry)
-    # (This is named 'ardstamps' in the original conversion code)
-    # photometry_sample_for_arduino_event = np.round(arduino_timestamps * (250 / 1000)).astype(int)
-    # Removing this part because we now do alignment differently,
-    # but keeping for posterity for now and forever in git history :)
-    return arduino_timestamps, photometry_start
+    # Convert timestamps from ms to seconds
+    arduino_timestamps = arduino_timestamps / 1000
+
+    return arduino_timestamps, photometry_start_in_arduino_ms
 
 
 def determine_session_type(block_data: list):
@@ -136,9 +133,10 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                 current_trial["end_time"] = float(arduino_timestamps[i])
 
                 # If the next timestamp is far enough away (>100ms), the beam break is over, so end the trial
+                beam_break_time_thresh = 0.1 # seconds
                 if (i < len(arduino_timestamps) - 1) and (
                     arduino_timestamps[i + 1] - current_trial["beam_break_end"]
-                ) >= 100:
+                ) >= beam_break_time_thresh:
                     trial_data.append(current_trial)
                     # Reset trial data
                     previous_trial = current_trial
@@ -345,6 +343,7 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
 
 def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     print("Adding behavior...")
+    logger.info("Adding behavior...")
 
     # Get file paths for behavior from metadata file
     arduino_text_file_path = metadata["behavior"]["arduino_text_file_path"]
@@ -370,14 +369,14 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
             f"but timestamps have {len(arduino_timestamps)} entries."
         )
 
-    # Convert arduino timestamps to corresponding photometry sample number
+    # Convert arduino timestamps to seconds and make photometry start at time 0
     arduino_timestamps, photometry_start_in_arduino_time = adjust_arduino_timestamps(arduino_timestamps)
     logger.debug(f"Photometry start in arduino time: {photometry_start_in_arduino_time}")
 
     # Read through the arduino text and timestamps to get trial and block data
     logger.debug("Parsing arduino text file...")
     trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps)
-    logger.debug(f"There are {len(block_data)} blocks and {len(trial_data)} trials")
+    logger.info(f"There are {len(block_data)} blocks and {len(trial_data)} trials")
 
     # Use block data to determine if this is a probability change or barrier change session
     session_type = determine_session_type(block_data)
@@ -413,8 +412,8 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         return ",".join(map(str, sorted(set)))
 
     # Add the maze configuration to the metadata for each block
-    for block, maze in zip(block_data, maze_configurations):
-        logger.debug(f"Found maze configuration: {barrier_set_to_string(maze)}")
+    for i, (block, maze) in enumerate(zip(block_data, maze_configurations), start=1):
+        logger.debug(f"Block {i} maze: {barrier_set_to_string(maze)}")
         block["maze_configuration"] = barrier_set_to_string(maze)
 
     # Do some checks on trial and block data before adding to the NWB
@@ -462,8 +461,6 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     nwbfile.fields["session_description"] = (
         f"{session_type} session for the hex maze task with {len(block_data)} blocks and {len(trial_data)} trials."
     )
-    
-    # Convert times from arduino time (ms) to seconds for NWB
 
     # Add each block to the block table in the NWB
     logger.debug("Adding each block to the block table in the NWB")
@@ -477,8 +474,8 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
             pC=block["pC"],
             num_trials=block["num_trials"],
             task_type=block["task_type"],
-            start_time=block["start_time"]/1000,
-            stop_time=block["end_time"]/1000,
+            start_time=block["start_time"],
+            stop_time=block["end_time"],
         )
  
     # Add each trial to the NWB
@@ -493,11 +490,11 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
             end_port=trial["end_port"],
             reward=trial["reward"],
             opto_condition="None", # For now, Berke Lab has no opto
-            duration=(trial["end_time"]-trial["start_time"])/1000,
-            poke_in=trial["beam_break_start"]/1000,
-            poke_out=trial["beam_break_end"]/1000,
-            start_time=trial["start_time"]/1000,
-            stop_time=trial["end_time"]/1000,
+            duration=(trial["end_time"]-trial["start_time"]),
+            poke_in=trial["beam_break_start"],
+            poke_out=trial["beam_break_end"],
+            start_time=trial["start_time"],
+            stop_time=trial["end_time"],
         )
 
     # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects

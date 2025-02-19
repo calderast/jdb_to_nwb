@@ -184,15 +184,12 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     position_data: List of (string, pd.DataFrame) tuples. \
         String names tracked bodypart, DataFrame has position tracking columns x, y, and likelihood
     pixels_per_cm: pixels per cm conversion rate of the position data
-    video_timestamps: timestamps of each camera frame (aka position datapoint) in ms
+    video_timestamps: timestamps of each camera frame (aka position datapoint) in seconds
     """
     
     # Convert pixels_per_cm to meters_per_pixel for consistency with Frank Lab
     meters_per_pixel = 0.01 / pixels_per_cm
     logger.debug(f"Meters per pixel: {meters_per_pixel}")
-
-    # Convert video timestamps to seconds to match NWB standard
-    video_timestamps_seconds = video_timestamps / 1000
 
     # Make a processing module for behavior and add to the nwbfile
     logger.debug("Creating nwb behavior processing module for position data")
@@ -214,7 +211,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
             unit="meters",
             conversion=meters_per_pixel,
             reference_frame="Upper left corner of video frame",
-            timestamps=video_timestamps_seconds,
+            timestamps=video_timestamps,
         )
 
         # Add DLC position likelihood as a timeseries to the behavior processing module
@@ -229,7 +226,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
                 unit="fraction",
                 comments=f"Likelihood of each x,y coordinate for tracked bodypart '{body_part_name}'. "
                 "Coordinates with likelihood <0.9 were interpolated from surrounding coordinates.",
-                timestamps=video_timestamps_seconds,
+                timestamps=video_timestamps,
             )
         )
 
@@ -268,7 +265,11 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
         # Read timestamps of each camera frame (in ms)
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
         with open(video_timestamps_file_path, "r") as video_timestamps_file:
-            video_timestamps = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+            video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+            
+        # Adjust video timestamps so photometry starts at time 0 and convert to seconds to match NWB standard
+        video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
+        video_timestamps_seconds = video_timestamps_ms / 1000
 
     print("Adding position data from DeepLabCut...")
     logger.info("Adding position data from DeepLabCut...")
@@ -293,4 +294,4 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
 
     # Add x, y position data to the nwbfile
     add_position_to_nwb(nwbfile, position_data=position_dfs, 
-                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps, logger=logger)
+                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps_seconds, logger=logger)

@@ -155,7 +155,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     )
 
     photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
-    add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    metadata["photometry_start_in_arduino_ms"] = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path, logger=logger)
