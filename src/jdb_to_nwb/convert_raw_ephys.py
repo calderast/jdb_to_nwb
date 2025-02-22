@@ -211,6 +211,59 @@ def add_electrode_data(
         )
 
 
+def get_port_visits(folder_path: Path):
+    """
+    Extract port visit times from OpenEphys channel ADC1
+
+    Args:
+        folder_path: Path to the folder containing the OpenEphys binary recording. The folder
+            should contain subfolders leading to a file named 'continuous.dat'
+
+    Returns:
+        list: list of port visit times in seconds
+    """
+
+    total_channels = 264  # 256 "CH" + 8 "ADC"
+    port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
+    pulse_high_threshold = 10_000
+    openephys_fs = 30_000
+    downsampled_fs = 1000
+    # 1000ish is a reasonable downsample frequency, because it's low enough to speeds things up
+    # (this takes ~2mins on my machine) but high enough that we definitely don't miss any port visit pulses 
+    # For reference, a typical port visit keeps the channel high for ~10ms, so 10 samples at 1000 Hz
+
+    # Memory-map the large .dat file to avoid loading everything into memory. Reshape to (samples, channels)
+    file_path = folder_path / "/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
+    data_for_all_channels = np.memmap(file_path, dtype='int16',mode='c').reshape(-1, total_channels) 
+
+    # Extract the channel that records port visits and downsample so the data isn't massive
+    visits_channel_data = data_for_all_channels[:, port_visits_channel_num]
+    visits_channel_data = visits_channel_data[::int(openephys_fs / downsampled_fs)]
+
+    # Find indices where the visits channel is high (aka port visit times)
+    pulse_above_threshold = np.where(visits_channel_data > pulse_high_threshold)[0]
+
+    # Find pulse boundaries (breaks in the sequence of threshold crossings)
+    breaks = np.where(np.diff(pulse_above_threshold) != 1)[0] + 1
+
+    # Get the durations of each pulse (each contiguous block where the visits channel is high)
+    pulse_starts = np.insert(pulse_above_threshold[breaks], 0, pulse_above_threshold[0])
+    pulse_ends = np.append(pulse_above_threshold[breaks - 1], pulse_above_threshold[-1])
+    pulse_durations = pulse_ends - pulse_starts + 1 
+
+    # Only keep pulses at least 5ms long just in case (typical port visit keeps the channel high for ~10ms)
+    min_pulse_duration = int(downsampled_fs * 0.005)
+    pulse_starts = pulse_starts[pulse_durations > min_pulse_duration]
+
+    # Align to first pulse (which marks photometry(?) start time) and convert to seconds
+    # NOTE: The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
+    # should we add a check for this to ensure we have identified the correct "start" pulse?
+    # Maybe just log its duration when we add logging?
+    port_visits = pulse_starts[1:] - pulse_starts[0]
+    port_visits = [float(visit / downsampled_fs) for visit in port_visits]
+    return port_visits
+
+
 def get_raw_ephys_data(
     folder_path: Path,
 ) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
@@ -386,6 +439,10 @@ def add_raw_ephys(
         filtering_list,
     ) = get_raw_ephys_data(openephys_folder_path)
     num_samples, num_channels = traces_as_iterator.maxshape
+    
+    # Get port visits recorded by Open Ephys for timestamp alignment
+    port_visits = get_port_visits(openephys_folder_path)
+    print(f"Open Ephys recorded {len(port_visits)} port visits.")
 
     # Create electrode groups and add electrode data to the NWB file
     add_electrode_data(nwbfile=nwbfile, filtering_list=filtering_list, metadata=metadata, fig_dir=fig_dir)
