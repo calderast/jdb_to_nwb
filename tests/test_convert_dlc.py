@@ -1,5 +1,6 @@
 from datetime import datetime
 from dateutil import tz
+from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 from pathlib import Path
 
@@ -15,7 +16,7 @@ def test_add_dlc_one_bodypart(dummy_logger):
     test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
     
     metadata = {}
-    metadata["date"] = "11062024"
+    metadata["datetime"] = datetime.strptime("11062024", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
     metadata["video"] = {}
     metadata["video"]["video_file_path"] = test_data_dir / "Behav_Vid0.avi"
     metadata["video"]["video_timestamps_file_path"] = test_data_dir / "testvidtimes0.csv"
@@ -74,7 +75,7 @@ def test_add_dlc_two_bodyparts(dummy_logger):
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
 
     metadata = {}
-    metadata["date"] = "07252022"
+    metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
     metadata["video"] = {}
     metadata["video"]["video_file_path"] = test_data_dir / "Behav_Vid0.avi"
     metadata["video"]["video_timestamps_file_path"] = test_data_dir / "testvidtimes0.csv"

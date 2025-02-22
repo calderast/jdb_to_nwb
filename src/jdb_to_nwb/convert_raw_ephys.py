@@ -252,8 +252,11 @@ def get_raw_ephys_data(
     channel_conversion_offsets = recording_sliced.get_channel_offsets()
     assert all(channel_conversion_offsets == 0), "Channel conversion offsets are not all 0."
 
-    # Get the original timestamps
+    # Get the original timestamps (in seconds)
     original_timestamps = recording_sliced.get_times()
+
+    # TODO when we add logging, log sample frequency
+    # recording.get_sampling_frequency()
 
     # Create a SpikeInterfaceRecordingDataChunkIterator using all default buffering and
     # chunking options. This will be passed to the pynwb.ecephys.ElectricalSeries
@@ -306,7 +309,6 @@ def get_raw_ephys_data(
                 )
             else:
                 filtering[channel.attrib["number"]] = "No filtering"
-                raise ValueError(f"Channel {channel.attrib['number']}: No filtering")
     else:
         raise ValueError("No bandpass filter found in the settings.xml file.")
 
