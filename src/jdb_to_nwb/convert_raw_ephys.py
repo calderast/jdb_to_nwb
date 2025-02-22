@@ -3,6 +3,8 @@
 # so we are doing the conversion manually using PyNWB.
 
 import warnings
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from importlib.resources import files
@@ -250,8 +252,11 @@ def get_raw_ephys_data(
     channel_conversion_offsets = recording_sliced.get_channel_offsets()
     assert all(channel_conversion_offsets == 0), "Channel conversion offsets are not all 0."
 
-    # Get the original timestamps
+    # Get the original timestamps (in seconds)
     original_timestamps = recording_sliced.get_times()
+
+    # TODO when we add logging, log sample frequency
+    # recording.get_sampling_frequency()
 
     # Create a SpikeInterfaceRecordingDataChunkIterator using all default buffering and
     # chunking options. This will be passed to the pynwb.ecephys.ElectricalSeries
@@ -304,7 +309,6 @@ def get_raw_ephys_data(
                 )
             else:
                 filtering[channel.attrib["number"]] = "No filtering"
-                raise ValueError(f"Channel {channel.attrib['number']}: No filtering")
     else:
         raise ValueError("No bandpass filter found in the settings.xml file.")
 
@@ -354,7 +358,7 @@ def add_raw_ephys(
 
     if "ephys" not in metadata:
         print("No ephys metadata found for this session. Skipping ephys conversion.")
-        return
+        return None
 
     # If we do have "ephys" in metadata, check for the required keys
     required_ephys_keys = {"openephys_folder_path", "device", "impedance_file_path"}
@@ -365,10 +369,16 @@ def add_raw_ephys(
             "Remove the 'ephys' field from metadata if you do not have ephys data "
             f"for this session, \nor specify the following missing subfields:{missing_keys}"
         )
-        return
+        return None
 
     print("Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
+
+    # Get Open Ephys start time as datetime object based on the time specified in the path
+    datetime_str = openephys_folder_path.split('/')[-1] # The path ends with the date and time
+    open_ephys_start = datetime.strptime(datetime_str, "%Y-%m-%d_%H-%M-%S")
+    open_ephys_start = open_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
+
     (
         traces_as_iterator,
         channel_conversion_factor_v,
@@ -383,7 +393,7 @@ def add_raw_ephys(
     # Check that the number of electrodes in the NWB file is the same as the number of channels in traces_as_iterator
     assert (len(nwbfile.electrodes) == num_channels), (
         f"Number of electrodes in NWB file ({len(nwbfile.electrodes)}) does not match number of channels "
-        "in traces_as_iterator ({num_channels})."
+        f"in traces_as_iterator ({num_channels})."
     )
 
     # Create the electrode table region encompassing all electrodes
@@ -421,3 +431,5 @@ def add_raw_ephys(
 
     # Add the ElectricalSeries to the NWBFile
     nwbfile.add_acquisition(eseries)
+
+    return open_ephys_start

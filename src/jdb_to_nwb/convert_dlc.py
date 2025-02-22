@@ -2,49 +2,33 @@ import csv
 import numpy as np
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
 
 
-def parse_date(date_str):
-    """Return a datetime object from a date in either MMDDYYYY or YYYYMMDD format."""
-    if len(date_str) != 8:
-        raise ValueError("Date string must be exactly 8 characters long.")
-    
-    # Auto-detect the date format: if date starts with "20", it must be YYYYMMDD format
-    if date_str.startswith("20"):
-        date_format = "%Y%m%d"
-    # Otherwise, assume MMDDYYYY
-    else:
-        date_format = "%m%d%Y"
-    return datetime.strptime(date_str, date_format)
-
-
-def assign_pixels_per_cm(date_str):
+def assign_pixels_per_cm(session_date):
     """
-    Assigns constant PIXELS_PER_CM based on the provided date string in MMDDYYYY or YYYYMMDD format.
+    Assigns default PIXELS_PER_CM based on the date of the session.
     PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01/01/2023), 
     2.3 before (01/11/2024), or 2.688 after (old maze)
 
     Args:
-    date_str (str): Date string in MMDDYYYY or YYMMDDDD format.
+    session_date (datetime): Datetime object for the date of this session
 
     Returns:
     float: The corresponding PIXELS_PER_CM value.
     """
 
-    # Convert date from MMDDYYYY or YYYYMMDD format to datetime object
-    date = parse_date(str(date_str))
-
     # Define cutoff dates
-    cutoff1 = datetime.strptime("12312022", "%m%d%Y")  # December 31, 2022
-    cutoff2 = datetime.strptime("01112024", "%m%d%Y")  # January 11, 2024
+    cutoff1 = datetime.strptime("12312022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Dec 31, 2022
+    cutoff2 = datetime.strptime("01112024", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Jan 11, 2024
 
-    # Assign pixels per cm based on the date
-    if date <= cutoff1:
+    # Assign pixels per cm based on the session date
+    if session_date <= cutoff1:
         pixels_per_cm = 3.14
-    elif cutoff1 < date <= cutoff2:
+    elif cutoff1 < session_date <= cutoff2:
         pixels_per_cm = 2.3
     else:
         pixels_per_cm = 2.688 # After January 11, 2024
@@ -200,15 +184,12 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     position_data: List of (string, pd.DataFrame) tuples. \
         String names tracked bodypart, DataFrame has position tracking columns x, y, and likelihood
     pixels_per_cm: pixels per cm conversion rate of the position data
-    video_timestamps: timestamps of each camera frame (aka position datapoint) in ms
+    video_timestamps: timestamps of each camera frame (aka position datapoint) in seconds
     """
     
     # Convert pixels_per_cm to meters_per_pixel for consistency with Frank Lab
     meters_per_pixel = 0.01 / pixels_per_cm
     logger.debug(f"Meters per pixel: {meters_per_pixel}")
-
-    # Convert video timestamps to seconds to match NWB standard
-    video_timestamps_seconds = video_timestamps / 1000
 
     # Make a processing module for behavior and add to the nwbfile
     logger.debug("Creating nwb behavior processing module for position data")
@@ -230,7 +211,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
             unit="meters",
             conversion=meters_per_pixel,
             reference_frame="Upper left corner of video frame",
-            timestamps=video_timestamps_seconds,
+            timestamps=video_timestamps,
         )
 
         # Add DLC position likelihood as a timeseries to the behavior processing module
@@ -245,7 +226,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
                 unit="fraction",
                 comments=f"Likelihood of each x,y coordinate for tracked bodypart '{body_part_name}'. "
                 "Coordinates with likelihood <0.9 were interpolated from surrounding coordinates.",
-                timestamps=video_timestamps_seconds,
+                timestamps=video_timestamps,
             )
         )
 
@@ -284,7 +265,11 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
         # Read timestamps of each camera frame (in ms)
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
         with open(video_timestamps_file_path, "r") as video_timestamps_file:
-            video_timestamps = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+            video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+            
+        # Adjust video timestamps so photometry starts at time 0 and convert to seconds to match NWB standard
+        video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
+        video_timestamps_seconds = video_timestamps_ms / 1000
 
     print("Adding position data from DeepLabCut...")
     logger.info("Adding position data from DeepLabCut...")
@@ -299,7 +284,7 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
         logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
     # Otherwise, assign it based on the date of the experiment
     else:
-        PIXELS_PER_CM = assign_pixels_per_cm(metadata["date"])
+        PIXELS_PER_CM = assign_pixels_per_cm(metadata["datetime"])
         logger.info("No 'pixels_per_cm' value found in video metadata.")
         logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
 
@@ -309,4 +294,4 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
 
     # Add x, y position data to the nwbfile
     add_position_to_nwb(nwbfile, position_data=position_dfs, 
-                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps, logger=logger)
+                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps_seconds, logger=logger)
