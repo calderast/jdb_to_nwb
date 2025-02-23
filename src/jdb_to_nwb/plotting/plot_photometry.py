@@ -12,7 +12,7 @@ def plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405,
     Plots the raw 470, 405, 565 and ratiometric 470/405 fluorescence signals.
     """
     xvals = np.arange(0,len(raw_green)) / sampling_rate / 60 
-    pulse_times_in_mins = [time / sampling_rate / 60 for time in visits]
+    pulse_times_in_mins = [time / 60 for time in visits]
 
     raw = plt.figure(figsize=(16, 10))
     plt.suptitle('Raw & ratiometric 470/405 fluorescence signals', fontsize=16)
@@ -149,7 +149,7 @@ def plot_normalized_signals(visits, green_zscored, zscored_405, red_zscored,
     """
     """
     xvals = np.arange(0,len(green_zscored))/ sampling_rate / 60
-    pulse_times_in_mins = [time / sampling_rate / 60 for time in visits]
+    pulse_times_in_mins = [time / 60 for time in visits]
     
     zscrd = plt.figure(figsize=(16, 10))
     plt.suptitle("Z-scored signals calculated after preprocessing raw signals \n "
