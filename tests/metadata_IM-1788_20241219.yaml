@@ -92,8 +92,8 @@ photometry:
     - 7 ports Fluorescence Mini Cube - Three Fluorophores
 
 behavior:
-  arduino_text_file_path: "W:/Photometry/IM-1788/20241219/arduinoraw0_edited.txt"
-  arduino_timestamps_file_path: "W:/Photometry/IM-1788/20241219/ArduinoStamps0_edited.csv"
+  arduino_text_file_path: "W:/Photometry/IM-1788/20241219/arduinoraw0.txt"
+  arduino_timestamps_file_path: "W:/Photometry/IM-1788/20241219/ArduinoStamps0.csv"
   maze_configuration_file_path: "W:/Photometry/IM-1788/20241219/barriers.txt"
 
 video:

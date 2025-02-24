@@ -24,4 +24,4 @@ photodetectors:
     manufacturer: DORIC
     model: iFMC7-G2_E1(400-410)_F1(420-450)_E2(460-490)_F2(500-540)_E3(555-570)_F3(580-680)_S
     detector_type: Silicon photodiode
-    detected_wavelength_in_nm: 350 to 1100 nm
+    detected_wavelength_in_nm: 350.0
