@@ -211,6 +211,63 @@ def add_electrode_data(
         )
 
 
+def get_port_visits(folder_path: Path):
+    """
+    Extract port visit times from OpenEphys channel ADC1
+
+    Args:
+        folder_path: Path to the folder containing the OpenEphys binary recording. The folder
+            should contain subfolders leading to a file named 'continuous.dat'
+
+    Returns:
+        list: list of port visit times in seconds
+    """
+
+    total_channels = 264  # 256 "CH" + 8 "ADC"
+    port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
+    pulse_high_threshold = 10_000
+    openephys_fs = 30_000
+    downsampled_fs = 1000
+    # 1000ish is a reasonable downsample frequency, because it's low enough to speeds things up
+    # (this takes ~2mins on my machine) but high enough that we definitely don't miss any port visit pulses 
+    # For reference, a typical port visit keeps the channel high for ~10ms, so 10 samples at 1000 Hz
+
+    # Memory-map the large .dat file to avoid loading everything into memory. Reshape to (samples, channels)
+    file_path = folder_path + "/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
+    data_for_all_channels = np.memmap(file_path, dtype='int16',mode='c').reshape(-1, total_channels) 
+
+    # Extract the channel that records port visits and downsample so the data isn't massive
+    visits_channel_data = data_for_all_channels[:, port_visits_channel_num]
+    visits_channel_data = visits_channel_data[::int(openephys_fs / downsampled_fs)]
+
+    # Find indices where the visits channel is high (aka port visit times)
+    pulse_above_threshold = np.where(visits_channel_data > pulse_high_threshold)[0]
+
+    # If no port visits were found, return an empty list
+    if pulse_above_threshold.size == 0:
+        return []
+
+    # Find pulse boundaries (breaks in the sequence of threshold crossings)
+    breaks = np.where(np.diff(pulse_above_threshold) != 1)[0] + 1
+
+    # Get the durations of each pulse (each contiguous block where the visits channel is high)
+    pulse_starts = np.insert(pulse_above_threshold[breaks], 0, pulse_above_threshold[0])
+    pulse_ends = np.append(pulse_above_threshold[breaks - 1], pulse_above_threshold[-1])
+    pulse_durations = pulse_ends - pulse_starts + 1 
+
+    # Only keep pulses at least 5ms long just in case (typical port visit keeps the channel high for ~10ms)
+    min_pulse_duration = int(downsampled_fs * 0.005)
+    pulse_starts = pulse_starts[pulse_durations > min_pulse_duration]
+
+    # Align to first pulse (which marks photometry(?) start time) and convert to seconds
+    # NOTE: The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
+    # should we add a check for this to ensure we have identified the correct "start" pulse?
+    # Maybe just log its duration when we add logging?
+    port_visits = pulse_starts[1:] - pulse_starts[0]
+    port_visits = [float(visit / downsampled_fs) for visit in port_visits]
+    return port_visits
+
+
 def get_raw_ephys_data(
     folder_path: Path,
 ) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
@@ -358,7 +415,7 @@ def add_raw_ephys(
 
     if "ephys" not in metadata:
         print("No ephys metadata found for this session. Skipping ephys conversion.")
-        return None
+        return {}
 
     # If we do have "ephys" in metadata, check for the required keys
     required_ephys_keys = {"openephys_folder_path", "device", "impedance_file_path"}
@@ -369,7 +426,7 @@ def add_raw_ephys(
             "Remove the 'ephys' field from metadata if you do not have ephys data "
             f"for this session, \nor specify the following missing subfields:{missing_keys}"
         )
-        return None
+        return {}
 
     print("Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
@@ -386,6 +443,10 @@ def add_raw_ephys(
         filtering_list,
     ) = get_raw_ephys_data(openephys_folder_path)
     num_samples, num_channels = traces_as_iterator.maxshape
+    
+    # Get port visits recorded by Open Ephys for timestamp alignment
+    ephys_visit_times = get_port_visits(openephys_folder_path)
+    print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
 
     # Create electrode groups and add electrode data to the NWB file
     add_electrode_data(nwbfile=nwbfile, filtering_list=filtering_list, metadata=metadata, fig_dir=fig_dir)
@@ -413,18 +474,42 @@ def add_raw_ephys(
         compression="gzip",
     )
 
+    # If we have visit times from photometry, align timestamps to that
+    # Based on: https://github.com/catalystneuro/neuroconv/blob/8d274f434c152d34ea0bcc5d120765639c6771a7/src/
+    # neuroconv/datainterfaces/text/timeintervalsinterface.py#L192
+    photometry_visit_times = metadata.get("photometry_visit_times")
+    if photometry_visit_times is not None:
+        # Make sure we have the same number of ephys and photometry visit times
+        assert len(ephys_visit_times) == len(photometry_visit_times), (
+            f"Expected the same number of port visits recorded by ephys and photometry! \n"
+            f"Got {len(ephys_visit_times)} ephys visits, but {len(photometry_visit_times)} photometry visits!!!"
+        )
+        # Align ephys timestamps to photometry via interpolation. For timestamps out of visit bounds, 
+        # use the ratio of spacing between ephys_visit_times and photometry_visit_times
+        ephys_timestamps = np.interp(
+            x=original_timestamps,
+            xp=ephys_visit_times,
+            fp=photometry_visit_times,
+            left=photometry_visit_times[0] + 
+                (original_timestamps[0] - ephys_visit_times[0]) * 
+                (photometry_visit_times[1] - photometry_visit_times[0]) / 
+                (ephys_visit_times[1] - ephys_visit_times[0]),
+            right=photometry_visit_times[-1] + 
+                (original_timestamps[-1] - ephys_visit_times[-1]) * 
+                (photometry_visit_times[-1] - photometry_visit_times[-2]) / 
+                (ephys_visit_times[-1] - ephys_visit_times[-2])
+        )
+    else:
+        # If we don't have photometry, keep the original timestamps
+        ephys_timestamps = original_timestamps
+
     # Create the ElectricalSeries
     # For now, we do not chunk or compress the timestamps, which are relatively small
-    # TODO: replace the timestamps with timestamps aligned with photometry data if photometry
-    # data was also collected during the same recording session
     eseries = ElectricalSeries(
         name="ElectricalSeries",
-        description=(
-            "Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts). "
-            "Timestamps are the original timestamps from the OpenEphys recording."
-        ),
+        description="Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts).",
         data=data_data_io,
-        timestamps=original_timestamps,
+        timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
         conversion=channel_conversion_factor_v,
     )
@@ -432,4 +517,4 @@ def add_raw_ephys(
     # Add the ElectricalSeries to the NWBFile
     nwbfile.add_acquisition(eseries)
 
-    return open_ephys_start
+    return {"ephys_start": open_ephys_start, "port_visits": ephys_visit_times}

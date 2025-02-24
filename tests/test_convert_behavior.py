@@ -21,10 +21,13 @@ def test_convert_behavior(dummy_logger):
         identifier="mock_session",
     )
 
-    photometry_start_in_arduino_time = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    
+    behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
     # Test that we got the expected photometry start time for this session
-    assert photometry_start_in_arduino_time == 55520059.6736
+    assert behavior_data_dict.get("photometry_start_in_arduino_time") == 55520059.6736
+    
+    # Test that we got the expected number of port entries
+    assert len(behavior_data_dict.get("port_visits")) == 188
 
     # Note that we do not run validation tests on the trial- and block-level data (e.g. trials/blocks are
     # enumerated correctly, block metadata is valid, number of trials per block adds to the

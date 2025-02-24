@@ -193,6 +193,49 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
     return trial_data, block_data
 
 
+def align_data_to_visits(trial_data, block_data, metadata, logger):
+
+    # Ground truth visits are photometry if it exists, otherwise ephys
+    ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
+    
+    # If we have no ground truth visits to align to, keep trial and block data as-is
+    if ground_truth_visit_times is None:
+        return trial_data, block_data
+
+    logger.info("Aligning trial and block data to ground truth port visit times...")
+    logger.info(f"There are {len(trial_data)} trials and {len(ground_truth_visit_times)} visit times")
+
+    assert len(trial_data) == len(ground_truth_visit_times), (
+        f"There are {len(trial_data)} trials but {len(ground_truth_visit_times)} visit times!!"
+    )
+
+    for trial, visit_time in zip(trial_data, ground_truth_visit_times):
+        time_diff = visit_time - trial['beam_break_start']
+        logger.debug(f"Replacing arduino beam break time {trial['beam_break_start']} with {visit_time}"
+                     f" (diff={time_diff:.3f})")
+        # Update beam_break_start to be the ground truth port visit time
+        trial['beam_break_start'] = visit_time
+        # Set beam_break_end based on the difference between the original arduino time and the ground truth time
+        trial['beam_break_end'] = trial['beam_break_end'] + time_diff
+        trial['end_time'] = trial['beam_break_end']
+
+    # The new start time of each trial is the updated end time of the previous trial
+    for prev_trial, trial in zip(trial_data, trial_data[1:]):
+        trial['start_time'] = prev_trial['end_time']
+
+    # Update block start times (block start time = start time of the first trial in the block)
+    for block in block_data:
+        block["start_time"] = next(trial["start_time"] for trial in trial_data if trial["block"] == block["block"])
+
+    # Update block end times (block end time = start time of the next block)
+    for block_num, block in enumerate(block_data[:-1]):
+        block["end_time"] = block_data[block_num+1]["start_time"]
+    # The end time of the last block is the end time of the last trial
+    block_data[-1]["end_time"] = trial_data[-1]["end_time"]
+    
+    return trial_data, block_data
+
+
 def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
     """Run basic tests to check that trial and block data is valid."""
 
@@ -405,7 +448,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
                 "There should be exactly one maze configuration per block, "
                 "or a single maze configuration if this is a probability change session."
             )
-       
+
     # Convert each maze config from a set to a sorted, comma separated string 
     # for compatibility with NWB and spyglass
     def barrier_set_to_string(set):
@@ -415,6 +458,12 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     for i, (block, maze) in enumerate(zip(block_data, maze_configurations), start=1):
         logger.debug(f"Block {i} maze: {barrier_set_to_string(maze)}")
         block["maze_configuration"] = barrier_set_to_string(maze)
+
+    # Save original arduino visit times for alignment before we re-align to photometry/ephys  
+    arduino_visit_times =  [trial['beam_break_start'] for trial in trial_data]
+
+    # Align visit times to photometry/ephys
+    trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
 
     # Do some checks on trial and block data before adding to the NWB
     logger.debug("Validating trial and block data...")
@@ -508,13 +557,13 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         name="arduino_text",
         description="Raw arduino text",
         content=raw_arduino_text,
-        task_epochs="",  # Required but unused
+        task_epochs="1",  # Berke Lab only has one epoch (session) per day
     )
     raw_arduino_timestamps_file = AssociatedFiles(
         name="arduino_timestamps",
         description="Raw arduino timestamps",
         content=raw_arduino_timestamps,
-        task_epochs="",  # Required but unused
+        task_epochs="1",  # Berke Lab only has one epoch (session) per day
     )
 
     # Add arduino text and timestamps to the NWB as associated files
@@ -523,6 +572,6 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     )
     nwbfile.processing["associated_files"].add(raw_arduino_text_file)
     nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
-    
+
     # Return photometry start in arduino time for video/DLC and behavioral alignment with photometry
-    return photometry_start_in_arduino_time
+    return {'photometry_start_in_arduino_time': photometry_start_in_arduino_time, 'port_visits': arduino_visit_times}

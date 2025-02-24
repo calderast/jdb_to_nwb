@@ -266,10 +266,41 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
         with open(video_timestamps_file_path, "r") as video_timestamps_file:
             video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
-            
+ 
         # Adjust video timestamps so photometry starts at time 0 and convert to seconds to match NWB standard
         video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
         video_timestamps_seconds = video_timestamps_ms / 1000
+
+        # Align video timestamps to photometry/ephys
+        ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
+        arduino_visit_times = metadata.get("arduino_visit_times")
+
+        if ground_truth_visit_times is not None:
+            logger.info("Aligning DLC timestamps...")
+            # Make sure we have the same number of arduino and ground truth visit times for alignment
+            assert len(arduino_visit_times) == len(ground_truth_visit_times), (
+                f"Expected the same number of port visits recorded by arduino and ephys/photometry! \n"
+                f"Got {len(arduino_visit_times)} arduino visits, "
+                f"but {len(ground_truth_visit_times)} visits for alignment!"
+            )
+            # Align video timestamps via interpolation. For timestamps out of visit bounds, 
+            # use the ratio of spacing between arduino_visit_times and ground_truth_visit_times
+            true_video_timestamps = np.interp(
+                x=video_timestamps_seconds,
+                xp=arduino_visit_times,
+                fp=ground_truth_visit_times,
+                left=ground_truth_visit_times[0] + 
+                    (video_timestamps_seconds[0] - arduino_visit_times[0]) * 
+                    (ground_truth_visit_times[1] - ground_truth_visit_times[0]) / 
+                    (arduino_visit_times[1] - arduino_visit_times[0]),
+                right=ground_truth_visit_times[-1] + 
+                    (video_timestamps_seconds[-1] - arduino_visit_times[-1]) * 
+                    (ground_truth_visit_times[-1] - ground_truth_visit_times[-2]) / 
+                    (arduino_visit_times[-1] - arduino_visit_times[-2])
+            )
+        else:
+            # If we don't have port visits for alignment, keep the original timestamps
+            true_video_timestamps = video_timestamps_seconds
 
     print("Adding position data from DeepLabCut...")
     logger.info("Adding position data from DeepLabCut...")
@@ -294,4 +325,4 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
 
     # Add x, y position data to the nwbfile
     add_position_to_nwb(nwbfile, position_data=position_dfs, 
-                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=video_timestamps_seconds, logger=logger)
+                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=true_video_timestamps, logger=logger)

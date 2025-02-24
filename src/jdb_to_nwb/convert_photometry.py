@@ -482,7 +482,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     Returns: 
     dict with keys
     - sampling_rate: int (Hz)
-    - port_visits: list of port visits in photometry time
+    - port_visits: list of port visit times in seconds
     - photometry_start: datetime object marking the start time of photometry recording
     """
     
@@ -493,10 +493,14 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     raw_405 = pd.Series(ppd_data['analog_3'])
     relative_raw_signal = raw_green / raw_405
 
+    # Get port visits and sampling rate from ppd file
     visits = ppd_data['pulse_inds_1'][1:]
     logger.debug(f"There were {len(visits)} port visits recorded by pyPhotometry")
     sampling_rate = ppd_data['sampling_rate']
     logger.info(f"pyPhotometry sampling rate: {sampling_rate} Hz")
+
+    # Convert port visits to seconds
+    visits = [visit_time / sampling_rate for visit_time in visits]
 
     # Convert pyphotometry photometry start time to datetime object and set timezone to Pacific Time
     photometry_start = datetime.strptime(ppd_data['date_time'], "%Y-%m-%dT%H:%M:%S.%f")
@@ -631,7 +635,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     nwbfile.add_acquisition(z_scored_565_response_series)
     nwbfile.add_acquisition(z_scored_ratio_response_series)
 
-    # Return sampling rate and port visits in downsampled photometry time (86 Hz) to use for alignment
+    # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     return {'sampling_rate': sampling_rate, 'port_visits': visits, 'photometry_start': photometry_start}
 
 
@@ -646,7 +650,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     Returns: 
     dict with keys
     - sampling_rate: int (Hz)
-    - port_visits: list of port visits in photometry time
+    - port_visits: list of port visit times in seconds
     - photometry_start: datetime object marking the start time of photometry recording,
     or None if we are starting from processed signals.mat so no start time was found
     """
@@ -662,6 +666,9 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     raw_reference = pd.Series(np.squeeze(signals["ref"])[:: int(SR / Fs)])
     raw_green = pd.Series(np.squeeze(signals["sig1"])[:: int(SR / Fs)])
     port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
+
+    # Convert port visits to seconds
+    port_visits = [visit_time / Fs for visit_time in port_visits]
 
     # Smooth the signals using a rolling mean
     smooth_window = int(Fs / 30)
@@ -760,7 +767,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     nwbfile.add_acquisition(raw_green_response_series)
     nwbfile.add_acquisition(raw_reference_response_series)
 
-    # Return sampling rate and port visits in downsampled photometry time (250 Hz) to use for alignment
+    # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     return {'sampling_rate': Fs, 'port_visits': port_visits, 'photometry_start': signals.get('photometry_start')}
 
 
