@@ -165,7 +165,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     ephys_start = ephys_data_dict.get('ephys_start')
 
     # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
-    metadata["photometry_start_in_arduino_ms"] = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    metadata["photometry_start_in_arduino_ms"] = behavior_data_dict.get("photometry_start_in_arduino_time")
+    metadata['arduino_visit_times'] = behavior_data_dict.get("port_visits")
 
     # Add video and DLC (position tracking)
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"

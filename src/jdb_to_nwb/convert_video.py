@@ -64,6 +64,39 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
     # Convert video timestamps to seconds to match NWB standard
     video_timestamps_seconds = video_timestamps_ms / 1000
 
+    # Align video timestamps to photometry/ephys
+    ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
+    arduino_visit_times = metadata.get("arduino_visit_times")
+
+    if ground_truth_visit_times is not None:
+        logger.info("Aligning video timestamps...")
+        # Make sure we have the same number of arduino and ground truth visit times for alignment
+        assert len(arduino_visit_times) == len(ground_truth_visit_times), (
+            f"Expected the same number of port visits recorded by arduino and ephys/photometry! \n"
+            f"Got {len(arduino_visit_times)} arduino visits, but {len(ground_truth_visit_times)} visits for alignment!"
+        )
+        # Align video timestamps via interpolation. For timestamps out of visit bounds, 
+        # use the ratio of spacing between arduino_visit_times and ground_truth_visit_times
+        true_video_timestamps = np.interp(
+            x=video_timestamps_seconds,
+            xp=arduino_visit_times,
+            fp=ground_truth_visit_times,
+            left=ground_truth_visit_times[0] + 
+                (video_timestamps_seconds[0] - arduino_visit_times[0]) * 
+                (ground_truth_visit_times[1] - ground_truth_visit_times[0]) / 
+                (arduino_visit_times[1] - arduino_visit_times[0]),
+            right=ground_truth_visit_times[-1] + 
+                (video_timestamps_seconds[-1] - arduino_visit_times[-1]) * 
+                (ground_truth_visit_times[-1] - ground_truth_visit_times[-2]) / 
+                (arduino_visit_times[-1] - arduino_visit_times[-2])
+        )
+    else:
+        # If we don't have port visits for alignment, keep the original timestamps
+        true_video_timestamps = video_timestamps_seconds
+
+    logger.debug("Difference between aligned and original video timestamps: "
+                 f"{np.array(true_video_timestamps) - np.array(video_timestamps_seconds)}")
+
     # Convert video from .avi to .mp4 and copy it to the nwb output directory
     print("Compressing video from .avi to .mp4 and copying to nwb output directory...")
     logger.info("Compressing video from .avi to .mp4 and copying to nwb output directory...")
@@ -83,7 +116,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
     video.add_timeseries(
         ImageSeries(
             name="behavior_video",
-            timestamps=video_timestamps_seconds,
+            timestamps=true_video_timestamps,
             external_file=[video_file_name],
             format="external",
             starting_frame=[0],

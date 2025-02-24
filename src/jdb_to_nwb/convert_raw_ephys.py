@@ -484,13 +484,20 @@ def add_raw_ephys(
             f"Expected the same number of port visits recorded by ephys and photometry! \n"
             f"Got {len(ephys_visit_times)} ephys visits, but {len(photometry_visit_times)} photometry visits!!!"
         )
-        # Align ephys timestamps to photometry via interpolation
+        # Align ephys timestamps to photometry via interpolation. For timestamps out of visit bounds, 
+        # use the ratio of spacing between ephys_visit_times and photometry_visit_times
         ephys_timestamps = np.interp(
             x=original_timestamps,
             xp=ephys_visit_times,
             fp=photometry_visit_times,
-            left=2 * photometry_visit_times[0] - photometry_visit_times[1],  # For values outside bounds,
-            right=2 * photometry_visit_times[-1] - photometry_visit_times[-2],  # use the most recent diff to regress
+            left=photometry_visit_times[0] + 
+                (original_timestamps[0] - ephys_visit_times[0]) * 
+                (photometry_visit_times[1] - photometry_visit_times[0]) / 
+                (ephys_visit_times[1] - ephys_visit_times[0]),
+            right=photometry_visit_times[-1] + 
+                (original_timestamps[-1] - ephys_visit_times[-1]) * 
+                (photometry_visit_times[-1] - photometry_visit_times[-2]) / 
+                (ephys_visit_times[-1] - ephys_visit_times[-2])
         )
     else:
         # If we don't have photometry, keep the original timestamps

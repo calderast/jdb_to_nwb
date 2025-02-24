@@ -448,7 +448,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
                 "There should be exactly one maze configuration per block, "
                 "or a single maze configuration if this is a probability change session."
             )
-       
+
     # Convert each maze config from a set to a sorted, comma separated string 
     # for compatibility with NWB and spyglass
     def barrier_set_to_string(set):
@@ -458,6 +458,9 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     for i, (block, maze) in enumerate(zip(block_data, maze_configurations), start=1):
         logger.debug(f"Block {i} maze: {barrier_set_to_string(maze)}")
         block["maze_configuration"] = barrier_set_to_string(maze)
+
+    # Save original arduino visit times for alignment before we re-align to photometry/ephys  
+    arduino_visit_times =  [trial['beam_break_start'] for trial in trial_data]
 
     # Align visit times to photometry/ephys
     trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
@@ -554,13 +557,13 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         name="arduino_text",
         description="Raw arduino text",
         content=raw_arduino_text,
-        task_epochs="",  # Required but unused
+        task_epochs="1",  # Berke Lab only has one epoch (session) per day
     )
     raw_arduino_timestamps_file = AssociatedFiles(
         name="arduino_timestamps",
         description="Raw arduino timestamps",
         content=raw_arduino_timestamps,
-        task_epochs="",  # Required but unused
+        task_epochs="1",  # Berke Lab only has one epoch (session) per day
     )
 
     # Add arduino text and timestamps to the NWB as associated files
@@ -569,6 +572,6 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     )
     nwbfile.processing["associated_files"].add(raw_arduino_text_file)
     nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
-    
+
     # Return photometry start in arduino time for video/DLC and behavioral alignment with photometry
-    return photometry_start_in_arduino_time
+    return {'photometry_start_in_arduino_time': photometry_start_in_arduino_time, 'port_visits': arduino_visit_times}
