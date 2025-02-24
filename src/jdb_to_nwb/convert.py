@@ -169,7 +169,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     metadata["photometry_start_in_arduino_ms"] = behavior_data_dict.get("photometry_start_in_arduino_time")
     metadata['arduino_visit_times'] = behavior_data_dict.get("port_visits")
 
-    # Add video and DLC (position tracking)
+    # Add video and DLC (position tracking). 
+    # Aligns timestamps to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path, logger=logger)
     add_dlc(nwbfile=nwbfile, metadata=metadata, logger=logger)
@@ -192,10 +193,6 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
 
     # Set the timestamps reference time equal to the session start time
     nwbfile.fields["timestamps_reference_time"] = nwbfile.fields["session_start_time"]
-
-    # For time alignment:
-    # DLC / spatial series currently start at photometry start = 0
-    # TODO: re-align based on visits?? (save original visit times from add_behavior (arduino) and interpolate?)
 
     print("Writing file...")
     output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
