@@ -126,7 +126,7 @@ def test_add_raw_ephys():
         "manufacturer": "Test Manufacturer",
     }
 
-    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
     assert len(nwbfile.electrodes) == 256
     assert len(nwbfile.electrode_groups) == 1
@@ -134,8 +134,7 @@ def test_add_raw_ephys():
     assert "ElectricalSeries" in nwbfile.acquisition
     es = nwbfile.acquisition["ElectricalSeries"]
     assert es.description == (
-        "Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts). "
-        "Timestamps are the original timestamps from the OpenEphys recording."
+        "Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts)."
     )
     assert es.data.maxshape == (3_000, 256)
     assert es.data.dtype == np.int16
@@ -145,7 +144,7 @@ def test_add_raw_ephys():
     
     expected_ephys_start = datetime.strptime("2022-07-25_15-30-00", "%Y-%m-%d_%H-%M-%S")
     expected_ephys_start = expected_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
-    assert ephys_start == expected_ephys_start
+    assert ephys_data_dict.get("ephys_start") == expected_ephys_start
 
 
 def test_add_ephys_with_incomplete_metadata(capsys):
@@ -173,18 +172,18 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     # It should print that we are skipping ephys conversion
     # This should not raise any errors, as omitting the 'ephys' key is a 
     # valid way to specify that we have no ephys data for this session.
-    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr() # capture stdout
 
     # Check that the correct message was printed to stdout
     assert "No ephys metadata found for this session. Skipping ephys conversion." in captured.out
-    assert ephys_start is None
+    assert ephys_data_dict == {}
 
     # Create a test metadata dictionary with an ephys field but no ephys data
     metadata["ephys"] = {}
 
     # Check that add_raw_ephys raises a ValueError about missing fields in the metadata dictionary
-    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
     captured = capsys.readouterr()
-    assert ephys_start is None
+    assert ephys_data_dict == {}
     assert "The required ephys subfields do not exist in the metadata dictionary" in captured.out

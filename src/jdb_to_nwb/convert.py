@@ -154,19 +154,28 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         source_script_file_name="convert.py",
     )
 
+    # Add photometry. Returns a dict with 'photometry_start' and 'port_visits' for alignment
     photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
     metadata["photometry_visit_times"] = photometry_data_dict.get("port_visits")
+    photometry_start = photometry_data_dict.get('photometry_start')
+
+    # Add ephys. Returns a dict with 'ephys_start' and 'port_visits' for alignment
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
+    metadata["ephys_visit_times"] = ephys_data_dict.get("port_visits")
+    ephys_start = ephys_data_dict.get('ephys_start')
+
+    # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     metadata["photometry_start_in_arduino_ms"] = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
+    # Add video and DLC (position tracking)
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path, logger=logger)
     add_dlc(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
-    ephys_start = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
+    # Add spikes
     add_spikes(nwbfile=nwbfile, metadata=metadata)
 
     # If we have an exact photometry start time, use that as the session start time
-    photometry_start = photometry_data_dict.get('photometry_start')
     if photometry_start is not None:
         nwbfile.fields["session_start_time"] = photometry_start
         logger.info(f"Setting session_start_time to photometry start: {photometry_start}")
@@ -182,13 +191,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Set the timestamps reference time equal to the session start time
     nwbfile.fields["timestamps_reference_time"] = nwbfile.fields["session_start_time"]
 
-    # For time alignment, add_photometry returns a photometry_data_dict with keys:
-    # - sampling_rate: int (Hz)
-    # - port visits: list of port visits in photometry time
-    # - photometry_start: datetime object marking the start time of photometry recording
-    # add_raw_ephys returns ephys_start (datetime object)
-    # add_behavior returns: photometry_start_in_arduino_time
-    # DLC / spatial series currently start at photometry start, so we want to subtract that out!
+    # For time alignment:
+    # DLC / spatial series currently start at photometry start = 0
+    # TODO: re-align based on visits?? (save original visit times from add_behavior (arduino) and interpolate?)
 
     print("Writing file...")
     output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
