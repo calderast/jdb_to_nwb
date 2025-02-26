@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 from pathlib import Path
 from pynwb import NWBFile
+from hdmf.common.table import DynamicTable, VectorData
 from ndx_franklab_novela import AssociatedFiles
 
 
@@ -511,12 +512,6 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         f"{session_type} session for the hex maze task with {len(block_data)} blocks and {len(trial_data)} trials."
     )
 
-    # Add a single epoch to the NWB for this session
-    session_start = block_data[0]["start_time"]
-    session_end = block_data[-1]["end_time"]
-    epoch_tag = "00_r1" # This is epoch 0 and run session 1
-    nwbfile.add_epoch(start_time=session_start, stop_time=session_end, tags=epoch_tag)
-
     # Add each block to the block table in the NWB
     logger.debug("Adding each block to the block table in the NWB")
     for block in block_data:
@@ -551,6 +546,56 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
             start_time=trial["start_time"],
             stop_time=trial["end_time"],
         )
+
+    # Add a single epoch to the NWB for this session
+    session_start = block_data[0]["start_time"]
+    session_end = block_data[-1]["end_time"]
+    epoch_tag = "00_r1" # This is epoch 0 and run session 1
+    nwbfile.add_epoch(start_time=session_start, stop_time=session_end, tags=epoch_tag)
+
+    # Add tasks processing module for compatability with Spyglass
+    # Many of these fields are repetitive but exist to match Frank Lab
+    nwbfile.create_processing_module(
+        name="tasks", description="Contains all tasks information"
+    )
+    task_name = VectorData(
+        name="task_name",
+        description="the name of the task",
+        data=["Hex maze"],
+    )
+    task_description = VectorData(
+        name="task_description",
+        description="a description of the task",
+        data=["Hex maze"],
+    )
+    task_epochs = VectorData(
+        name="task_epochs",
+        description="the temporal epochs where the animal was exposed to this task",
+        data=[0],
+    )
+    task_environment = VectorData(
+        name="task_environment",
+        description="the environment in which the animal performed the task",
+        data=["hexmaze"],
+    )
+    # Keeping for posterity if we add camera data like Frank Lab
+    # camera_id = VectorData(
+    #     name="camera_id",
+    #     description="the ID number of the camera used for video",
+    #     data=[[int(camera_id) for camera_id in task_metadata["camera_id"]]],
+    # )
+    task = DynamicTable(
+        name=f"task_0",
+        description="",
+        columns=[
+            task_name,
+            task_description,
+            task_epochs,
+            task_environment,
+            # camera_id,
+        ],
+    )
+    nwbfile.processing["tasks"].add(task)
 
     # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects
     logger.debug("Saving the arduino text file and arduino timestamps file as AssociatedFiles objects")
