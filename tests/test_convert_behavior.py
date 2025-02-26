@@ -54,7 +54,9 @@ def test_convert_behavior(dummy_logger):
     for val in task.columns:
         assert isinstance(val, VectorData)
     expected_task_columns = {"task_name", "task_description", "task_epochs", "task_environment"}
-    assert set(task.colnames) == expected_task_columns, f"Task columns {set(task.colnames)} did not match expected {expected_task_columns}"
+    assert set(task.colnames) == expected_task_columns, (
+        f"Task columns {set(task.colnames)} did not match expected {expected_task_columns}"
+    )
 
     # Test that the nwbfile has the expected associated files
     assert "associated_files" in nwbfile.processing

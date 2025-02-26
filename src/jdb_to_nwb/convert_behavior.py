@@ -553,7 +553,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     epoch_tag = "00_r1" # This is epoch 0 and run session 1
     nwbfile.add_epoch(start_time=session_start, stop_time=session_end, tags=epoch_tag)
 
-    # Add tasks processing module for compatability with Spyglass
+    # Add tasks processing module for compatibility with Spyglass
     # Many of these fields are repetitive but exist to match Frank Lab
     nwbfile.create_processing_module(
         name="tasks", description="Contains all tasks information"
@@ -585,7 +585,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     #     data=[[int(camera_id) for camera_id in task_metadata["camera_id"]]],
     # )
     task = DynamicTable(
-        name=f"task_0",
+        name="task_0",
         description="",
         columns=[
             task_name,
