@@ -511,11 +511,17 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         f"{session_type} session for the hex maze task with {len(block_data)} blocks and {len(trial_data)} trials."
     )
 
+    # Add a single epoch to the NWB for this session
+    session_start = block_data[0]["start_time"]
+    session_end = block_data[-1]["end_time"]
+    epoch_tag = "00_r1" # This is epoch 0 and run session 1
+    nwbfile.add_epoch(start_time=session_start, stop_time=session_end, tags=epoch_tag)
+
     # Add each block to the block table in the NWB
     logger.debug("Adding each block to the block table in the NWB")
     for block in block_data:
         block_table.add_row(
-            epoch=1, # Berke Lab only has one epoch (session) per day
+            epoch=0, # Berke Lab only has one epoch (session) per day
             block=block["block"],
             maze_configuration=block["maze_configuration"],
             pA=block["pA"],
@@ -526,12 +532,12 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
             start_time=block["start_time"],
             stop_time=block["end_time"],
         )
- 
+
     # Add each trial to the NWB
     logger.debug("Adding each trial to the trial table in the NWB")
     for trial in trial_data:
         nwbfile.add_trial(
-            epoch=1, # Berke Lab only has one epoch (session) per day
+            epoch=0, # Berke Lab only has one epoch (session) per day
             block=trial["block"],
             trial_within_block=trial["trial_within_block"],
             trial_within_epoch=trial["trial_within_session"],
@@ -557,13 +563,13 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         name="arduino_text",
         description="Raw arduino text",
         content=raw_arduino_text,
-        task_epochs="1",  # Berke Lab only has one epoch (session) per day
+        task_epochs="0",  # Berke Lab only has one epoch (session) per day
     )
     raw_arduino_timestamps_file = AssociatedFiles(
         name="arduino_timestamps",
         description="Raw arduino timestamps",
         content=raw_arduino_timestamps,
-        task_epochs="1",  # Berke Lab only has one epoch (session) per day
+        task_epochs="0",  # Berke Lab only has one epoch (session) per day
     )
 
     # Add arduino text and timestamps to the NWB as associated files
