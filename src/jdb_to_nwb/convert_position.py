@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
+from hdmf.common import DynamicTable
 
 
 def assign_pixels_per_cm(session_date):
@@ -192,8 +193,8 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     logger.debug(f"Meters per pixel: {meters_per_pixel}")
 
     # Make a processing module for behavior and add to the nwbfile
-    logger.debug("Creating nwb behavior processing module for position data")
     if "behavior" not in nwbfile.processing:
+        logger.debug("Creating nwb behavior processing module for position data")
         nwbfile.create_processing_module(
             name="behavior", description="Contains all behavior-related data"
         )
@@ -238,7 +239,49 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     nwbfile.processing["behavior"].add(position)
 
 
-def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
+def add_hex_centroids(nwbfile: NWBFile, metadata: dict, logger):
+    """
+    Read hex centroids from a csv file with columns hex, x, y 
+    and add them to the nwbfile in the behavior processing module.
+    """
+
+    hex_centroids_file = metadata["video"].get("hex_centroids_file_path")
+    if hex_centroids_file is None:
+        print("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        logger.warning("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        return
+
+    try:
+        hex_centroids = pd.read_csv(hex_centroids_file)
+    except FileNotFoundError:
+        logger.error(f"The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        print(f"Error: The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        return
+
+    # Set up the hex centroids table
+    centroids_table = DynamicTable(name="hex_centroids", 
+            description="Centroids of each hex in the maze (in video pixel coordinates)")
+    centroids_table.add_column(name="hex", description="The ID of the hex in the maze (1-49)")
+    centroids_table.add_column(name="x", 
+            description="The x coordinate of the center of the hex (in video pixel coordinates)")
+    centroids_table.add_column(name="y", 
+            description="The y coordinate of the center of the hex (in video pixel coordinates)")
+    # Add the hex centroids
+    for _, row in hex_centroids.iterrows():
+        centroids_table.add_row(**row.to_dict())
+        
+    # If it doesn't exist already, make a processing module for behavior and add to the nwbfile
+    if "behavior" not in nwbfile.processing:
+        logger.debug("Creating nwb behavior processing module for position data")
+        nwbfile.create_processing_module(
+            name="behavior", description="Contains all behavior-related data"
+        )
+
+    logger.info("Adding hex centroids to the behavior processing module in the nwbfile")
+    nwbfile.processing["behavior"].add(centroids_table)
+
+
+def add_position(nwbfile: NWBFile, metadata: dict, logger):
 
     if "video" not in metadata:
         # Do not print "no video metadata found" message, because we already print that in add_video

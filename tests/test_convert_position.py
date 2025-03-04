@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 from pathlib import Path
 
-from jdb_to_nwb.convert_dlc import add_dlc
+from jdb_to_nwb.convert_position import add_position
 
 
 def test_add_dlc_one_bodypart(dummy_logger):
@@ -28,7 +28,7 @@ def test_add_dlc_one_bodypart(dummy_logger):
         identifier="mock_session",
     )
 
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
@@ -87,7 +87,7 @@ def test_add_dlc_two_bodyparts(dummy_logger):
         identifier="mock_session",
     )
 
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
@@ -125,9 +125,9 @@ def test_add_dlc_two_bodyparts(dummy_logger):
         assert dlc_likelihood.comments.startswith(expected_comment)
 
 
-def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
+def test_add_position_with_incomplete_metadata(capsys, dummy_logger):
     """
-    Test that the add_dlc function responds appropriately to missing or incomplete metadata.
+    Test that the add_position function responds appropriately to missing or incomplete metadata.
     
     If no 'video' key is in the metadata dictionary, it should silently return and 
     skip conversion.
@@ -147,15 +147,15 @@ def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
     # 1. Test with no 'video' key
     metadata = {}
 
-    # Call the add_dlc function with no 'video' key in metadata and see there are no errors
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Call the add_position function with no 'video' key in metadata and see there are no errors
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     
     
     # 2. Test with 'video' key and no 'dlc_path'
     metadata["video"] = {}
 
-    # Call the add_video function with 'video' key in metadata, but no 'dlc_path'
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Call the add_position function with 'video' key in metadata, but no 'dlc_path'
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
 
     # Check that the correct message was printed to stdout
@@ -168,9 +168,9 @@ def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
         "tests/test_data/downloaded/IM-1478/07252022/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
     )
 
-    # Check that add_dlc raises a ValueError about missing fields in the metadata dictionary
+    # Check that add_position raises a ValueError about missing fields in the metadata dictionary
     try:
-        add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+        add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     except ValueError as e:
         assert str(e).startswith("Video subfield 'video_timestamps_file_path' not found in metadata.")
     else:
