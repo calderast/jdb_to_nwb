@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
+from hdmf.common import DynamicTable
 
 
 def assign_pixels_per_cm(session_date):
@@ -192,8 +193,8 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     logger.debug(f"Meters per pixel: {meters_per_pixel}")
 
     # Make a processing module for behavior and add to the nwbfile
-    logger.debug("Creating nwb behavior processing module for position data")
     if "behavior" not in nwbfile.processing:
+        logger.debug("Creating nwb behavior processing module for position data")
         nwbfile.create_processing_module(
             name="behavior", description="Contains all behavior-related data"
         )
@@ -238,11 +239,97 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     nwbfile.processing["behavior"].add(position)
 
 
-def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
+def add_hex_centroids(nwbfile: NWBFile, metadata: dict, pixels_per_cm, logger):
+    """
+    Read hex centroids from a csv file with columns hex, x, y 
+    and add them to the nwbfile in the behavior processing module.
+    """
+
+    hex_centroids_file = metadata["video"].get("hex_centroids_file_path")
+    if hex_centroids_file is None:
+        print("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        logger.warning("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        return
+
+    try:
+        hex_centroids = pd.read_csv(hex_centroids_file)
+    except FileNotFoundError:
+        logger.error(f"The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        print(f"Error: The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        return
+
+    # Check that the hex centroids file is in the format we expect
+    num_hexes = 49
+    if len(hex_centroids) != num_hexes:
+        logger.error(f"Expected {num_hexes} centroids in the hex centroids file, got {len(hex_centroids)}!!!")
+    else:
+        logger.debug(f"Found the expected number of hex centroids in the centroids file ({num_hexes})")
+
+    expected_columns = {'hex', 'x', 'y'}
+    if set(hex_centroids.columns) != expected_columns:
+        logger.error(f"Expected {expected_columns} columns in the hex centroids file, "
+                     f"got {set(hex_centroids.columns)}!!")
+        logger.error("Skipping adding centroids to the nwb")
+        print(f"Expected {expected_columns} columns in the hex centroids file, got {set(hex_centroids.columns)}!")
+        print("Skipping adding centroids to the nwb.")
+        return
+    else:
+        logger.debug(f"Found expected columns {expected_columns} in the hex centroids file")
+
+    # Convert pixels per cm to meters per pixel
+    meters_per_pixel = 0.01 / pixels_per_cm
+    hex_centroids['x_meters'] = hex_centroids['x'] * meters_per_pixel
+    hex_centroids['y_meters'] = hex_centroids['y'] * meters_per_pixel
+
+    # Set up the hex centroids table
+    centroids_table = DynamicTable(name="hex_centroids", 
+            description="Centroids of each hex in the maze (in video pixel coordinates)")
+    centroids_table.add_column(name="hex", description="The ID of the hex in the maze (1-49)")
+    centroids_table.add_column(name="x",
+            description="The x coordinate of the center of the hex (in video pixel coordinates)")
+    centroids_table.add_column(name="y",
+            description="The y coordinate of the center of the hex (in video pixel coordinates)")
+    centroids_table.add_column(name="x_meters", 
+            description="The x coordinate of the center of the hex (in meters)")
+    centroids_table.add_column(name="y_meters", 
+            description="The y coordinate of the center of the hex (in meters)")
+    # Add the hex centroids
+    for _, row in hex_centroids.iterrows():
+        centroids_table.add_row(**row.to_dict())
+
+    # If it doesn't exist already, make a processing module for behavior and add to the nwbfile
+    if "behavior" not in nwbfile.processing:
+        logger.debug("Creating nwb behavior processing module for position data")
+        nwbfile.create_processing_module(
+            name="behavior", description="Contains all behavior-related data"
+        )
+
+    print("Adding hex centroids to the nwb...")
+    logger.info("Adding hex centroids to the behavior processing module in the nwbfile")
+    nwbfile.processing["behavior"].add(centroids_table)
+
+
+def add_position(nwbfile: NWBFile, metadata: dict, logger):
 
     if "video" not in metadata:
         # Do not print "no video metadata found" message, because we already print that in add_video
         return
+
+    # If pixels_per_cm exists in metadata, use that value
+    if "pixels_per_cm" in metadata["video"]:
+        PIXELS_PER_CM = metadata["video"]["pixels_per_cm"]
+        logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
+    # Otherwise, assign it based on the date of the experiment
+    else:
+        PIXELS_PER_CM = assign_pixels_per_cm(metadata["datetime"])
+        logger.info("No 'pixels_per_cm' value found in video metadata.")
+        logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
+
+    if "hex_centroids_file_path" in metadata["video"]:
+        add_hex_centroids(nwbfile=nwbfile, metadata=metadata, pixels_per_cm=PIXELS_PER_CM, logger=logger)
+    else:
+        print("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        logger.warning("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
 
     # It is ok if we have video field in metadata but not DLC data
     # The user may wish to only convert the raw video file and do position tracking later
@@ -257,10 +344,11 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
             "This is required along with 'dlc_path' for DLC position conversion. \n"
             "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
             )
-        raise ValueError("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
+        print("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
             "This is required along with 'dlc_path' for DLC position conversion. \n"
             "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
             )
+        return
     else:
         # Read timestamps of each camera frame (in ms)
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
@@ -308,16 +396,6 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
     # Metadata should include the full path to the DLC h5 file
     # e.g. Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
     deeplabcut_file_path = metadata["video"]["dlc_path"]
-
-    # If pixels_per_cm exists in metadata, use that value
-    if "pixels_per_cm" in metadata["video"]:
-        PIXELS_PER_CM = metadata["video"]["pixels_per_cm"]
-        logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
-    # Otherwise, assign it based on the date of the experiment
-    else:
-        PIXELS_PER_CM = assign_pixels_per_cm(metadata["datetime"])
-        logger.info("No 'pixels_per_cm' value found in video metadata.")
-        logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
 
     # Read x, y position data and calculate velocity and acceleration
     position_dfs = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, logger=logger, 

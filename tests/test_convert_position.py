@@ -3,13 +3,14 @@ from dateutil import tz
 from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 from pathlib import Path
+from hdmf.common.table import DynamicTable, VectorData
 
-from jdb_to_nwb.convert_dlc import add_dlc
+from jdb_to_nwb.convert_position import add_position, add_hex_centroids
 
 
 def test_add_dlc_one_bodypart(dummy_logger):
     """
-    Test the add_dlc function where the DeepLabCut h5 file has position data 
+    Test the add_position function where the DeepLabCut h5 file has position data 
     for a single bodypart ('cap')
     """
 
@@ -28,7 +29,7 @@ def test_add_dlc_one_bodypart(dummy_logger):
         identifier="mock_session",
     )
 
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
@@ -66,9 +67,56 @@ def test_add_dlc_one_bodypart(dummy_logger):
         assert dlc_likelihood.comments.startswith(expected_comment)
 
 
+def test_add_hex_centroids(dummy_logger):
+    """
+    Test the add_hex_centroids function
+    """
+    
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
+
+    metadata = {}
+    metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
+    metadata["video"] = {}
+    metadata["video"]["hex_centroids_file_path"] = test_data_dir / "hex_coordinates_IM-1478_07252022.csv"
+    pixels_per_cm = 3.14
+    
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # Add centroids table to the nwb
+    add_hex_centroids(nwbfile=nwbfile, metadata=metadata, pixels_per_cm=pixels_per_cm, logger=dummy_logger)
+
+    # Check that behavior processing module has been added
+    assert "behavior" in nwbfile.processing
+
+    # Check that the "hex_centroids" table exists in the behavior processing module
+    behavior_module = nwbfile.processing["behavior"]
+    assert "hex_centroids" in behavior_module.data_interfaces
+    hex_centroids_table = behavior_module.data_interfaces["hex_centroids"]
+
+    assert isinstance(hex_centroids_table, DynamicTable)
+    assert hex_centroids_table.name == "hex_centroids"
+    assert hex_centroids_table.description == "Centroids of each hex in the maze (in video pixel coordinates)"
+
+    # The table should have data for all 49 hex centroids
+    assert len(hex_centroids_table) == 49
+
+    # Check that the table contains the correct columns
+    for column in hex_centroids_table.columns:
+        assert isinstance(column, VectorData)
+    expected_columns = {"hex", "x", "y", "x_meters", "y_meters"}
+    assert set(hex_centroids_table.colnames) == expected_columns, (
+        f"Hex centroid columns {set(hex_centroids_table.colnames)} "
+        f"did not match expected {expected_columns}"
+    )
+
+
 def test_add_dlc_two_bodyparts(dummy_logger):
     """
-    Test the add_dlc function where the DeepLabCut h5 file has position data 
+    Test the add_position function where the DeepLabCut h5 file has position data 
     for 2 bodyparts ('cap_front' and 'cap_back')
     """
     
@@ -87,7 +135,7 @@ def test_add_dlc_two_bodyparts(dummy_logger):
         identifier="mock_session",
     )
 
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
@@ -125,9 +173,9 @@ def test_add_dlc_two_bodyparts(dummy_logger):
         assert dlc_likelihood.comments.startswith(expected_comment)
 
 
-def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
+def test_add_position_with_incomplete_metadata(capsys, dummy_logger):
     """
-    Test that the add_dlc function responds appropriately to missing or incomplete metadata.
+    Test that the add_position function responds appropriately to missing or incomplete metadata.
     
     If no 'video' key is in the metadata dictionary, it should silently return and 
     skip conversion.
@@ -147,34 +195,33 @@ def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
     # 1. Test with no 'video' key
     metadata = {}
 
-    # Call the add_dlc function with no 'video' key in metadata and see there are no errors
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Call the add_position function with no 'video' key in metadata and see there are no errors
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     
     
-    # 2. Test with 'video' key and no 'dlc_path'
+    # 2. Test with 'video' key and no 'dlc_path' or 'hex_centroids_file_path'
     metadata["video"] = {}
+    metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
 
-    # Call the add_video function with 'video' key in metadata, but no 'dlc_path'
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Call the add_position function
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
 
-    # Check that the correct message was printed to stdout
+    # Check that the correct messages were printed to stdout
+    assert "No subfield 'hex_centroids_file_path' found in video metadata!" in captured.out
     assert "No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion." in captured.out
     
     
     # 3. Test with 'video' key and 'dlc_path', but no 'video_timestamps_file_path'
     metadata["video"] = {}
+    metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
     metadata["video"]["dlc_path"] = (
         "tests/test_data/downloaded/IM-1478/07252022/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
     )
 
-    # Check that add_dlc raises a ValueError about missing fields in the metadata dictionary
-    try:
-        add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    except ValueError as e:
-        assert str(e).startswith("Video subfield 'video_timestamps_file_path' not found in metadata.")
-    else:
-        assert False, (
-            "Expected ValueError was not raised in response to "
-            "missing timestamp subfields in the metadata dict."
-        )
+    # Check that add_position complains about missing video timestamps in the metadata dictionary
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    captured = capsys.readouterr() # capture stdout
+    
+    # Check that the correct message was printed to stdout
+    assert "Video subfield 'video_timestamps_file_path' not found in metadata." in captured.out
