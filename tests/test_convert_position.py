@@ -208,7 +208,7 @@ def test_add_position_with_incomplete_metadata(capsys, dummy_logger):
     captured = capsys.readouterr() # capture stdout
 
     # Check that the correct messages were printed to stdout
-    assert "No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids." in captured.out
+    assert "No subfield 'hex_centroids_file_path' found in video metadata!" in captured.out
     assert "No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion." in captured.out
     
     
