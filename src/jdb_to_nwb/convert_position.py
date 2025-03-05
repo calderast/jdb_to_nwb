@@ -287,6 +287,10 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger):
         # Do not print "no video metadata found" message, because we already print that in add_video
         return
 
+    # Add hex centroids.
+    # This handles complaining/logging if the required metadata is not provided
+    add_hex_centroids(nwbfile, metadata, logger)
+
     # It is ok if we have video field in metadata but not DLC data
     # The user may wish to only convert the raw video file and do position tracking later
     if "dlc_path" not in metadata["video"]:
