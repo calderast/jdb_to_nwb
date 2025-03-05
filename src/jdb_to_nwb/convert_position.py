@@ -348,6 +348,7 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger):
             "This is required along with 'dlc_path' for DLC position conversion. \n"
             "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
             )
+        return
     else:
         # Read timestamps of each camera frame (in ms)
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
