@@ -46,24 +46,12 @@ def add_camera(nwbfile: NWBFile):
         CameraDevice(
             name="camera_device 1",
             meters_per_pixel=meters_per_pixel,
-            manufacturer="Camera manufacturer",
-            model="Camera model",
-            lens="Camera lens",
-            camera_name="Hex maze camera",
+            manufacturer="Logitech",
+            model="Brio webcam",
+            lens="lens",
+            camera_name="maze_camera",
         )
     )
-
-    # From Frank lab:
-    # nwbfile.add_device(
-    #         CameraDevice(
-    #             name="camera_device " + str(camera_metadata["id"]),
-    #             meters_per_pixel=camera_metadata["meters_per_pixel"],
-    #             manufacturer=camera_metadata["manufacturer"],
-    #             model=camera_metadata["model"],
-    #             lens=camera_metadata["lens"],
-    #             camera_name=camera_metadata["camera_name"],
-    #         )
-    #     )
 
 
 def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
