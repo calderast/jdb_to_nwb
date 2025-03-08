@@ -5,6 +5,7 @@ import numpy as np
 from pynwb import NWBFile
 from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
+from ndx_franklab_novela import CameraDevice
 
 
 def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, preset="ultrafast"):
@@ -32,6 +33,39 @@ def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, pre
         print(str(e))
 
 
+def add_camera(nwbfile: NWBFile):
+    '''
+    Adds camera because this is required to create a TaskEpoch in spyglass.
+    Data is currently placeholder values.
+    '''
+    
+    pixels_per_cm = 3.14
+    meters_per_pixel = 0.01 / pixels_per_cm
+    
+    nwbfile.add_device(
+        CameraDevice(
+            name="camera_device 1",
+            meters_per_pixel=meters_per_pixel,
+            manufacturer="Camera manufacturer",
+            model="Camera model",
+            lens="Camera lens",
+            camera_name="Hex maze camera",
+        )
+    )
+
+    # From Frank lab:
+    # nwbfile.add_device(
+    #         CameraDevice(
+    #             name="camera_device " + str(camera_metadata["id"]),
+    #             meters_per_pixel=camera_metadata["meters_per_pixel"],
+    #             manufacturer=camera_metadata["manufacturer"],
+    #             model=camera_metadata["model"],
+    #             lens=camera_metadata["lens"],
+    #             camera_name=camera_metadata["camera_name"],
+    #         )
+    #     )
+
+
 def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
 
     if "video" not in metadata:
@@ -49,6 +83,10 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
 
     print("Adding video...")
     logger.info("Adding video...")
+    
+    print("Adding camera...")
+    logger.info("Adding camera...")
+    add_camera(nwbfile)
 
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["video_file_path"]
