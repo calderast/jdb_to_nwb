@@ -571,19 +571,18 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     task_epochs = VectorData(
         name="task_epochs",
         description="the temporal epochs where the animal was exposed to this task",
-        data=[0],
+        data=[[0]],
     )
     task_environment = VectorData(
         name="task_environment",
         description="the environment in which the animal performed the task",
         data=["hexmaze"],
     )
-    # Keeping for posterity if we add camera data like Frank Lab
-    # camera_id = VectorData(
-    #     name="camera_id",
-    #     description="the ID number of the camera used for video",
-    #     data=[[int(camera_id) for camera_id in task_metadata["camera_id"]]],
-    # )
+    camera_id = VectorData(
+        name="camera_id",
+        description="the ID number of the camera used for video",
+        data=[[1]],
+    )
     task = DynamicTable(
         name="task_0",
         description="",
@@ -592,7 +591,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
             task_description,
             task_epochs,
             task_environment,
-            # camera_id,
+            camera_id,
         ],
     )
     nwbfile.processing["tasks"].add(task)
