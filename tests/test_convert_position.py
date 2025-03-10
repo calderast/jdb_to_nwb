@@ -16,7 +16,7 @@ def test_add_dlc_one_bodypart(dummy_logger):
 
     metadata = {}
     metadata["video"] = {}
-    metadata["video"]["pixels_per_cm"] = 2.688
+    metadata["pixels_per_cm"] = 2.688
     metadata["video"]["video_timestamps_file_path"] = test_data_dir / "testvidtimes0.csv"
     metadata["video"]["dlc_path"] = test_data_dir / "Behav_Vid0DLC_resnet50_Triangle_Maze_PhotFeb12shuffle1_800000.h5"
 
@@ -74,7 +74,7 @@ def test_add_dlc_two_bodyparts(dummy_logger):
 
     metadata = {}
     metadata["video"] = {}
-    metadata["video"]["pixels_per_cm"] = 2.688
+    metadata["pixels_per_cm"] = 2.688
     metadata["video"]["video_timestamps_file_path"] = test_data_dir / "testvidtimes0.csv"
     metadata["video"]["dlc_path"] = test_data_dir / "Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
 

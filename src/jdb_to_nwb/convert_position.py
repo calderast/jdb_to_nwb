@@ -237,9 +237,9 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger):
             )
         return
 
-    # At this point, pixels_per_cm exists must under video in metadata. If it did not exist, 
+    # At this point, pixels_per_cm must exist in metadata. If it did not exist, 
     # it was automatically assigned based on session date in convert_video
-    pixels_per_cm = metadata["video"]["pixels_per_cm"]
+    pixels_per_cm = metadata["pixels_per_cm"]
 
     # Read timestamps of each camera frame (in ms)
     video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]

@@ -17,8 +17,8 @@ def test_add_hex_centroids(dummy_logger):
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
 
     metadata = {}
+    metadata["pixels_per_cm"] = 3.14
     metadata["video"] = {}
-    metadata["video"]["pixels_per_cm"] = 3.14
     metadata["video"]["hex_centroids_file_path"] = test_data_dir / "hex_coordinates_IM-1478_07252022.csv"
 
     nwbfile = NWBFile(
@@ -62,7 +62,7 @@ def test_add_camera(dummy_logger):
 
     metadata = {}
     metadata["video"] = {}
-    metadata["video"]["pixels_per_cm"] = 3.14
+    metadata["pixels_per_cm"] = 3.14
 
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -78,7 +78,7 @@ def test_add_camera(dummy_logger):
     camera_device = nwbfile.devices["camera_device 1"]
     assert isinstance(camera_device, CameraDevice)
     assert camera_device.camera_name == "maze_camera"
-    assert camera_device.meters_per_pixel == 0.01 / metadata["video"]["pixels_per_cm"]
+    assert camera_device.meters_per_pixel == 0.01 / metadata["pixels_per_cm"]
     assert camera_device.manufacturer == "Logitech"
 
 
@@ -131,6 +131,7 @@ def test_add_video_with_incomplete_metadata(capsys, dummy_logger):
 
     # Create a test metadata dictionary with no video key
     metadata = {}
+    metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
 
     # Create a test NWBFile
     nwbfile = NWBFile(
