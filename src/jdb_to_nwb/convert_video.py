@@ -10,6 +10,7 @@ from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
 from ndx_franklab_novela import CameraDevice
 from hdmf.common import DynamicTable
+from .timestamps_alignment import align_via_interpolation
 
 
 def assign_pixels_per_cm(session_date):
@@ -220,40 +221,28 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
         video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
 
-    # Adjust video timestamps so photometry starts at time 0
+    # Adjust video timestamps so photometry starts at time 0 (this is also done to match arduino visit times)
     video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
 
     # Convert video timestamps to seconds to match NWB standard
     video_timestamps_seconds = video_timestamps_ms / 1000
 
-    # Align video timestamps to photometry/ephys
-    ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
+    # Get port visits in video time (aka arduino time)
     arduino_visit_times = metadata.get("arduino_visit_times")
 
-    if ground_truth_visit_times is not None:
-        logger.info("Aligning video timestamps...")
-        # Make sure we have the same number of arduino and ground truth visit times for alignment
-        assert len(arduino_visit_times) == len(ground_truth_visit_times), (
-            f"Expected the same number of port visits recorded by arduino and ephys/photometry! \n"
-            f"Got {len(arduino_visit_times)} arduino visits, but {len(ground_truth_visit_times)} visits for alignment!"
-        )
-        # Align video timestamps via interpolation. For timestamps out of visit bounds, 
-        # use the ratio of spacing between arduino_visit_times and ground_truth_visit_times
-        true_video_timestamps = np.interp(
-            x=video_timestamps_seconds,
-            xp=arduino_visit_times,
-            fp=ground_truth_visit_times,
-            left=ground_truth_visit_times[0] + 
-                (video_timestamps_seconds[0] - arduino_visit_times[0]) * 
-                (ground_truth_visit_times[1] - ground_truth_visit_times[0]) / 
-                (arduino_visit_times[1] - arduino_visit_times[0]),
-            right=ground_truth_visit_times[-1] + 
-                (video_timestamps_seconds[-1] - arduino_visit_times[-1]) * 
-                (ground_truth_visit_times[-1] - ground_truth_visit_times[-2]) / 
-                (arduino_visit_times[-1] - arduino_visit_times[-2])
-        )
+    # If we have ground truth port visit times, align video timestamps to that
+    ground_truth_time_source = metadata.get("ground_truth_time_source")
+    if ground_truth_time_source is not None:
+
+        logger.info(f"Aligning video to ground truth ({ground_truth_time_source})")
+        ground_truth_visit_times = metadata.get("ground_truth_visit_times")
+        true_video_timestamps = align_via_interpolation(unaligned_timestamps=video_timestamps_seconds,
+                                                   unaligned_visit_times=arduino_visit_times,
+                                                   ground_truth_visit_times=ground_truth_visit_times,
+                                                   logger=logger)
     else:
         # If we don't have port visits for alignment, keep the original timestamps
+        logger.info("No ground truth port visits found, keeping original video timestamps.")
         true_video_timestamps = video_timestamps_seconds
 
     logger.debug("Difference between aligned and original video timestamps: "
