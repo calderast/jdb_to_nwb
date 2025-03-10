@@ -35,7 +35,8 @@ def test_add_electrode_data():
     # Create a test filtering list
     filtering_list = ["Bandpass Filter"] * 256
 
-    # The headstage channel numbers are 1-indexed and copied from the chip_first column in resources/channel_map.csv
+    # The headstage channel numbers are 1-indexed - see settings.xml file
+    # They should match the chip first channel map in resources/channel_map.csv
     # fmt: off
     headstage_channel_numbers = list(np.array([
         191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,128,129,130,
@@ -51,7 +52,8 @@ def test_add_electrode_data():
     # fmt: on
 
     # Create a test reference daq channel indices list
-    reference_daq_channel_indices = [-1] * 256
+    reference_daq_channel_indices = list(range(256))
+    reference_daq_channel_indices.reverse()
 
     # Add electrode data to the NWBFile
     add_electrode_data(
@@ -112,10 +114,6 @@ def test_add_electrode_data():
     assert nwbfile.electrodes.headstage_channel_number.data[:] == headstage_channel_numbers
     assert nwbfile.electrodes.reference_daq_channel_index.data[:] == reference_daq_channel_indices
 
-    expected_ecog_channels = np.array([False] * 256)
-    expected_ecog_channels[[63, 127, 128, 192]] = True  # indices from resources/ecog_channels.csv
-    np.testing.assert_array_equal(nwbfile.electrodes.ecog.data[:], expected_ecog_channels)
-
 def test_get_raw_ephys_data():
     """
     Test the get_raw_ephys_data function.
@@ -132,7 +130,7 @@ def test_get_raw_ephys_data():
 
 def test_get_raw_ephys_metadata():
     """
-    Test the get_raw_ephys_metadata function.
+    Test that the get_raw_ephys_metadata function extracts the correct metadata from the settings.xml file.
     """
     folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     (
@@ -143,7 +141,7 @@ def test_get_raw_ephys_metadata():
     ) = get_raw_ephys_metadata(folder_path)
     assert filtering_list == ["2nd-order Butterworth filter with highcut=6000 Hz and lowcut=1 Hz"] * 256
 
-    # The headstage channel numbers are 1-indexed and copied from the chip_first column in resources/channel_map.csv
+    # The headstage channel numbers are 1-indexed - see settings.xml file
     # fmt: off
     expected_headstage_channel_numbers = np.array([
         191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,128,129,130,

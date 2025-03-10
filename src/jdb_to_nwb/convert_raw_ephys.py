@@ -37,7 +37,6 @@ if not RESOURCES_DIR.exists():
     RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
 
 CHANNEL_MAP_PATH = RESOURCES_DIR / "channel_map.csv"
-ECOG_CHANNELS_PATH = RESOURCES_DIR / "ecog_channels.yaml"
 ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
 ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
 
@@ -136,11 +135,6 @@ def add_electrode_data(
             "This is unexpected and may indicate a problem with the channel map."
         )
 
-    # Get the ECog channel IDs
-    with open(ECOG_CHANNELS_PATH, "r") as f:
-        ecog_channel_ids_yaml = yaml.safe_load(f)
-    ecog_channel_ids = ecog_channel_ids_yaml[plug_order]
-
     # Get electrode coordinates as a (2, 256) array based on the probe name
     # The first column is the relative x coordinate, and the second column is the relative y coordinate
     probe_name = metadata["ephys"]["device"].get("name")
@@ -175,11 +169,6 @@ def add_electrode_data(
         electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
     )
 
-    # Mark ECoG electrodes -- ecog_channel_ids is 0-indexed
-    mask = np.zeros(len(electrode_data), dtype=bool)
-    mask[ecog_channel_ids] = True
-    electrode_data["ecog"] = mask
-
     # Add the electrode data to the NWB file, one column at a time
     nwbfile.add_electrode_column(
         name="channel_name",
@@ -212,10 +201,6 @@ def add_electrode_data(
     nwbfile.add_electrode_column(
         name="bad_channel",
         description="Whether the channel is a bad channel based on too low or too high impedance",
-    )
-    nwbfile.add_electrode_column(
-        name="ecog",
-        description="Whether the channel is an ECoG electrode",
     )
     nwbfile.add_electrode_column(
         name="rel_x",
@@ -258,7 +243,6 @@ def add_electrode_data(
             series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
             series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
             bad_channel=row["bad_channel"],
-            ecog=row["ecog"],
             rel_x=float(row["rel_x"]),
             rel_y=float(row["rel_y"]),
             group=electrode_group,
