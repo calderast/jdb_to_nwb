@@ -243,7 +243,8 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger):
     pixels_per_cm = metadata["pixels_per_cm"]
 
     # If we already have aligned video timestamps, use those
-    if "video_files" in nwbfile.processing and "behavior_video" in nwbfile.processing["video_files"]:
+    video_files = nwbfile.processing.get("video_files", None) 
+    if video_files and isinstance(video_files, dict) and "behavior_video" in video_files:
         # Pynwb will link the timestamps here instead of creating a new array! Cool!
         true_video_timestamps = nwbfile.processing["video_files"]["behavior_video"]
 

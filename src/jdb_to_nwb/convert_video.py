@@ -197,7 +197,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
         return None
 
     if "hex_centroids_file_path" in metadata["video"]:
-        add_hex_centroids(nwbfile=nwbfile, metadata=metadata, pixels_per_cm=pixels_per_cm, logger=logger)
+        add_hex_centroids(nwbfile=nwbfile, metadata=metadata, logger=logger)
     else:
         print("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
         logger.warning("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
