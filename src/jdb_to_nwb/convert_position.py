@@ -211,7 +211,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
 
 def add_position(nwbfile: NWBFile, metadata: dict, logger):
     """ 
-    Add positon data from DeeplabCut to the nwbfile.
+    Add position data from DeeplabCut to the nwbfile.
     """
 
     if "video" not in metadata:

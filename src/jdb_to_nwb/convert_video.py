@@ -146,7 +146,7 @@ def add_camera(nwbfile: NWBFile, metadata: dict):
     pixels_per_cm = metadata["video"]["pixels_per_cm"]
     meters_per_pixel = 0.01 / pixels_per_cm
 
-    # Note that the name "camera_device 1" is required for spyglass compatability 
+    # Note that the name "camera_device 1" is required for spyglass compatibility
     # (it must match format "camera_device {epoch+1}")
     nwbfile.add_device(
         CameraDevice(
