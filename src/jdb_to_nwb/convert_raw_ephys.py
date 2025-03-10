@@ -11,7 +11,6 @@ from importlib.resources import files
 import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
 import numpy as np
-import yaml
 from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator import (
     SpikeInterfaceRecordingDataChunkIterator,
 )
