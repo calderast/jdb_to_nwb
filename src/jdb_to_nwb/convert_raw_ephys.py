@@ -11,6 +11,7 @@ from importlib.resources import files
 import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
 import numpy as np
+import yaml
 from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator import (
     SpikeInterfaceRecordingDataChunkIterator,
 )
@@ -18,6 +19,8 @@ from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 from .plotting.plot_ephys import plot_channel_map
+from ndx_franklab_novela import AssociatedFiles
+
 
 MICROVOLTS_PER_VOLT = 1e6
 VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
@@ -34,6 +37,7 @@ if not RESOURCES_DIR.exists():
     RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
 
 CHANNEL_MAP_PATH = RESOURCES_DIR / "channel_map.csv"
+ECOG_CHANNELS_PATH = RESOURCES_DIR / "ecog_channels.yaml"
 ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
 ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
 
@@ -41,6 +45,8 @@ def add_electrode_data(
     *,
     nwbfile: NWBFile,
     filtering_list: list[str],
+    headstage_channel_numbers: list[int],
+    reference_daq_channel_indices: list[int],
     metadata: dict,
     fig_dir: Path = None,
 ):
@@ -53,6 +59,10 @@ def add_electrode_data(
         The NWB file being assembled.
     filtering_list : list of str
         The filtering applied to each channel.
+    headstage_channel_numbers : list of int
+        The headstage channel numbers for each channel.
+    reference_daq_channel_indices : list of int
+        The reference DAQ channel indices for each channel.
     metadata : dict
         Metadata dictionary.
     fig_dir : Path, optional
@@ -114,6 +124,23 @@ def add_electrode_data(
     channel_map_df = pd.read_csv(CHANNEL_MAP_PATH)
     channel_map = np.array(channel_map_df[plug_order])
 
+    # Convert the headstage channel numbers to 0-indexed
+    headstage_channel_indices = np.array(headstage_channel_numbers) - 1
+
+    # Check that the headstage channel indices are equal to the channel map
+    # The channel map should have been encoded in the OpenEphys settings file during the recording
+    # and that should match the channel map from the resources directory.
+    if not np.all(headstage_channel_indices == channel_map):
+        warnings.warn(
+            "Headstage channel indices are not equal to the channel map. "
+            "This is unexpected and may indicate a problem with the channel map."
+        )
+
+    # Get the ECog channel IDs
+    with open(ECOG_CHANNELS_PATH, "r") as f:
+        ecog_channel_ids_yaml = yaml.safe_load(f)
+    ecog_channel_ids = ecog_channel_ids_yaml[plug_order]
+
     # Get electrode coordinates as a (2, 256) array based on the probe name
     # The first column is the relative x coordinate, and the second column is the relative y coordinate
     probe_name = metadata["ephys"]["device"].get("name")
@@ -147,6 +174,11 @@ def add_electrode_data(
         electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
         electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
     )
+
+    # Mark ECoG electrodes -- ecog_channel_ids is 0-indexed
+    mask = np.zeros(len(electrode_data), dtype=bool)
+    mask[ecog_channel_ids] = True
+    electrode_data["ecog"] = mask
 
     # Add the electrode data to the NWB file, one column at a time
     nwbfile.add_electrode_column(
@@ -182,6 +214,10 @@ def add_electrode_data(
         description="Whether the channel is a bad channel based on too low or too high impedance",
     )
     nwbfile.add_electrode_column(
+        name="ecog",
+        description="Whether the channel is an ECoG electrode",
+    )
+    nwbfile.add_electrode_column(
         name="rel_x",
         description="The relative x coordinate of the electrode",
     )
@@ -193,6 +229,25 @@ def add_electrode_data(
         name="filtering",
         description="The filtering applied to the electrode",
     )
+    nwbfile.add_electrode_column(
+        name="headstage_channel_number",
+        description="The headstage channel number (1-indexed)for the electrode",
+    )
+    nwbfile.add_electrode_column(
+        name="reference_daq_channel_index",
+        description="The index of the reference channel in this table. -1 if not set.",
+    )
+
+    assert len(filtering_list) == len(
+        electrode_data
+    ), "Filtering list does not have the same length as the number of channels."
+    assert len(headstage_channel_numbers) == len(
+        electrode_data
+    ), "Headstage channel numbers do not have the same length as the number of channels."
+    assert len(reference_daq_channel_indices) == len(
+        electrode_data
+    ), "Reference DAQ channel indices do not have the same length as the number of channels."
+
     for i, row in electrode_data.iterrows():
         nwbfile.add_electrode(
             channel_name=row["Channel Name"],
@@ -203,11 +258,14 @@ def add_electrode_data(
             series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
             series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
             bad_channel=row["bad_channel"],
+            ecog=row["ecog"],
             rel_x=float(row["rel_x"]),
             rel_y=float(row["rel_y"]),
             group=electrode_group,
             filtering=filtering_list[i],
             location=electrodes_location,
+            headstage_channel_number=headstage_channel_numbers[i],
+            reference_daq_channel_index=reference_daq_channel_indices[i],
         )
 
 
@@ -270,7 +328,7 @@ def get_port_visits(folder_path: Path):
 
 def get_raw_ephys_data(
     folder_path: Path,
-) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
+) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray]:
     """
     Get the raw ephys data from the OpenEphys binary recording.
 
@@ -285,9 +343,11 @@ def get_raw_ephys_data(
         original_timestamps: np.ndarray, that could be used as the timestamps argument in
             pynwb.ecephys.ElectricalSeries or may need to be time aligned with the other
             data streams in the NWB file.
-        filtering_list: list of str, the filtering applied to each channel
     """
     # Create a SpikeInterface recording extractor for the OpenEphys binary data
+    # NOTE: We could write our own extractor to handle the relatively simple OpenEphys binary format
+    # and surrounding files but it is nice to build on the well-tested code of others when possible.
+    # However, we should remember that external code may not be well-maintained or may have bugs of their own.
     recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path)
 
     # Select only the channels that start with "CH"
@@ -320,14 +380,46 @@ def get_raw_ephys_data(
     # constructor.
     traces_as_iterator = SpikeInterfaceRecordingDataChunkIterator(recording=recording_sliced)
 
-    # Read the openephys settings.xml file to get the mapping of channel number to channel name
-    # <PROCESSOR name="Sources/Rhythm FPGA" ...>
-    #   <CHANNEL_INFO>
-    #     <CHANNEL name="CH1" number="0" gain="0.19499999284744263"/>
-    #     ...
-    #   </CHANNEL_INFO>
-    #   ...
-    # </PROCESSOR>
+    return (
+        traces_as_iterator,
+        channel_conversion_factor_v,
+        original_timestamps,
+    )
+
+
+def get_raw_ephys_metadata(folder_path: Path) -> tuple[list[str], list[int], list[int]]:
+    """
+    Get the raw ephys metadata from the OpenEphys binary recording.
+
+    Read the openephys settings.xml file to get the mapping of channel number to channel name.
+
+    <PROCESSOR name="Sources/Rhythm FPGA" ...>
+      <CHANNEL_INFO>
+        <CHANNEL name="CH1" number="0" gain="0.19499999284744263"/>
+        ...
+      </CHANNEL_INFO>
+      ...
+    </PROCESSOR>
+
+    Read the settings.xml file to get the filtering applied to each channel.
+
+    Read the settings.xml file to get the channel map.
+
+    Parameters
+    ----------
+    folder_path : Path
+        Path to the folder containing the OpenEphys binary recording. The folder
+        should have the date in the name and contain a file called "settings.xml".
+
+    Returns
+    -------
+    filtering_list : list[str]
+        The filtering applied to each channel.
+    headstage_channel_numbers : list[int]
+        The headstage channel numbers for each channel.
+    reference_daq_channel_indices: list[int]
+        The reference DAQ channel indices for each channel (-1 if not set).
+    """
     settings_file_path = Path(folder_path) / "settings.xml"
     settings_tree = ET.parse(settings_file_path)
     settings_root = settings_tree.getroot()
@@ -341,15 +433,53 @@ def get_raw_ephys_data(
         channel.attrib["number"]: channel.attrib["name"] for channel in channel_info.findall("CHANNEL")
     }
 
-    # Read the settings.xml file to get the filtering applied to each channel - 
-    # map channel number to filter description
-    # <PROCESSOR name="Filters/Bandpass Filter" ...>
-    #   <CHANNEL name="0" number="0">
-    #     <SELECTIONSTATE param="1" record="0" audio="0"/>
-    #     <PARAMETERS highcut="6000" lowcut="1" shouldFilter="1"/>
-    #   </CHANNEL>
-    #   ...
-    # </PROCESSOR>
+    # Get the filtering info
+    filtering_list = get_filtering_info(settings_root, channel_number_to_channel_name)
+
+    # Get the channel map info
+    headstage_channel_numbers, reference_daq_channel_indices = get_channel_map_info(
+        settings_root, channel_number_to_channel_name
+    )
+
+    # Save the raw settings.xml file as a string to be used to create an AssociatedFiles object
+    # logger.debug("Saving the settings.xml file as an AssociatedFiles object")
+    with open(settings_file_path, "r") as settings_file:
+        raw_settings_xml = settings_file.read()
+
+    return (
+        filtering_list,
+        headstage_channel_numbers,
+        reference_daq_channel_indices,
+        raw_settings_xml,
+    )
+
+
+def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name: dict[str, str]) -> list[str]:
+    """
+    Get the filtering applied to each channel from the settings.xml file.
+
+    Read the settings.xml file to get the filtering applied to each channel - map channel number to filter description
+
+    <PROCESSOR name="Filters/Bandpass Filter" ...>
+      <CHANNEL name="0" number="0">
+        <SELECTIONSTATE param="1" record="0" audio="0"/>
+        <PARAMETERS highcut="6000" lowcut="1" shouldFilter="1"/>
+      </CHANNEL>
+      ...
+    </PROCESSOR>
+
+    Parameters
+    ----------
+    settings_root : ET.Element
+        The root of the settings.xml file.
+    channel_number_to_channel_name : dict[str, str]
+        Mapping of channel number to channel name.
+
+    Returns
+    -------
+    filtering_list: list[str]
+        The filtering applied to each channel.
+    """
     bandpass_filter = settings_root.find(".//PROCESSOR[@name='Filters/Bandpass Filter']")
     filtering = {}
     if bandpass_filter is not None:
@@ -387,12 +517,89 @@ def get_raw_ephys_data(
 
     # TODO: save settings.xml as an associated file using the ndx-franklab-novela extension
 
-    return (
-        traces_as_iterator,
-        channel_conversion_factor_v,
-        original_timestamps,
-        filtering_list,
-    )
+    return filtering_list
+
+
+def get_channel_map_info(
+    settings_root: ET.Element, channel_number_to_channel_name: dict[str, str]
+) -> tuple[list[int], list[int]]:
+    """
+    Get the channel map info from the settings.xml file.
+
+    Read the settings.xml file to get the mapping of daq / data channel index (0-indexed) to headstage channel
+    index (1-indexed) and get the reference channels for each channel
+    The GUI for this older version of the OpenEphys Channel Map filter is documented here:
+    https://open-ephys.atlassian.net/wiki/spaces/OEW/pages/950421/Channel+Map
+
+    <PROCESSOR name="Filters/Channel Map" ...>
+      <CHANNEL name="0" number="0">
+        <SELECTIONSTATE param="0" record="0" audio="0"/>
+      </CHANNEL>
+      ...
+      <EDITOR isCollapsed="0" displayName="Channel Map" Type="ChannelMappingEditor">
+        <SETTING Type="visibleChannels" Value="6"/>
+        <CHANNEL Number="0" Mapping="1" Reference="-1" Enabled="1"/>
+        <CHANNEL Number="1" Mapping="2" Reference="-1" Enabled="1"/>
+        <CHANNEL Number="2" Mapping="3" Reference="-1" Enabled="1"/>
+        ...
+        <REFERENCE Number="0" Channel="2"/>
+        <REFERENCE Number="1" Channel="-1"/>
+        ...
+      </EDITOR>
+    </PROCESSOR>
+
+    Parameters
+    ----------
+    settings_root : ET.Element
+        The root of the settings.xml file.
+    channel_number_to_channel_name : dict[str, str]
+        Mapping of channel number to channel name.
+
+    Returns
+    -------
+    headstage_channel_numbers : list[int]
+        The headstage channel numbers for each channel.
+    reference_daq_channel_indices : list[int]
+        The reference DAQ channel indices for each channel (-1 if not set).
+    """
+    channel_map = settings_root.find(".//PROCESSOR[@name='Filters/Channel Map']")
+    if channel_map is None:
+        raise ValueError("Could not find the Channel Map processor in the settings.xml file.")
+    channel_map_editor = channel_map.find("EDITOR")
+    if channel_map_editor is None:
+        raise ValueError("Could not find the EDITOR node in the settings.xml file.")
+
+    # Get the reference channel if set
+    reference_channels = list()
+    for i, reference in enumerate(channel_map_editor.findall("REFERENCE")):
+        assert int(reference.attrib["Number"]) == i, "Reference number does not match index."
+        reference_channels.append(int(reference.attrib["Channel"]))
+        # Ryan believes the reference channel is the daq / data channel index and not the headstage channel index
+
+    # Get the channel map
+    headstage_channel_numbers = list()
+    reference_daq_channel_indices = list()
+    for i, channel in enumerate(channel_map_editor.findall("CHANNEL")):
+        # There should not be any disabled channels and this code was not tested with disabled channels.
+        # TODO Before removing this assertion, check that the code below works when a channel is disabled.
+        assert int(channel.attrib["Enabled"]) == 1, "Channel is not enabled."
+        assert int(channel.attrib["Number"]) == i, "Channel number does not match index."
+
+        # Ignore the ADC channels
+        if not channel_number_to_channel_name.get(channel.attrib["Number"]).startswith("CH"):
+            continue
+
+        # This code was not tested with reference channels.
+        # TODO Before removing this assertion, check that the code below works when a channel is a reference.
+        assert int(channel.attrib["Reference"]) == -1, "Channel is a reference."
+        if int(channel.attrib["Reference"]) != -1:
+            reference_daq_channel_indices.append(reference_channels[int(channel.attrib["Reference"])])
+        else:
+            reference_daq_channel_indices.append(-1)
+
+        headstage_channel_numbers.append(int(channel.attrib["Mapping"]))
+
+    return headstage_channel_numbers, reference_daq_channel_indices
 
 
 def add_raw_ephys(
@@ -408,7 +615,7 @@ def add_raw_ephys(
     nwbfile : NWBFile
         The NWB file being assembled.
     metadata : dict, optional
-        Metadata dictionary,by default None
+        Metadata dictionary.
     fig_dir: Path, optional
         The directory to save the figure. If None, the figure will not be saved.
     """
@@ -440,16 +647,39 @@ def add_raw_ephys(
         traces_as_iterator,
         channel_conversion_factor_v,
         original_timestamps,
-        filtering_list,
     ) = get_raw_ephys_data(openephys_folder_path)
     num_samples, num_channels = traces_as_iterator.maxshape
+
+    (
+        filtering_list,
+        headstage_channel_numbers,
+        reference_daq_channel_indices,
+        raw_settings_xml,
+    ) = get_raw_ephys_metadata(openephys_folder_path)
+
+    raw_settings_xml_file = AssociatedFiles(
+        name="open_ephys_settings_xml",
+        description="Raw settings.xml file from OpenEphys",
+        content=raw_settings_xml,
+        task_epochs="0",  # Berke Lab only has one epoch (session) per day
+    )
+
+    # Add settings.xml to the NWB under acquisition as an associated file
+    nwbfile.add_acquisition(raw_settings_xml_file)
     
     # Get port visits recorded by Open Ephys for timestamp alignment
     ephys_visit_times = get_port_visits(openephys_folder_path)
     print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
 
     # Create electrode groups and add electrode data to the NWB file
-    add_electrode_data(nwbfile=nwbfile, filtering_list=filtering_list, metadata=metadata, fig_dir=fig_dir)
+    add_electrode_data(
+        nwbfile=nwbfile,
+        filtering_list=filtering_list,
+        headstage_channel_numbers=headstage_channel_numbers,
+        reference_daq_channel_indices=reference_daq_channel_indices,
+        metadata=metadata,
+        fig_dir=fig_dir,
+    )
 
     # Check that the number of electrodes in the NWB file is the same as the number of channels in traces_as_iterator
     assert (len(nwbfile.electrodes) == num_channels), (
