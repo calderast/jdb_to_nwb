@@ -930,4 +930,8 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             "If you are using pyPhotometry, you must include 'ppd_file_path'."
         )
 
+    # Photometry visit times are now our ground truth visit times
+    metadata["ground_truth_time_source"] = "photometry"
+    metadata["ground_truth_visit_times"] = photometry_data_dict.get("port_visits")
+
     return photometry_data_dict

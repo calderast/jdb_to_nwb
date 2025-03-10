@@ -2,7 +2,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 
-def trim_sync_pulses(visits_1, visits_2, logger):
+def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger):
     """
     We may have an unequal number of sync pulses (port visit times) recorded by different datastreams
     (photometry vs ephys vs arduino), if one datastream was started (or ended) before (or after) another 
@@ -13,15 +13,15 @@ def trim_sync_pulses(visits_1, visits_2, logger):
     between port visit times for each datastream.
     
     Args:
-    visits_1 (list or np.array): List of ground truth port visit times
-    visits_2 (list or np.array): List of unaligned port visit times
+    ground_truth_visits (list or np.array): List of ground truth port visit times
+    unaligned_visits (list or np.array): List of unaligned port visit times
 
     Returns:
     aligned_timestamps (list or np.array): Timestamps aligned to the ground_truth_visit_times
     """
 
     # Ensure both lists are arrays
-    visits_1, visits_2 = np.array(visits_1), np.array(visits_2)
+    visits_1, visits_2 = np.array(ground_truth_visits), np.array(unaligned_visits)
     logger.info(f"Initial number of port visits: ground truth={len(visits_1)}, unaligned={len(visits_2)}")
 
     # Determine which list is longer
@@ -74,6 +74,10 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
     """
     Align timestamps to ground truth timestamps via interpolation using port visit times as sync pulses.
     Timestamps that fall before the first port visit or after the last port visit will be aligned via extrapolation.
+    
+    Automatically handles cases where the lengths of unaligned_visit_times and ground_truth_visit_times
+    do not match by trimming the longer list in a way that maximizes alignment between the 2 lists.
+    (see timestamps_alignment.trim_sync_pulses for more info)
 
     Args:
     unaligned_timestamps (list or np.array): List of timestamps to align
@@ -94,7 +98,8 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
         ground_truth_visit_times, unaligned_visit_times = trim_sync_pulses(ground_truth_visit_times, 
                                                                            unaligned_visit_times, logger)
     else:
-        logger.debug(f"There are {len(unaligned_visit_times)} visit times to be used for alignment.")
+        logger.debug(f"There are {len(unaligned_visit_times)} visit times from both datastreams "
+                     "to be used for alignment.")
 
     # Create an interpolation function to go from unaligned visit times to ground truth visit times
     # Extrapolate timestamps that fall before the first visit or after the last visit
