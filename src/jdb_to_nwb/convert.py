@@ -110,8 +110,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Parse subject metadata
     subject = Subject(**metadata["subject"])
 
-    # Create session_id in rat_date format
-    session_id = f"{metadata.get("animal_name")}_{metadata.get("date")}"
+    # Create session_id in {rat}_{date} format where date is YYYYMMDD
+    session_id = f"{metadata.get("animal_name")}_{metadata.get("datetime").strftime("%Y%m%d")}"
 
     # Create directory for associated figures
     fig_dir = Path(output_nwb_dir) / f"{session_id}_figures"
