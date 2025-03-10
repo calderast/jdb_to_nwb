@@ -78,7 +78,7 @@ def test_add_camera(dummy_logger):
     camera_device = nwbfile.devices["camera_device 1"]
     assert isinstance(camera_device, CameraDevice)
     assert camera_device.camera_name == "maze_camera"
-    assert camera_device.meters_per_pixel == metadata["video"]["pixels_per_cm"]
+    assert camera_device.meters_per_pixel == 0.01 / metadata["video"]["pixels_per_cm"]
     assert camera_device.manufacturer == "Logitech"
 
 
