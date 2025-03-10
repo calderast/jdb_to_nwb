@@ -2,7 +2,6 @@
 # ndx-franklab-novela extension to store the Probe information for maximal integration with Spyglass, 
 # so we are doing the conversion manually using PyNWB.
 
-import warnings
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
@@ -290,7 +289,7 @@ def get_port_visits(folder_path: Path, logger):
     # Align to first pulse (which marks photometry(?) start time) and convert to seconds
     # NOTE: The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
     # should we add a check for this to ensure we have identified the correct "start" pulse?
-    logger.info(f"Removing the first ephys pulse, as it marks start time and not a true port visit")
+    logger.info("Removing the first ephys pulse, as it marks start time and not a true port visit")
     port_visits = pulse_starts[1:] - pulse_starts[0]
     port_visits = [float(visit / downsampled_fs) for visit in port_visits]
     return port_visits

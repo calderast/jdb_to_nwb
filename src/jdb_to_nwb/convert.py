@@ -176,7 +176,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     add_position(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     # Add spikes
-    add_spikes(nwbfile=nwbfile, metadata=metadata)
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     # If we have an exact photometry start time, use that as the session start time
     if photometry_start is not None:

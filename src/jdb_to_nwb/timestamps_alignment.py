@@ -6,7 +6,7 @@ def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger):
     """
     We may have an unequal number of sync pulses (port visit times) recorded by different datastreams
     (photometry vs ephys vs arduino), if one datastream was started (or ended) before (or after) another 
-    and port visits occured during this time. Typically, this occurs when photometry was started before
+    and port visits occurred during this time. Typically, this occurs when photometry was started before
     ephys/behavior (e.g. IM-1478, 07/19/2022). If this is the case, trim the longer list of port visits
     so both lists are the same length and can be used for timestamps alignment. We auto-detect if the 
     visits to be removed are at the start or the end of the longer list by matching the relative spacing 
