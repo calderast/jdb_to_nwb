@@ -2,10 +2,111 @@ import os
 import csv
 import ffmpeg
 import numpy as np
+import pandas as pd
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
 from ndx_franklab_novela import CameraDevice
+from hdmf.common import DynamicTable
+
+
+def assign_pixels_per_cm(session_date):
+    """
+    Assigns video PIXELS_PER_CM based on the date of the session.
+    PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01/01/2023), 
+    2.3 before 01/11/2024, or 2.688 after (old maze)
+
+    Args:
+    session_date (datetime): Datetime object for the date of this session
+
+    Returns:
+    float: The corresponding PIXELS_PER_CM value.
+    """
+
+    # Define cutoff dates
+    cutoff1 = datetime.strptime("12312022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Dec 31, 2022
+    cutoff2 = datetime.strptime("01112024", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Jan 11, 2024
+
+    # Assign pixels per cm based on the session date
+    if session_date <= cutoff1:
+        pixels_per_cm = 3.14
+    elif cutoff1 < session_date <= cutoff2:
+        pixels_per_cm = 2.3
+    else:
+        pixels_per_cm = 2.688
+    return pixels_per_cm
+
+
+def add_hex_centroids(nwbfile: NWBFile, metadata: dict, logger):
+    """
+    Read hex centroids from a csv file with columns hex, x, y 
+    and add them to the nwbfile in the behavior processing module.
+    """
+
+    # If this function is called, it has already been established that 'hex_centroids_file_path' 
+    # and 'pixels_per_cm' exist in video metadata, so we don't need any extra checks here
+    hex_centroids_file = metadata["video"]["hex_centroids_file_path"]
+    pixels_per_cm = metadata["video"]["pixels_per_cm"]
+
+    # Try to load centroids and complain if we can't find the file
+    try:
+        hex_centroids = pd.read_csv(hex_centroids_file)
+    except FileNotFoundError:
+        logger.error(f"The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        print(f"Error: The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        return
+
+    # Check that the hex centroids file is in the format we expect
+    num_hexes = 49
+    if len(hex_centroids) != num_hexes:
+        logger.error(f"Expected {num_hexes} centroids in the hex centroids file, got {len(hex_centroids)}!!!")
+    else:
+        logger.debug(f"Found the expected number of hex centroids in the centroids file ({num_hexes})")
+
+    expected_columns = {'hex', 'x', 'y'}
+    if set(hex_centroids.columns) != expected_columns:
+        logger.error(f"Expected {expected_columns} columns in the hex centroids file, "
+                     f"got {set(hex_centroids.columns)}!!")
+        logger.error("Skipping adding centroids to the nwb")
+        print(f"Expected {expected_columns} columns in the hex centroids file, got {set(hex_centroids.columns)}!")
+        print("Skipping adding centroids to the nwb.")
+        return
+    else:
+        logger.debug(f"Found expected columns {expected_columns} in the hex centroids file")
+
+    # Convert pixels per cm to meters per pixel
+    meters_per_pixel = 0.01 / pixels_per_cm
+    hex_centroids['x_meters'] = hex_centroids['x'] * meters_per_pixel
+    hex_centroids['y_meters'] = hex_centroids['y'] * meters_per_pixel
+
+    # Set up the hex centroids table
+    centroids_table = DynamicTable(name="hex_centroids", 
+            description="Centroids of each hex in the maze (in video pixel coordinates)")
+    centroids_table.add_column(name="hex", description="The ID of the hex in the maze (1-49)")
+    centroids_table.add_column(name="x",
+            description="The x coordinate of the center of the hex (in video pixel coordinates)")
+    centroids_table.add_column(name="y",
+            description="The y coordinate of the center of the hex (in video pixel coordinates)")
+    centroids_table.add_column(name="x_meters", 
+            description="The x coordinate of the center of the hex (in meters)")
+    centroids_table.add_column(name="y_meters", 
+            description="The y coordinate of the center of the hex (in meters)")
+    # Add the hex centroids
+    for _, row in hex_centroids.iterrows():
+        centroids_table.add_row(**row.to_dict())
+
+    # If it doesn't exist already, make a processing module for behavior and add to the nwbfile
+    if "behavior" not in nwbfile.processing:
+        logger.debug("Creating nwb behavior processing module for position data")
+        nwbfile.create_processing_module(
+            name="behavior", description="Contains all behavior-related data"
+        )
+
+    print("Adding hex centroids to the nwb...")
+    logger.info("Adding hex centroids to the behavior processing module in the nwbfile")
+    nwbfile.processing["behavior"].add(centroids_table)
 
 
 def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, preset="ultrafast"):
@@ -33,15 +134,20 @@ def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, pre
         print(str(e))
 
 
-def add_camera(nwbfile: NWBFile):
+def add_camera(nwbfile: NWBFile, metadata: dict):
     '''
     Adds camera because this is required to create a TaskEpoch in spyglass.
-    Data is currently placeholder values.
+    Camera metadata (lens, model) is currently placeholder values.
+
+    NOTE: We may want to eventually store camera metadata in the resources folder
+    instead of just here/make the user be able to specify values in metadata.
     '''
-    
-    pixels_per_cm = 3.14
+
+    pixels_per_cm = metadata["video"]["pixels_per_cm"]
     meters_per_pixel = 0.01 / pixels_per_cm
-    
+
+    # Note that the name "camera_device 1" is required for spyglass compatability 
+    # (it must match format "camera_device {epoch+1}")
     nwbfile.add_device(
         CameraDevice(
             name="camera_device 1",
@@ -61,20 +167,34 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
         logger.warning("No video metadata found for this session. Skipping video conversion.")
         return None
 
+    # If pixels_per_cm exists in metadata, use that value
+    if "pixels_per_cm" in metadata["video"]:
+        PIXELS_PER_CM = metadata["video"]["pixels_per_cm"]
+        logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
+    # Otherwise, assign it based on the date of the experiment
+    else:
+        PIXELS_PER_CM = assign_pixels_per_cm(metadata["datetime"])
+        logger.info("No 'pixels_per_cm' value found in video metadata.")
+        logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
+        # Add it to metadata so we can use it for position conversion if needed
+        metadata["video"]["pixels_per_cm"] = PIXELS_PER_CM
+
+    if "hex_centroids_file_path" in metadata["video"]:
+        add_hex_centroids(nwbfile=nwbfile, metadata=metadata, pixels_per_cm=PIXELS_PER_CM, logger=logger)
+    else:
+        print("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        logger.warning("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+
     if "video_file_path" not in metadata["video"] or "video_timestamps_file_path" not in metadata["video"]:
         print("Skipping video file conversion (requires both 'video_file_path' and 'video_timestamps_file_path')")
         logger.warning("Skipping video file conversion "
                        "(requires both 'video_file_path' and 'video_timestamps_file_path')")
-        # Don't raise an error here because it is technically ok for a user to specify the "video"
-        # field in metadata but not the actual video data, because DLC also lives under the video field.
+        # Warn but don't raise an error here because it is technically ok for a user to specify the "video"
+        # field in metadata but not the actual video data, because DLC (position) also lives under the video field
         return None
 
     print("Adding video...")
     logger.info("Adding video...")
-    
-    print("Adding camera...")
-    logger.info("Adding camera...")
-    add_camera(nwbfile)
 
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["video_file_path"]
@@ -152,3 +272,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
 
     nwbfile.processing["video_files"].add(video)
     logger.info("Created nwb processing module for video files and added behavior_video as an nwb ImageSeries")
+
+    print("Adding camera...")
+    logger.info("Adding camera...")
+    add_camera(nwbfile=nwbfile, metadata=metadata)
