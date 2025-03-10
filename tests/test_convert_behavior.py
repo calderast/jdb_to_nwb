@@ -53,7 +53,7 @@ def test_convert_behavior(dummy_logger):
     # Check if the task metadata columns were added correctly
     for val in task.columns:
         assert isinstance(val, VectorData)
-    expected_task_columns = {"task_name", "task_description", "task_epochs", "task_environment"}
+    expected_task_columns = {"task_name", "task_description", "task_epochs", "task_environment", "camera_id"}
     assert set(task.colnames) == expected_task_columns, (
         f"Task columns {set(task.colnames)} did not match expected {expected_task_columns}"
     )
