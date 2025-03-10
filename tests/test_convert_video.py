@@ -154,6 +154,12 @@ def test_add_video_with_incomplete_metadata(capsys, dummy_logger):
     # Create a test metadata dictionary with a video field but no video data
     metadata["video"] = {}
     metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
+    
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
 
     # Call the add_video function with 'video' key in metadata, but no video subfields
     add_video(nwbfile=nwbfile, metadata=metadata, 
