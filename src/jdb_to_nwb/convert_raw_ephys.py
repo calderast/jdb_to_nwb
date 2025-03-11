@@ -2,6 +2,8 @@
 # ndx-franklab-novela extension to store the Probe information for maximal integration with Spyglass, 
 # so we are doing the conversion manually using PyNWB.
 
+import os
+import glob
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
@@ -250,7 +252,9 @@ def get_port_visits(folder_path: Path, logger):
     # For reference, a typical port visit keeps the channel high for ~10ms, so 10 samples at 1000 Hz
 
     # Memory-map the large .dat file to avoid loading everything into memory. Reshape to (samples, channels)
-    file_path = folder_path + "/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
+    # file_path will be something like "/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
+    pattern = os.path.join(folder_path, "experiment*/recording*/continuous/*/continuous.dat")
+    file_path = glob.glob(pattern)[0] 
     data_for_all_channels = np.memmap(file_path, dtype='int16',mode='c').reshape(-1, total_channels) 
     
     logger.debug(f"Reading Open Ephys port visits from channel {port_visits_channel_num}")
