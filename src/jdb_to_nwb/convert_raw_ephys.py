@@ -254,9 +254,24 @@ def get_port_visits(folder_path: Path, logger):
     # Memory-map the large .dat file to avoid loading everything into memory. Reshape to (samples, channels)
     # file_path will be something like "/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
     pattern = os.path.join(folder_path, "experiment*/recording*/continuous/*/continuous.dat")
-    file_path = glob.glob(pattern)[0] 
+
+    # Find all potential continuous.dat files (there may be multiple if we stopped and re-started the recording)
+    matching_files = glob.glob(pattern)
+
+    # Complain if we don't have exactly one continuous.dat file
+    if len(matching_files) != 1:
+        print(f"Warning: Expected 1 continuous.dat file, but found {len(matching_files)}!")
+        print(f"Possible matches: {matching_files}")
+        print("Please remove or rename (e.g `continuous_unused.dat`) the file(s) you do not wish to use.")
+        logger.warning(f"Expected 1 continuous.dat file, but found {len(matching_files)}!")
+        logger.warning(f"Possible matches: {matching_files}")
+        logger.warning("Please remove or rename (e.g `continuous_unused.dat`) the file(s) you do not wish to use.")
+        assert False, "Expected exactly one continuous.dat file, but found multiple or none."
+
+    # If we only have a single continuous.dat file, we're good to go
+    file_path = matching_files[0]
     data_for_all_channels = np.memmap(file_path, dtype='int16',mode='c').reshape(-1, total_channels) 
-    
+
     logger.debug(f"Reading Open Ephys port visits from channel {port_visits_channel_num}")
     logger.debug(f"Downsampling data to from {openephys_fs} Hz to {downsampled_fs} Hz so it isn't huge")
 
@@ -466,12 +481,12 @@ def add_raw_ephys(
         print(
             "The required ephys subfields do not exist in the metadata dictionary.\n"
             "Remove the 'ephys' field from metadata if you do not have ephys data "
-            f"for this session, \nor specify the following missing subfields:{missing_keys}"
+            f"for this session, \nor specify the following missing subfields: {missing_keys}"
         )
         logger.warning(
             "The required ephys subfields do not exist in the metadata dictionary.\n"
             "Remove the 'ephys' field from metadata if you do not have ephys data "
-            f"for this session, \nor specify the following missing subfields:{missing_keys}"
+            f"for this session, \nor specify the following missing subfields: {missing_keys}"
         )
         return {}
 

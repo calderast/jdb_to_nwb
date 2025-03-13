@@ -703,9 +703,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     # Subtract the respective airPLS baseline from the smoothed signal and reference
     print("Subtracting the smoothed baseline...")
     logger.info("Subtracting the smoothed baseline...")
-    remove = 0  # Number of samples to remove from the beginning of the signals
-    baseline_subtracted_ref = reference[remove:] - ref_baseline[remove:]
-    baseline_subtracted_green = signal_green[remove:] - green_baseline[remove:]
+    baseline_subtracted_ref = reference - ref_baseline
+    baseline_subtracted_green = signal_green - green_baseline
 
     # Standardize by Z-scoring the signals (assumes signals are Gaussian distributed)
     print("Standardizing the signals by Z-scoring...")
