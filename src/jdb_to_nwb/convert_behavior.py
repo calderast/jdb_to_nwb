@@ -7,6 +7,7 @@ from pathlib import Path
 from pynwb import NWBFile
 from hdmf.common.table import DynamicTable, VectorData
 from ndx_franklab_novela import AssociatedFiles
+from .timestamps_alignment import trim_sync_pulses
 
 
 def load_maze_configurations(maze_configuration_file_path: Path):
@@ -195,21 +196,42 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
 
 
 def align_data_to_visits(trial_data, block_data, metadata, logger):
+    """
+    Align arduino trial and block data to ground truth visit times.
+    Ground truth is photometry if it exists, otherwise ephys. 
+    """
 
-    # Ground truth visits are photometry if it exists, otherwise ephys
-    ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
-    
+    # Get ground truth visit times (ground truth is photometry if it exists, otherwise ephys)
+    ground_truth_visit_times = metadata.get("ground_truth_visit_times")
+    ground_truth_time_source = metadata.get("ground_truth_time_source")
+
     # If we have no ground truth visits to align to, keep trial and block data as-is
     if ground_truth_visit_times is None:
+        logger.info("No photometry or ephys visits to align to, keeping trial and block timestamps as-is.")
         return trial_data, block_data
 
     logger.info("Aligning trial and block data to ground truth port visit times...")
+    logger.info(f"Using {ground_truth_time_source} time as ground truth.")
     logger.info(f"There are {len(trial_data)} trials and {len(ground_truth_visit_times)} visit times")
 
-    assert len(trial_data) == len(ground_truth_visit_times), (
-        f"There are {len(trial_data)} trials but {len(ground_truth_visit_times)} visit times!!"
-    )
+    # If we have more ground truth visit times (pulses from photometry/ephys) than trials,
+    # trim the extra pulses so we can do alignment.
+    if len(ground_truth_visit_times) > len(trial_data):
+        logger.info(f"We have more {ground_truth_time_source} pulses than arduino visits. "
+                    "Trimming pulses to match the number of visits to do time alignment.")
+        # Port visits in arduino time are the beam break start for each trial
+        arduino_visits = [trial['beam_break_start'] for trial in trial_data]
+        ground_truth_visit_times, arduino_visits = trim_sync_pulses(ground_truth_visit_times, arduino_visits, logger)
 
+    # We should never have more trials than photometry/ephys visits.
+    # If we do, error so we can figure out why this happened and handle it accordingly.
+    elif len(trial_data) > len(ground_truth_visit_times):
+        logger.critical(f"Found more trials recorded by arduino ({len(trial_data)}) "
+                        f"than {ground_truth_time_source} visits ({len(ground_truth_visit_times)})!!!")
+        logger.critical("This should never happen!!! Skipping alignment of trial/block data.")
+        return trial_data, block_data
+
+    # Now that we have the correct number of ground truth visit times, replace arduino times with ground truth times
     for trial, visit_time in zip(trial_data, ground_truth_visit_times):
         time_diff = visit_time - trial['beam_break_start']
         logger.debug(f"Replacing arduino beam break time {trial['beam_break_start']} with {visit_time}"
@@ -233,7 +255,7 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
         block["end_time"] = block_data[block_num+1]["start_time"]
     # The end time of the last block is the end time of the last trial
     block_data[-1]["end_time"] = trial_data[-1]["end_time"]
-    
+
     return trial_data, block_data
 
 
@@ -461,7 +483,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         block["maze_configuration"] = barrier_set_to_string(maze)
 
     # Save original arduino visit times for alignment before we re-align to photometry/ephys  
-    arduino_visit_times =  [trial['beam_break_start'] for trial in trial_data]
+    arduino_visit_times = [trial['beam_break_start'] for trial in trial_data]
 
     # Align visit times to photometry/ephys
     trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)

@@ -155,12 +155,12 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     )
 
     # Add photometry. Returns a dict with 'photometry_start' and 'port_visits' for alignment
-    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir, logger=logger)
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
     metadata["photometry_visit_times"] = photometry_data_dict.get("port_visits")
     photometry_start = photometry_data_dict.get('photometry_start')
 
     # Add ephys. Returns a dict with 'ephys_start' and 'port_visits' for alignment
-    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, fig_dir=fig_dir)
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
     metadata["ephys_visit_times"] = ephys_data_dict.get("port_visits")
     ephys_start = ephys_data_dict.get('ephys_start')
 
@@ -176,7 +176,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     add_position(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     # Add spikes
-    add_spikes(nwbfile=nwbfile, metadata=metadata)
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
 
     # If we have an exact photometry start time, use that as the session start time
     if photometry_start is not None:

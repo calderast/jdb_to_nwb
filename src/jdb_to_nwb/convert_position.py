@@ -4,6 +4,7 @@ import pandas as pd
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
+from .timestamps_alignment import align_via_interpolation
 
 
 def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9, cam_fps=15):
@@ -241,45 +242,41 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger):
     # it was automatically assigned based on session date in convert_video
     pixels_per_cm = metadata["pixels_per_cm"]
 
-    # Read timestamps of each camera frame (in ms)
-    video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
-    with open(video_timestamps_file_path, "r") as video_timestamps_file:
-        video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+    # If we already have aligned video timestamps, use those
+    video_files = nwbfile.processing.get("video_files", None) 
+    if video_files and isinstance(video_files, dict) and "behavior_video" in video_files:
+        # Pynwb will link the timestamps here instead of creating a new array! Cool!
+        true_video_timestamps = nwbfile.processing["video_files"]["behavior_video"]
 
-    # Adjust video timestamps so photometry starts at time 0 and convert to seconds to match NWB standard
-    video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
-    video_timestamps_seconds = video_timestamps_ms / 1000
-
-    # Align video timestamps to photometry/ephys
-    ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
-    arduino_visit_times = metadata.get("arduino_visit_times")
-
-    if ground_truth_visit_times is not None:
-        logger.info("Aligning DLC timestamps...")
-        # Make sure we have the same number of arduino and ground truth visit times for alignment
-        assert len(arduino_visit_times) == len(ground_truth_visit_times), (
-            f"Expected the same number of port visits recorded by arduino and ephys/photometry! \n"
-            f"Got {len(arduino_visit_times)} arduino visits, "
-            f"but {len(ground_truth_visit_times)} visits for alignment!"
-        )
-        # Align video timestamps via interpolation. For timestamps out of visit bounds, 
-        # use the ratio of spacing between arduino_visit_times and ground_truth_visit_times
-        true_video_timestamps = np.interp(
-            x=video_timestamps_seconds,
-            xp=arduino_visit_times,
-            fp=ground_truth_visit_times,
-            left=ground_truth_visit_times[0] + 
-                (video_timestamps_seconds[0] - arduino_visit_times[0]) * 
-                (ground_truth_visit_times[1] - ground_truth_visit_times[0]) / 
-                (arduino_visit_times[1] - arduino_visit_times[0]),
-            right=ground_truth_visit_times[-1] + 
-                (video_timestamps_seconds[-1] - arduino_visit_times[-1]) * 
-                (ground_truth_visit_times[-1] - ground_truth_visit_times[-2]) / 
-                (arduino_visit_times[-1] - arduino_visit_times[-2])
-        )
+    # Otherwise read timestamps of each camera frame (in ms) and align them
     else:
-        # If we don't have port visits for alignment, keep the original timestamps
-        true_video_timestamps = video_timestamps_seconds
+        video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
+        with open(video_timestamps_file_path, "r") as video_timestamps_file:
+            video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+            
+        # Adjust video timestamps so photometry starts at time 0 (this is also done to match arduino visit times)
+        video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
+
+        # Convert video timestamps to seconds to match NWB standard
+        video_timestamps_seconds = video_timestamps_ms / 1000
+
+        # Get port visits in video time (aka arduino time)
+        arduino_visit_times = metadata.get("arduino_visit_times")
+
+        # If we have ground truth port visit times, align video timestamps to that
+        ground_truth_time_source = metadata.get("ground_truth_time_source")
+        if ground_truth_time_source is not None:
+
+            logger.info(f"Aligning position (video) timestamps to ground truth ({ground_truth_time_source})")
+            ground_truth_visit_times = metadata.get("ground_truth_visit_times")
+            true_video_timestamps = align_via_interpolation(unaligned_timestamps=video_timestamps_seconds,
+                                                    unaligned_visit_times=arduino_visit_times,
+                                                    ground_truth_visit_times=ground_truth_visit_times,
+                                                    logger=logger)
+        else:
+            # If we don't have port visits for alignment, keep the original timestamps
+            logger.info("No ground truth port visits found, keeping original position (video) timestamps.")
+            true_video_timestamps = video_timestamps_seconds
 
     print("Adding position data from DeepLabCut...")
     logger.info("Adding position data from DeepLabCut...")
