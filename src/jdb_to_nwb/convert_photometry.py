@@ -146,7 +146,7 @@ def process_pulses(box):
     start = np.where(diff_data < -1)[0][0]
     pulses = np.where(diff_data > 1)[0]
     visits = pulses - start
-    return visits
+    return visits, start
 
 
 def lockin_detection(input_signal, exc1, exc2, Fs, tau=10, filter_order=5, detrend=False, full=True):
@@ -201,8 +201,14 @@ def lockin_detection(input_signal, exc1, exc2, Fs, tau=10, filter_order=5, detre
     return sig1, sig2
 
 
-def run_lockin_detection(phot, logger):
-    """Run lockin detection to extract the modulated photometry signals"""
+def run_lockin_detection(phot, start, logger):
+    """Run lockin detection to extract the modulated photometry signals
+    
+    Args:
+    phot (dict): Dictionary of photometry data
+    start (int): Number of samples to remove from the start of photometry signals
+    for alignment
+    """
     # Default args for lockin detection
     tau = 10
     filter_order = 5
@@ -232,12 +238,10 @@ def run_lockin_detection(phot, logger):
     )
 
     # Cut off the beginning of the signals to match behavioral data
-    # NOTE: We no longer do this - it will likely be removed in a future PR but keeping it for posterity for now
-    remove = 0  # Number of samples to remove from the beginning of the signals
-    sig1 = sig1[remove:]
-    sig2 = sig2[remove:]
-    ref = ref[remove:]
-    ref2 = ref2[remove:]
+    sig1 = sig1[start:]
+    sig2 = sig2[start:]
+    ref = ref[start:]
+    ref2 = ref2[start:]
 
     loc = phot["channels"][2]["location"][:15]  # First 15 characters of the location
     logger.debug(f"The location of the fiber is: {loc}")
@@ -279,11 +283,14 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
             continue
         logger.debug(f"{box_key}: {box_dict[box_key]}")
 
-    # Run lockin detection to extract the modulated photometry signals
-    signals = run_lockin_detection(phot_dict, logger)
-
     # Get timestamps of port visits in 10 kHz photometry sample time
-    visits = process_pulses(box_dict)
+    # And the start sample of the photometry signal
+    visits, start = process_pulses(box_dict)
+
+    # Run lockin detection to extract the modulated photometry signals
+    signals = run_lockin_detection(phot_dict, start, logger)
+
+    # Add visit times to the signals dict
     signals["visits"] = visits
 
     # Convert Labview photometry start time to datetime object and set timezone to Pacific Time
@@ -696,9 +703,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     # Subtract the respective airPLS baseline from the smoothed signal and reference
     print("Subtracting the smoothed baseline...")
     logger.info("Subtracting the smoothed baseline...")
-    remove = 0  # Number of samples to remove from the beginning of the signals
-    baseline_subtracted_ref = reference[remove:] - ref_baseline[remove:]
-    baseline_subtracted_green = signal_green[remove:] - green_baseline[remove:]
+    baseline_subtracted_ref = reference - ref_baseline
+    baseline_subtracted_green = signal_green - green_baseline
 
     # Standardize by Z-scoring the signals (assumes signals are Gaussian distributed)
     print("Standardizing the signals by Z-scoring...")
@@ -929,5 +935,9 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             "OR 'signals_mat_file_path' if the initial preprocessing has already been done in MATLAB.\n"
             "If you are using pyPhotometry, you must include 'ppd_file_path'."
         )
+
+    # Photometry visit times are now our ground truth visit times
+    metadata["ground_truth_time_source"] = "photometry"
+    metadata["ground_truth_visit_times"] = photometry_data_dict.get("port_visits")
 
     return photometry_data_dict

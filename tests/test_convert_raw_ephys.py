@@ -9,7 +9,7 @@ import pytest
 from jdb_to_nwb.convert_raw_ephys import add_electrode_data, add_raw_ephys, get_raw_ephys_data, get_raw_ephys_metadata
 
 
-def test_add_electrode_data():
+def test_add_electrode_data(dummy_logger):
     """
     Test the add_electrode_data function.
     """
@@ -62,6 +62,7 @@ def test_add_electrode_data():
         headstage_channel_numbers=headstage_channel_numbers,
         reference_daq_channel_indices=reference_daq_channel_indices,
         metadata=metadata,
+        logger=dummy_logger,
     )
 
     # Test that the nwbfile has the expected device
@@ -114,7 +115,7 @@ def test_add_electrode_data():
     assert nwbfile.electrodes.headstage_channel_number.data[:] == headstage_channel_numbers
     assert nwbfile.electrodes.reference_daq_channel_index.data[:] == reference_daq_channel_indices
 
-def test_get_raw_ephys_data():
+def test_get_raw_ephys_data(dummy_logger):
     """
     Test the get_raw_ephys_data function.
 
@@ -122,7 +123,7 @@ def test_get_raw_ephys_data():
     `python tests/test_data/create_raw_ephys_test_data.py`.
     """
     folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
-    traces_as_iterator, channel_conversion_factor, original_timestamps = get_raw_ephys_data(folder_path)
+    traces_as_iterator, channel_conversion_factor, original_timestamps = get_raw_ephys_data(folder_path, dummy_logger)
     assert traces_as_iterator.maxshape == (3_000, 256)
     np.testing.assert_allclose(channel_conversion_factor, [0.19499999284744263 * 1e-6] * 256)
     assert len(original_timestamps) == 3_000
@@ -164,7 +165,7 @@ def test_get_raw_ephys_metadata():
     assert raw_settings_xml == expected_raw_settings_xml
 
 
-def test_add_raw_ephys():
+def test_add_raw_ephys(dummy_logger):
     """
     Test the add_raw_ephys function.
 
@@ -187,7 +188,7 @@ def test_add_raw_ephys():
         "manufacturer": "Test Manufacturer",
     }
 
-    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     assert len(nwbfile.electrodes) == 256
     assert len(nwbfile.electrode_groups) == 1
@@ -216,7 +217,7 @@ def test_add_raw_ephys():
     assert ephys_data_dict.get("ephys_start") == expected_ephys_start
 
 
-def test_add_ephys_with_incomplete_metadata(capsys):
+def test_add_ephys_with_incomplete_metadata(dummy_logger, capsys):
     """
     Test that the add_raw_ephys function responds appropriately to missing or incomplete metadata.
 
@@ -241,8 +242,8 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     # It should print that we are skipping ephys conversion
     # This should not raise any errors, as omitting the 'ephys' key is a
     # valid way to specify that we have no ephys data for this session.
-    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
-    captured = capsys.readouterr()  # capture stdout
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    captured = capsys.readouterr() # capture stdout
 
     # Check that the correct message was printed to stdout
     assert "No ephys metadata found for this session. Skipping ephys conversion." in captured.out
@@ -252,7 +253,7 @@ def test_add_ephys_with_incomplete_metadata(capsys):
     metadata["ephys"] = {}
 
     # Check that add_raw_ephys raises a ValueError about missing fields in the metadata dictionary
-    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr()
     assert ephys_data_dict == {}
     assert "The required ephys subfields do not exist in the metadata dictionary" in captured.out
