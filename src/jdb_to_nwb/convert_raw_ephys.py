@@ -11,6 +11,7 @@ from pathlib import Path
 from importlib.resources import files
 import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
+import warnings
 import numpy as np
 from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator import (
     SpikeInterfaceRecordingDataChunkIterator,
@@ -420,7 +421,7 @@ def get_raw_ephys_data(
     )
 
 
-def get_raw_ephys_metadata(folder_path: Path) -> tuple[list[str], list[int], list[int]]:
+def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[int], list[int]]:
     """
     Get the raw ephys metadata from the OpenEphys binary recording.
 
@@ -469,7 +470,7 @@ def get_raw_ephys_metadata(folder_path: Path) -> tuple[list[str], list[int], lis
     }
 
     # Get the filtering info
-    filtering_list = get_filtering_info(settings_root, channel_number_to_channel_name)
+    filtering_list = get_filtering_info(settings_root, channel_number_to_channel_name, logger)
 
     # Get the channel map info
     headstage_channel_numbers, reference_daq_channel_indices = get_channel_map_info(
@@ -489,7 +490,7 @@ def get_raw_ephys_metadata(folder_path: Path) -> tuple[list[str], list[int], lis
     )
 
 
-def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name: dict[str, str]) -> list[str]:
+def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name: dict[str, str], logger) -> list[str]:
     """
     Get the filtering applied to each channel from the settings.xml file.
 
@@ -702,7 +703,7 @@ def add_raw_ephys(
         headstage_channel_numbers,
         reference_daq_channel_indices,
         raw_settings_xml,
-    ) = get_raw_ephys_metadata(openephys_folder_path)
+    ) = get_raw_ephys_metadata(openephys_folder_path, logger)
 
     raw_settings_xml_file = AssociatedFiles(
         name="open_ephys_settings_xml",

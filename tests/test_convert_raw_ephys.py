@@ -129,7 +129,7 @@ def test_get_raw_ephys_data(dummy_logger):
     assert len(original_timestamps) == 3_000
 
 
-def test_get_raw_ephys_metadata():
+def test_get_raw_ephys_metadata(dummy_logger):
     """
     Test that the get_raw_ephys_metadata function extracts the correct metadata from the settings.xml file.
     """
@@ -139,7 +139,7 @@ def test_get_raw_ephys_metadata():
         headstage_channel_numbers,
         reference_daq_channel_indices,
         raw_settings_xml,
-    ) = get_raw_ephys_metadata(folder_path)
+    ) = get_raw_ephys_metadata(folder_path, dummy_logger)
     assert filtering_list == ["2nd-order Butterworth filter with highcut=6000 Hz and lowcut=1 Hz"] * 256
 
     # The headstage channel numbers are 1-indexed - see settings.xml file
