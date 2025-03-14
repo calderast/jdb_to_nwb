@@ -23,7 +23,7 @@ def test_add_electrode_data(dummy_logger):
         "description": "Test Probe",
         "manufacturer": "Test Manufacturer",
     }
-    metadata["plug_order"] = "chip_first"
+    metadata["ephys"]["plug_order"] = "chip_first"
     
     # Create a test NWBFile
     nwbfile = NWBFile(
