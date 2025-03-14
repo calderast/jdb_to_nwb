@@ -271,17 +271,22 @@ def add_electrode_data(
         )
 
 
-def get_port_visits(folder_path: Path, logger):
+def get_port_visits(folder_path: Path, logger) -> list[float]:
     """
     Extract port visit times from OpenEphys channel ADC1
 
-    Args:
-        folder_path: Path to the folder containing the OpenEphys binary recording. The folder
-            should contain subfolders leading to a file named 'continuous.dat'
-        logger: Logger to track conversion progress
+    Parameters
+    ----------
+    folder_path : Path
+        Path to the folder containing the OpenEphys binary recording. The folder
+        should contain subfolders leading to a file named 'continuous.dat'
+    logger : Logger
+        Logger to track conversion progress
 
-    Returns:
-        list: list of port visit times in seconds
+    Returns
+    -------
+    port_visits : list[float]
+        List of port visit times in seconds
     """
 
     total_channels = 264  # 256 "CH" + 8 "ADC"
@@ -363,18 +368,23 @@ def get_raw_ephys_data(
     """
     Get the raw ephys data from the OpenEphys binary recording.
 
-    Args:
-        folder_path: Path to the folder containing the OpenEphys binary recording. The folder
-            should have the date in the name and contain a file called "settings.xml".
-        logger: Logger to track conversion progress
+    Parameters
+    ----------
+    folder_path : Path
+        Path to the folder containing the OpenEphys binary recording. The folder
+        should have the date in the name and contain a file called "settings.xml".
+    logger : Logger
+        Logger to track conversion progress
 
-    Returns:
-        traces_as_iterator: SpikeInterfaceRecordingDataChunkIterator, to be used as the
-            data argument in pynwb.ecephys.ElectricalSeries.
-        channel_conversion_factor: float, the conversion factor from the raw data to volts.
-        original_timestamps: np.ndarray, that could be used as the timestamps argument in
-            pynwb.ecephys.ElectricalSeries or may need to be time aligned with the other
-            data streams in the NWB file.
+    Returns
+    -------
+    traces_as_iterator : SpikeInterfaceRecordingDataChunkIterator
+        To be used as the data argument in pynwb.ecephys.ElectricalSeries.
+    channel_conversion_factor : float
+        The conversion factor from the raw data to volts.
+    original_timestamps : np.ndarray
+        Array that could be used as the timestamps argument in pynwb.ecephys.ElectricalSeries
+        or may need to be time aligned with the other data streams in the NWB file.
     """
     # Create a SpikeInterface recording extractor for the OpenEphys binary data
     # NOTE: We could write our own extractor to handle the relatively simple OpenEphys binary format
@@ -444,6 +454,8 @@ def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[i
     folder_path : Path
         Path to the folder containing the OpenEphys binary recording. The folder
         should have the date in the name and contain a file called "settings.xml".
+    logger : Logger
+        Logger to track conversion progress
 
     Returns
     -------
@@ -451,7 +463,7 @@ def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[i
         The filtering applied to each channel.
     headstage_channel_numbers : list[int]
         The headstage channel numbers for each channel.
-    reference_daq_channel_indices: list[int]
+    reference_daq_channel_indices : list[int]
         The reference DAQ channel indices for each channel (-1 if not set).
     """
     settings_file_path = Path(folder_path) / "settings.xml"
@@ -510,10 +522,12 @@ def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name
         The root of the settings.xml file.
     channel_number_to_channel_name : dict[str, str]
         Mapping of channel number to channel name.
+    logger : Logger
+        Logger to track conversion progress
 
     Returns
     -------
-    filtering_list: list[str]
+    filtering_list : list[str]
         The filtering applied to each channel.
     """
     bandpass_filter = settings_root.find(".//PROCESSOR[@name='Filters/Bandpass Filter']")
