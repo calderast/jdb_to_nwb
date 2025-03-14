@@ -431,7 +431,7 @@ def get_raw_ephys_data(
     )
 
 
-def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[int], list[int]]:
+def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[int], list[int], str]:
     """
     Get the raw ephys metadata from the OpenEphys binary recording.
 
@@ -465,6 +465,8 @@ def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[i
         The headstage channel numbers for each channel.
     reference_daq_channel_indices : list[int]
         The reference DAQ channel indices for each channel (-1 if not set).
+    raw_settings_xml : str
+        The raw settings.xml file as a string.
     """
     settings_file_path = Path(folder_path) / "settings.xml"
     settings_tree = ET.parse(settings_file_path)
@@ -490,7 +492,6 @@ def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[i
     )
 
     # Save the raw settings.xml file as a string to be used to create an AssociatedFiles object
-    # logger.debug("Saving the settings.xml file as an AssociatedFiles object")
     with open(settings_file_path, "r") as settings_file:
         raw_settings_xml = settings_file.read()
 
@@ -719,6 +720,7 @@ def add_raw_ephys(
         raw_settings_xml,
     ) = get_raw_ephys_metadata(openephys_folder_path, logger)
 
+    logger.debug("Saving the settings.xml file as an AssociatedFiles object")
     raw_settings_xml_file = AssociatedFiles(
         name="open_ephys_settings_xml",
         description="Raw settings.xml file from OpenEphys",
