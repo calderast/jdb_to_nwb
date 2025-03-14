@@ -11,7 +11,6 @@ from pathlib import Path
 from importlib.resources import files
 import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
-import warnings
 import numpy as np
 from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator import (
     SpikeInterfaceRecordingDataChunkIterator,
@@ -142,7 +141,7 @@ def add_electrode_data(
     # The channel map should have been encoded in the OpenEphys settings file during the recording
     # and that should match the channel map from the resources directory.
     if not np.all(headstage_channel_indices == channel_map):
-        warnings.warn(
+        logger.warning(
             "Headstage channel indices are not equal to the channel map. "
             "This is unexpected and may indicate a problem with the channel map."
         )
@@ -403,6 +402,10 @@ def get_raw_ephys_data(
     channel_conversion_factors_uv = recording_sliced.get_channel_gains()
     # Warn if the channel conversion factors are not the same for all channels
     if not all(channel_conversion_factors_uv == channel_conversion_factors_uv[0]):
+        print(
+            "The channel conversion factors are not the same for all channels. "
+            "This is unexpected and may indicate a problem with the conversion factors."
+        )
         logger.warning(
             "The channel conversion factors are not the same for all channels. "
             "This is unexpected and may indicate a problem with the conversion factors."
@@ -491,7 +494,7 @@ def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[i
         settings_root, channel_number_to_channel_name
     )
 
-    # Save the raw settings.xml file as a string to be used to create an AssociatedFiles object
+    # Get the raw settings.xml file as a string to be used to create an AssociatedFiles object
     with open(settings_file_path, "r") as settings_file:
         raw_settings_xml = settings_file.read()
 
@@ -560,6 +563,10 @@ def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name
 
     # Warn if the channel filtering is not the same for all channels
     if not all(f == filtering_list[0] for f in filtering_list):
+        print(
+            "The channel filtering is not the same for all channels. "
+            "This is unexpected and may indicate a problem with the filtering settings."
+        )
         logger.warning(
             "The channel filtering is not the same for all channels. "
             "This is unexpected and may indicate a problem with the filtering settings."
