@@ -1,8 +1,10 @@
 import re
+import os
 import ast
 import h5py
 import logging
 import pandas as pd
+from pathlib import Path
 from collections import Counter
 from hdmf.common import DynamicTable
 from pynwb import NWBFile, NWBHDF5IO
@@ -100,7 +102,7 @@ def parse_ifDelay_events_for_legacy_statescriptlog(behavior_data, logger):
         raise Exception(f"Mismatch in the amount of information for each trial: {variable_counts}!")
     
     logger.debug(f"Amount of info for each trial field (excluding ifDelay): {variable_counts}")
-    logger.debug(f"The amount of info should be equal to the number of trials.")
+    logger.debug("The amount of info should be equal to the number of trials.")
     logger.debug(f"The value for ifDelay changes {len(ifdelay_events)} times.")
 
     # Group behavioral events by trial
@@ -1015,10 +1017,10 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
         assert block_trials["poke_in_time"].between(
             block_trials["start_time"], block_trials["end_time"]
         ).all(), (
-            f"Some poke_in_times are outside trial bounds (start_time to end_time)"
+            "Some poke_in_times are outside trial bounds (start_time to end_time)"
         )
         assert (block_trials["poke_out_time"] == block_trials["end_time"]).all(), (
-            f"Some poke_out_times do not match the trial end_time"
+            "Some poke_out_times do not match the trial end_time"
         )
         logger.debug("The poke_in and poke_out time for each trial in the block is within the trial time bounds")
 
@@ -1604,14 +1606,18 @@ def add_behavioral_data_to_nwb(nwb_path, excel_path,
     with NWBHDF5IO(nwb_path, mode="r") as io:
         nwbfile = io.read()
         session_id = nwbfile.session_id
+        
+    # Create directory for conversion log files
+    log_dir = f"{session_id}_logs"
+    os.makedirs(log_dir, exist_ok=True)
 
     # Then set up logging with paths to log files
-    info_log_file = f"{session_id}_info_logs.log"
-    warning_log_file = f"{session_id}_warning_logs.log"
-    debug_log_file = f"{session_id}_debug_logs.log"
+    info_log_file = Path(log_dir) / f"{session_id}_info_log.log"
+    warning_log_file = Path(log_dir) / f"{session_id}_warning_logs.log"
+    debug_log_file = Path(log_dir) / f"{session_id}_debug_log.log"
     logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
 
-    # Hack to remove trials and block table if we need to overwrite them
+    # Hack to remove trials/block table and centroids if we need to overwrite them
     removed_old_data_from_nwb = False
     if overwrite and "nwb" in save_type:
         with h5py.File(nwb_path, "r+") as f:
@@ -1623,6 +1629,10 @@ def add_behavioral_data_to_nwb(nwb_path, excel_path,
                 logger.info("A trials table already exists in the nwbfile!")
                 logger.info("The original trials table in the nwb will be deleted and overwritten.")
                 del f["intervals/trials"]
+            if "hex_centroids" in f["processing/behavior"]:
+                logger.info("A hex centroids table already exists in the nwbfile!")
+                logger.info("Deleting hex centroids table from the nwbfile.")
+                del f["processing/behavior/hex_centroids"]
             removed_old_data_from_nwb = True
 
     # Now actually open the file in append mode to do behavior parsing
@@ -1769,3 +1779,17 @@ def delete_blocks_and_trials_from_nwb(nwb_path):
             del f["intervals/trials"]
         else:
             print("No trials table to delete.")
+
+
+def delete_hex_centroids_from_nwb(nwb_path):
+    """
+    Delete hex centroids tables (stored as a DynamicTable in the behavior processing module) 
+    from an nwbfile if it exists. Modifies the file in-place. Note that this will 
+    not actually reduce the file size due to limitations in the HDF5 format.
+    """
+    with h5py.File(nwb_path, "r+") as f:
+        if "hex_centroids" in f["processing/behavior"]:
+            print("Deleting hex centroids table from the nwbfile.")
+            del f["processing/behavior/hex_centroids"]
+        else:
+            print("No hex centroids table to delete.")
