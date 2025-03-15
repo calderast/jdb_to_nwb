@@ -33,6 +33,7 @@ dependencies = [
     "matplotlib",
     "ffmpeg-python",
     "tables",
+    "cv2",
 ]
 dynamic = ["version"]
 
