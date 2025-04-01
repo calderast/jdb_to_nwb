@@ -795,6 +795,7 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
             # The next trial (that begins on poke_out) is the first trial of the new block
             trials_pre_shift = trial_data.index[trial_data['poke_in_time'] <= barrier_shift_time]
             closest_idx = ((trial_data.loc[trials_pre_shift, 'poke_in_time'] - barrier_shift_time).abs()).idxmin()
+            closest_idx = pd.to_numeric(((trial_data.loc[trials_pre_shift, 'poke_in_time'] - barrier_shift_time).abs())).idxmin()
             barrier_shift_trial = trial_data.loc[closest_idx, 'trial_within_session']
 
             # Sanity check: get the time from trial start to barrier shift, and shift to next poke
@@ -920,43 +921,63 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
     logger.info("Running basic checks to check that trial and block data is valid...")
 
     # The number of the last trial/block must match the number of trials/blocks
-    assert len(trial_data) == trial_data["trial_within_session"].max()
-    assert len(block_data) == block_data["block"].max()
+    assert len(trial_data) == trial_data["trial_within_session"].max(), (
+        f"The last trial number {trial_data["trial_within_session"].max()} does not match the total number of trials {len(trial_data)}"
+    )
+    assert len(block_data) == block_data["block"].max(), (
+        f"The last block number {block_data["block"].max()} does not match the total number of blocks {len(block_data)}"
+    )
     logger.debug(f"Check passed: The last trial number {trial_data["trial_within_session"].max()} "
                  f"matches the total number of trials {len(trial_data)}")
     logger.debug(f"Check passed: The last block number {block_data["block"].max()} "
                  f"matches the total number of blocks {len(block_data)}")
 
     # All trial numbers must be unique and match the range 1 to [num trials in session]
-    assert set(trial_data["trial_within_session"]) == set(range(1, len(trial_data) + 1))
+    assert set(trial_data["trial_within_session"]) == set(range(1, len(trial_data) + 1)), (
+        f"Trial numbers {trial_data["trial_within_session"]} do not match expected {range(1, len(trial_data) + 1)}"
+    )
     logger.debug(f"Check passed: all trial numbers are unique and match the range 1 to {len(trial_data)}")
 
     # All block numbers must be unique and match the range 1 to [num blocks in session]
-    assert set(block_data["block"]) == set(range(1, len(block_data) + 1))
+    assert set(block_data["block"]) == set(range(1, len(block_data) + 1)),(
+        f"Block numbers {block_data["block"]} do not match expected {range(1, len(block_data) + 1)}"
+    )
     logger.debug(f"Check passed: all block numbers are unique and match the range 1 to {len(block_data)}")
 
     # There must be a legitimate reward value (1 or 0) for all trials
-    assert set(trial_data["reward"]).issubset({0, 1})
+    assert set(trial_data["reward"]).issubset({0, 1}), (
+        f"Not all trials have a legitimate reward value (1 or 0)! Got values: {set(trial_data["reward"])}"
+    )
     logger.debug("Check passed: All trials have a legitimate reward value (1 or 0)")
 
     # There must be a legitimate p(reward) value for each block at ports A, B, and C
-    assert block_data[["pA", "pB", "pC"]].apply(lambda col: col.between(0, 100)).all().all()
+    assert block_data[["pA", "pB", "pC"]].apply(lambda col: col.between(0, 100)).all().all(), (
+        f"Not all blocks have a legitimate value for pA, pB, or pC (value in range 0-100)! Got {block_data[["pA", "pB", "pC"]]}"
+    )
     logger.debug("Check passed: All blocks have a legitimate value for pA, pB, or pC (value in range 0-100)")
 
     # There must be a not-null maze_configuration for each block
-    assert not block_data["maze_configuration"].isnull().any(), "Not all blocks have a maze configuration!"
+    assert not block_data["maze_configuration"].isnull().any(), (
+        f"Not all blocks have a maze configuration! Got {block_data["maze_configuration"]}"
+    )
     logger.debug("Check passed: All blocks have a non-null maze configuration")
 
     # There must be a valid task type for each block
-    assert block_data["task_type"].isin(["probability change", "barrier change"]).all()
+    assert block_data["task_type"].isin(["probability change", "barrier change"]).all(), (
+        f"Task types must be either 'probability change' or 'barrier change', got {block_data["task_type"]}"
+    )
     # The task type must be the same for all blocks in the epoch
-    assert block_data["task_type"].nunique() == 1
+    assert block_data["task_type"].nunique() == 1, (
+        f"All blocks in an epoch must have the same task type! Got {block_data["task_type"]}"
+    )
     logger.debug(f"Check passed: All blocks have the same task_type ({block_data["task_type"][0]})")
 
     # In a probability change session, reward probabilities vary and maze configs do not
     if block_data["task_type"].iloc[0] == "probability change":
         # All maze configs should be the same
-        assert block_data["maze_configuration"].nunique() == 1
+        assert block_data["maze_configuration"].nunique() == 1, (
+            f"All maze configurations must be the same for a probability change session! Got {block_data["maze_configuration"]}"
+        )
         # Reward probabilities should vary
         # They may eventually repeat with many blocks, so minimum 1 change is ok
         assert block_data["pA"].nunique() > 1
@@ -1662,7 +1683,10 @@ def add_behavioral_data_to_nwb(nwb_path, excel_path,
                                 for name, log in module.data_interfaces.items()
                                 if name.startswith("statescript r")
                                 }
-        assert len(run_statescript_logs) == len(run_epochs) == len(excel_data)
+        assert len(run_statescript_logs) == len(run_epochs) == len(excel_data), (
+            f"Found {len(run_statescript_logs)} stateScriptLogs, {len(run_epochs)} run epochs, and {len(excel_data)} run sessions from the excel sheet. \n"
+            "Expected all of these to be the same length"
+        )
         logger.debug(f"Found {len(run_statescript_logs)} statescriptlogs for {len(run_epochs)} run epochs")
 
         # Get behavioral events from the nwbfile as a dict of (data, timestamps) for each named behavioral event 
@@ -1676,7 +1700,9 @@ def add_behavioral_data_to_nwb(nwb_path, excel_path,
         # Check that we have the expected amount of epoch starts
         # NOTE: epoch_start_timestamps from the DIO pulses lag the timestamps in the epoch_table
         # by ~1 second to ~1 minute - check where this discrepancy comes from and which one to use!
-        assert len(epoch_start_timestamps) == len(epoch_table)
+        assert len(epoch_start_timestamps) == len(epoch_table), (
+            f"Found {len(epoch_start_timestamps)} epoch start timestamps for {len(epoch_table)} epochs. Expected these to match!"
+        )
         logger.debug(f"Found {len(epoch_start_timestamps)} epoch start timestamps for {len(epoch_table)} epochs")
 
         # Set up lists to store block and trial data for each epoch
