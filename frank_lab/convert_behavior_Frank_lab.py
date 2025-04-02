@@ -856,8 +856,27 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
         barrier_shift_times = barrier_shift_DIOs[1][0::2]
         logger.debug(f"Barrier shift times: {barrier_shift_times}")
 
+        # We've found some cases of DIO jitter or where the button seems to have been pressed multiple times.
+        # BraveLu_20240516 is an example of this: DIOs give barrier shift trials [70, 139, 139, 139]
+        # due to multiple DIO pulses in short succession, when we should just record barrier shifts at [70, 139]
+        # To handle this, we remove all barrier shift DIO times within 10 seconds of the previous DIO
+        # Monitor to see how this issue manifests in other sessions, or if it really just happened in old ones.
+        barrier_shift_DIO_time_thresh = 10
+        valid_barrier_shift_times = [barrier_shift_times[0]]
+        for time in barrier_shift_times[1:]:
+            # Keep only barrier shift DIOs that happen at least 10 seconds after the last valid DIO
+            time_from_last_valid_DIO = time - valid_barrier_shift_times[-1]
+            if time_from_last_valid_DIO >= barrier_shift_DIO_time_thresh:
+                valid_barrier_shift_times.append(time)
+            # Warn about removing DIOs too close to the previous DIO
+            else:
+                logger.warning(
+                    f"Detected jitter in barrier shift DIOs! Removing barrier shift at {time} because it is too close to "
+                    f"last valid barrier shift at time {valid_barrier_shift_times[-1]} (time diff = {time_from_last_valid_DIO:.2f}s)"
+                )
+
         barrier_shift_trials_DIO = []
-        for barrier_shift_time in barrier_shift_times:
+        for barrier_shift_time in valid_barrier_shift_times:
             # Find the closest poke_in time just before the barrier shift time
             # Barrier shifts happen when the rat is at a port (just after poke_in)
             # The next trial (that begins on poke_out) is the first trial of the new block
@@ -879,8 +898,16 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
             logger.info(f"Trial {barrier_shift_trial+1} is the first trial of the new block.")
 
             barrier_shift_trials_DIO.append(barrier_shift_trial)
-        # Convert to np.int(64) to int
+        # Convert np.int(64) to int
         barrier_shift_trials_DIO = [int(x) for x in barrier_shift_trials_DIO]
+
+        # Final check for DIO jitter - we shouldn't have duplicate barrier shift trials!
+        if len(barrier_shift_trials_DIO) != len(set(barrier_shift_trials_DIO)):
+            logger.warning(
+                f"Got duplicate barrier shift trials from the DIOs due to jitter: {barrier_shift_trials_DIO}"
+            )
+            barrier_shift_trials_DIO = sorted(set(barrier_shift_trials_DIO))
+            logger.warning(f"Removed duplicates. Barrier shift trials are now: {barrier_shift_trials_DIO}")
 
     # If the excel sheet has barrier shift info, use that also
     if "barrier shift trial ID" in excel_data.columns:
