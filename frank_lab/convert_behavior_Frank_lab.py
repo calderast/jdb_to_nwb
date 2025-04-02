@@ -979,20 +979,29 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
             f"All maze configurations must be the same for a probability change session! Got {block_data["maze_configuration"]}"
         )
         # Reward probabilities should vary
-        # They may eventually repeat with many blocks, so minimum 1 change is ok
-        assert block_data["pA"].nunique() > 1
-        assert block_data["pB"].nunique() > 1
-        assert block_data["pC"].nunique() > 1
+        # We check for any changes instead of all because of cases like where we have only 2 
+        # blocks and only 2 of the probabilities change (e.g. pA and pB switch, pC stays the same)
+        assert any([
+            block_data["pA"].nunique() > 1,
+            block_data["pB"].nunique() > 1,
+            block_data["pC"].nunique() > 1
+        ]), (
+            "pA, pB, or pC must vary in a probability change session. "
+            f"Got pA={block_data['pA'].tolist()}, pB={block_data['pB'].tolist()}, pC={block_data['pC'].tolist()}"
+        )
         logger.debug("Check passed: All maze configurations are the same "
                      "and all reward probabilities vary across blocks")
     # In a barrier change session, maze configs vary and reward probabilities do not
     elif block_data["task_type"].iloc[0] == "barrier change":
         # All reward probabilities should be the same for all blocks
-        assert block_data["pA"].nunique() == 1
-        assert block_data["pB"].nunique() == 1
-        assert block_data["pC"].nunique() == 1
+        assert block_data["pA"].nunique() == 1, f"pA must not vary in a barrier change session, but got pA={block_data['pA'].tolist()}"
+        assert block_data["pB"].nunique() == 1, f"pB must not vary in a barrier change session, but got pB={block_data['pB'].tolist()}"
+        assert block_data["pC"].nunique() == 1, f"pC must not vary in a barrier change session, but got pC={block_data['pC'].tolist()}"
         # Maze configurations should be different for each block
-        assert block_data["maze_configuration"].nunique() == len(block_data)
+        assert block_data["maze_configuration"].nunique() == len(block_data), (
+            f"Expected {len(block_data)} maze configurations for {len(block_data)} blocks, "
+            f"got {block_data["maze_configuration"].nunique()} configs: {block_data["maze_configuration"]}"
+        )
         logger.debug("Check passed: All maze configurations are different "
                      "and all reward probabilities stay the same across blocks")
 
@@ -1006,8 +1015,13 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
         # All trial numbers in the block must be unique and match the range 1 to [num trials in block]
         num_trials_expected = block["num_trials"]
         num_trials_expected_2 = block["end_trial"] - block["start_trial"] + 1
-        assert len(trial_numbers.unique()) == num_trials_expected == num_trials_expected_2
-        assert set(trial_numbers) == set(range(1, int(num_trials_expected) + 1))
+        assert len(trial_numbers.unique()) == num_trials_expected == num_trials_expected_2, (
+            f"Expected num of trials in block ({num_trials_expected}) = block end trial-start trial ({num_trials_expected_2}) "
+            f"= number of unique trial_within_block numbers ({len(trial_numbers.unique())})"
+        )
+        assert set(trial_numbers) == set(range(1, int(num_trials_expected) + 1)), (
+            f"Trial numbers in this block {trial_numbers} did not match expected {range(1, int(num_trials_expected) + 1)}!"
+        )
         logger.debug(f"All trial numbers in this block are unique and match the range 1 to {num_trials_expected}")
 
         # Check time alignment between trials and blocks
@@ -1048,7 +1062,9 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
         summed_trials += num_trials_expected
 
     # The summed number of trials in each block must match the total number of trials
-    assert summed_trials == len(trial_data)
+    assert summed_trials == len(trial_data), (
+        f"Expected the summed number of trials in each block ({summed_trials}) to match the total number of trials ({len(trial_data)})"
+    )
     logger.debug(f"The number of trials in each block sums to the total number of trials {len(trial_data)}")
     logger.info("All checks passed!")
 
