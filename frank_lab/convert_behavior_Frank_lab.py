@@ -1481,8 +1481,7 @@ def parse_state_script_log(statescriptlog, DIO_events, excel_data_for_epoch, log
     trial_df = combine_nosepoke_and_trial_data(nosepoke_df, trial_data, session_end, logger)
 
     # Add reward pump timestamps from DIOs to the combined dataframe
-    reward_DIOs = {key: value for key, value in DIO_events.items() 
-                   if key in ["wellA_pump", "wellB_pump", "wellC_pump"]}
+    reward_DIOs = {key: value for key, value in DIO_events.items() if key in ["wellA_pump", "wellB_pump", "wellC_pump"]}
     trial_df = combine_reward_and_trial_data(trial_df, reward_DIOs, logger)
 
     # Use block data to determine if this is a probability change or barrier change session
