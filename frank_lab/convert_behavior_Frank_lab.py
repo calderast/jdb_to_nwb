@@ -376,9 +376,7 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
     )
     DIO_nosepoke_df = DIO_nosepoke_df.sort_values(by="timestamp").reset_index(drop=True)
 
-    logger.info(
-        f"{len(DIO_nosepoke_df)} nosepokes from the DIOs: {DIO_nosepoke_df['port'].value_counts().to_dict()}"
-    )
+    logger.info(f"{len(DIO_nosepoke_df)} nosepokes from the DIOs: {DIO_nosepoke_df['port'].value_counts().to_dict()}")
     logger.info(
         f"{len(statescript_nosepoke_df)} nosepokes from the statescript: "
         f"{statescript_nosepoke_df['port'].value_counts().to_dict()}"
@@ -788,9 +786,7 @@ def combine_reward_and_trial_data(trial_df, reward_DIOs, logger):
 
         # Ensure the reward pump turns on within a second of the poke
         if abs(trial_row.poke_in_time - DIO_times.pump_on_time) > 1:
-            logger.error(
-                f"Pump on at time {DIO_times.pump_on_time} may not match nosepoke at {trial_row.poke_in_time}"
-            )
+            logger.error(f"Pump on at time {DIO_times.pump_on_time} may not match nosepoke at {trial_row.poke_in_time}")
             raise Exception(
                 f"Pump on at time {DIO_times.pump_on_time} may not match nosepoke at {trial_row.poke_in_time}"
             )
@@ -1021,21 +1017,21 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
     )
 
     # All trial numbers must be unique and match the range 1 to [num trials in session]
-    assert set(trial_data["trial_within_session"]) == set(range(1, len(trial_data) + 1)), (
-        f"Trial numbers {trial_data['trial_within_session']} do not match expected {range(1, len(trial_data) + 1)}"
-    )
+    assert set(trial_data["trial_within_session"]) == set(
+        range(1, len(trial_data) + 1)
+    ), f"Trial numbers {trial_data['trial_within_session']} do not match expected {range(1, len(trial_data) + 1)}"
     logger.debug(f"Check passed: all trial numbers are unique and match the range 1 to {len(trial_data)}")
 
     # All block numbers must be unique and match the range 1 to [num blocks in session]
-    assert set(block_data["block"]) == set(range(1, len(block_data) + 1)), (
-        f"Block numbers {block_data['block']} do not match expected {range(1, len(block_data) + 1)}"
-    )
+    assert set(block_data["block"]) == set(
+        range(1, len(block_data) + 1)
+    ), f"Block numbers {block_data['block']} do not match expected {range(1, len(block_data) + 1)}"
     logger.debug(f"Check passed: all block numbers are unique and match the range 1 to {len(block_data)}")
 
     # There must be a legitimate reward value (1 or 0) for all trials
-    assert set(trial_data["reward"]).issubset({0, 1}), (
-        f"Not all trials have a legitimate reward value (1 or 0)! Got values: {set(trial_data['reward'])}"
-    )
+    assert set(trial_data["reward"]).issubset(
+        {0, 1}
+    ), f"Not all trials have a legitimate reward value (1 or 0)! Got values: {set(trial_data['reward'])}"
     logger.debug("Check passed: All trials have a legitimate reward value (1 or 0)")
 
     # There must be a legitimate p(reward) value for each block at ports A, B, and C
@@ -1572,9 +1568,7 @@ def add_block_and_trial_data_to_nwb(nwbfile: NWBFile, trial_data, block_data, lo
         logger.error(
             "Stopping. Run again with overwrite=True if you wish to overwrite the original block and trials table."
         )
-        print(
-            "Stopping. Run again with overwrite=True if you wish to overwrite the original block and trials table."
-        )
+        print("Stopping. Run again with overwrite=True if you wish to overwrite the original block and trials table.")
         return
 
     def get_opto_condition(delay):
