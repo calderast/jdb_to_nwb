@@ -259,7 +259,8 @@ def parse_trial_and_block_data(behavior_data, block_ends, logger):
                 f"No end port detected for trial: {trial_within_block} in block {current_block.get('block_num')}"
             )
             raise Exception(
-                f"Warning: No end port detected for trial: {trial_within_block} in block {current_block.get('block_num')}"
+                f"Warning: No end port detected for trial: {trial_within_block} "
+                f"in block {current_block.get('block_num')}"
             )
 
         # Only record the delay value if this was a rewarded trial
@@ -392,10 +393,12 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
             and event1["port"] == event2["port"]
         ):
             logger.error(
-                f"Warning: Invalid nosepoke pair from statescript at timestamps {event1['timestamp']} and {event2['timestamp']}!"
+                "Warning: Invalid nosepoke pair from statescript at "
+                f"timestamps {event1['timestamp']} and {event2['timestamp']}!"
             )
             raise Exception(
-                f"Warning: Invalid nosepoke pair from statescript at timestamps {event1['timestamp']} and {event2['timestamp']}!"
+                "Warning: Invalid nosepoke pair from statescript at "
+                f"timestamps {event1['timestamp']} and {event2['timestamp']}!"
             )
     logger.debug("Each poke_in is followed by a poke_out at the same port (statescript)")
 
@@ -409,10 +412,12 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
             and event1["port"] == event2["port"]
         ):
             logger.error(
-                f"Warning: Invalid nosepoke pair from DIOs at timestamps {event1['timestamp']} and {event2['timestamp']}!"
+                "Warning: Invalid nosepoke pair from DIOs at "
+                f"timestamps {event1['timestamp']} and {event2['timestamp']}!"
             )
             raise Exception(
-                f"Warning: Invalid nosepoke pair from DIOs at timestamps {event1['timestamp']} and {event2['timestamp']}!"
+                "Warning: Invalid nosepoke pair from DIOs at "
+                f"timestamps {event1['timestamp']} and {event2['timestamp']}!"
             )
     logger.debug("Each poke_in is followed by a poke_out at the same port (DIOs)")
 
@@ -424,7 +429,8 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
         logger.warning(
             f"Length mismatch: {len(DIO_nosepoke_df)} nosepokes from DIOs, "
             f"but only {len(statescript_nosepoke_df)} nosepokes from statescript.\n"
-            "The DIO may have more pokes because it keeps recording after the statescript has been stopped (this is ok)."
+            "The DIO may have more pokes because it keeps recording "
+            "after the statescript has been stopped (this is ok)."
         )
     # The statescript should never have more pokes than the DIOs - break if this happens so we can figure out why.
     elif len(statescript_nosepoke_df) > len(DIO_nosepoke_df):
@@ -725,10 +731,12 @@ def combine_reward_and_trial_data(trial_df, reward_DIOs, logger):
             # Make sure the pump_on and pump_off times are close together (<1s) to check they are matched correctly
             if not (abs(timestamps[i] - timestamps[i + 1]) < 1):
                 logger.error(
-                    f"Expected timestamps to be within 1s, got pump_on_time {timestamps[i]}, pump_off_time {timestamps[i+1]}]"
+                    "Expected timestamps to be within 1s, "
+                    f"got pump_on_time {timestamps[i]}, pump_off_time {timestamps[i+1]}]"
                 )
                 raise Exception(
-                    f"Expected timestamps to be within 1s, got pump_on_time {timestamps[i]}, pump_off_time {timestamps[i+1]}]"
+                    "Expected timestamps to be within 1s, "
+                    f"got pump_on_time {timestamps[i]}, pump_off_time {timestamps[i+1]}]"
                 )
 
             # Combine the pump_on and pump_off events into a single row
@@ -871,8 +879,9 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
             # Warn about removing DIOs too close to the previous DIO
             else:
                 logger.warning(
-                    f"Detected jitter in barrier shift DIOs! Removing barrier shift at {time} because it is too close to "
-                    f"last valid barrier shift at time {valid_barrier_shift_times[-1]} (time diff = {time_from_last_valid_DIO:.2f}s)"
+                    "Detected jitter in barrier shift DIOs! "
+                    f"Removing barrier shift at {time} because it is too close to last valid barrier shift "
+                    f"at time {valid_barrier_shift_times[-1]} (time diff = {time_from_last_valid_DIO:.2f}s)"
                 )
 
         barrier_shift_trials_DIO = []
@@ -923,12 +932,14 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
         if barrier_shift_trials_DIO != barrier_shift_trials_excel:
             logger.warning(
                 "Mismatch in barrier shift info between barrier_shift DIOs and data from excel sheet!\n"
-                f"DIO has barrier shift trials {barrier_shift_trials_DIO}, excel sheet has {barrier_shift_trials_excel}!"
+                f"DIO has barrier shift trials {barrier_shift_trials_DIO}, "
+                f"excel sheet has {barrier_shift_trials_excel}!"
             )
             logger.warning("Using DIOs as true barrier shift trials.")
         else:
             logger.info(
-                f"Barrier_shift DIOs match data from excel sheet, with barrier shifts at trials {barrier_shift_trials_DIO}!"
+                "Barrier_shift DIOs match data from excel sheet, "
+                f"with barrier shifts at trials {barrier_shift_trials_DIO}!"
             )
         barrier_shift_trials = barrier_shift_trials_DIO
 
@@ -1028,9 +1039,10 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
     logger.info("Running basic checks to check that trial and block data is valid...")
 
     # The number of the last trial/block must match the number of trials/blocks
-    assert (
-        len(trial_data) == trial_data["trial_within_session"].max()
-    ), f"The last trial number {trial_data['trial_within_session'].max()} does not match the total number of trials {len(trial_data)}"
+    assert len(trial_data) == trial_data["trial_within_session"].max(), (
+        f"The last trial number {trial_data['trial_within_session'].max()} "
+        f"does not match the total number of trials {len(trial_data)}"
+    )
     assert (
         len(block_data) == block_data["block"].max()
     ), f"The last block number {block_data['block'].max()} does not match the total number of blocks {len(block_data)}"
@@ -1062,9 +1074,10 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
     logger.debug("Check passed: All trials have a legitimate reward value (1 or 0)")
 
     # There must be a legitimate p(reward) value for each block at ports A, B, and C
-    assert (
-        block_data[["pA", "pB", "pC"]].apply(lambda col: col.between(0, 100)).all().all()
-    ), f"Not all blocks have a legitimate value for pA, pB, or pC (value in range 0-100)! Got {block_data[['pA', 'pB', 'pC']]}"
+    assert block_data[["pA", "pB", "pC"]].apply(lambda col: col.between(0, 100)).all().all(), (
+        "Not all blocks have a legitimate value for pA, pB, or pC (value in range 0-100)! "
+        f"Got {block_data[['pA', 'pB', 'pC']]}"
+    )
     logger.debug("Check passed: All blocks have a legitimate value for pA, pB, or pC (value in range 0-100)")
 
     # There must be a not-null maze_configuration for each block
@@ -1086,9 +1099,10 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
     # In a probability change session, reward probabilities vary and maze configs do not
     if block_data["task_type"].iloc[0] == "probability change":
         # All maze configs should be the same
-        assert (
-            block_data["maze_configuration"].nunique() == 1
-        ), f"All maze configurations must be the same for a probability change session! Got {block_data['maze_configuration']}"
+        assert block_data["maze_configuration"].nunique() == 1, (
+            "All maze configurations must be the same for a probability change session! "
+            f"Got {block_data['maze_configuration']}"
+        )
         # Reward probabilities should vary
         # We check for any changes instead of all because of cases like where we have only 2
         # blocks and only 2 of the probabilities change (e.g. pA and pB switch, pC stays the same)
@@ -1117,7 +1131,7 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
             f"got {block_data['maze_configuration'].nunique()} configs: {block_data['maze_configuration']}"
         )
         logger.debug(
-            "Check passed: All maze configurations are different and all reward probabilities stay the same across blocks"
+            "Check passed: All maze configurations differ and all reward probabilities stay the same across blocks"
         )
 
     summed_trials = 0
@@ -1131,12 +1145,14 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
         num_trials_expected = block["num_trials"]
         num_trials_expected_2 = block["end_trial"] - block["start_trial"] + 1
         assert len(trial_numbers.unique()) == num_trials_expected == num_trials_expected_2, (
-            f"Expected num of trials in block ({num_trials_expected}) = block end trial-start trial ({num_trials_expected_2}) "
+            f"Expected num of trials in block ({num_trials_expected}) "
+            f"= block end trial-start trial ({num_trials_expected_2}) "
             f"= number of unique trial_within_block numbers ({len(trial_numbers.unique())})"
         )
-        assert set(trial_numbers) == set(
-            range(1, int(num_trials_expected) + 1)
-        ), f"Trial numbers in this block {trial_numbers} did not match expected {range(1, int(num_trials_expected) + 1)}!"
+        assert set(trial_numbers) == set(range(1, int(num_trials_expected) + 1)), (
+            f"Trial numbers in this block {trial_numbers} "
+            f"did not match expected {range(1, int(num_trials_expected) + 1)}!"
+        )
         logger.debug(f"All trial numbers in this block are unique and match the range 1 to {num_trials_expected}")
 
         # Check time alignment between trials and blocks
@@ -1175,9 +1191,10 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
         summed_trials += num_trials_expected
 
     # The summed number of trials in each block must match the total number of trials
-    assert summed_trials == len(
-        trial_data
-    ), f"Expected the summed number of trials in each block ({summed_trials}) to match the total number of trials ({len(trial_data)})"
+    assert summed_trials == len(trial_data), (
+        f"Expected the summed number of trials in each block ({summed_trials}) "
+        f"to match the total number of trials ({len(trial_data)})"
+    )
     logger.debug(f"The number of trials in each block sums to the total number of trials {len(trial_data)}")
     logger.info("All checks passed!")
 
@@ -1464,7 +1481,8 @@ def parse_state_script_log(statescriptlog, DIO_events, excel_data_for_epoch, log
     trial_df = combine_nosepoke_and_trial_data(nosepoke_df, trial_data, session_end, logger)
 
     # Add reward pump timestamps from DIOs to the combined dataframe
-    reward_DIOs = {key: value for key, value in DIO_events.items() if key in ["wellA_pump", "wellB_pump", "wellC_pump"]}
+    reward_DIOs = {key: value for key, value in DIO_events.items() 
+                   if key in ["wellA_pump", "wellB_pump", "wellC_pump"]}
     trial_df = combine_reward_and_trial_data(trial_df, reward_DIOs, logger)
 
     # Use block data to determine if this is a probability change or barrier change session
@@ -1831,7 +1849,8 @@ def add_behavioral_data_to_nwb(
             name: log for name, log in module.data_interfaces.items() if name.startswith("statescript r")
         }
         assert len(run_statescript_logs) == len(run_epochs) == len(excel_data), (
-            f"Found {len(run_statescript_logs)} stateScriptLogs, {len(run_epochs)} run epochs, and {len(excel_data)} run sessions from the excel sheet. \n"
+            f"Found {len(run_statescript_logs)} stateScriptLogs, {len(run_epochs)} run epochs, "
+            f"and {len(excel_data)} run sessions from the excel sheet. \n"
             "Expected all of these to be the same length"
         )
         logger.debug(f"Found {len(run_statescript_logs)} statescriptlogs for {len(run_epochs)} run epochs")
@@ -1854,9 +1873,10 @@ def add_behavioral_data_to_nwb(
         # Check that we have the expected amount of epoch starts
         # NOTE: epoch_start_timestamps from the DIO pulses lag the timestamps in the epoch_table
         # by ~1 second to ~1 minute - check where this discrepancy comes from and which one to use!
-        assert len(epoch_start_timestamps) == len(
-            epoch_table
-        ), f"Found {len(epoch_start_timestamps)} epoch start timestamps for {len(epoch_table)} epochs. Expected these to match!"
+        assert len(epoch_start_timestamps) == len(epoch_table), (
+            f"Found {len(epoch_start_timestamps)} epoch start timestamps for {len(epoch_table)} epochs. "
+            "Expected these to match!"
+        )
         logger.debug(f"Found {len(epoch_start_timestamps)} epoch start timestamps for {len(epoch_table)} epochs")
 
         # Set up lists to store block and trial data for each epoch
