@@ -266,6 +266,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
 
     video.add_timeseries(
         ImageSeries(
+            device=nwbfile.devices["camera_device 1"],
             name="behavior_video",
             timestamps=true_video_timestamps,
             external_file=[video_file_name],
