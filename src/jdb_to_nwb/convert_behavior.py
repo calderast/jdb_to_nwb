@@ -63,7 +63,7 @@ def determine_session_type(block_data: list):
         return "barrier change"
 
 
-def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
+def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
     """
     Parse the arduino text output and corresponding timestamps into lists
     containing information about trials and blocks in this session.
@@ -100,9 +100,11 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                 "end_time": None,  # Set this as the start time of the next block
                 "num_trials": None,  # Set this once we find the last trial in this block
             }
+            logger.debug(f"Found new block: {current_block}")
 
             # If this is the first block, we can use the current time as the start time
             if not previous_block:
+                logger.debug("This is the first block.")
                 current_block["start_time"] = float(arduino_timestamps[i])
                 previous_block = current_block
 
@@ -111,7 +113,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
         if beam_break:
             port = beam_break.group(1)
 
-            # If this is the start of a new trial, create the trial
+            # If this is the start of a beam break at a new port, create the trial ending at this port
             if not current_trial and port != previous_trial.get("end_port", None):
                 # The first trial starts at the first block start, subsequent trials start at previous trial end
                 current_trial["start_time"] = float(previous_trial.get("end_time", current_block.get("start_time")))
@@ -129,17 +131,23 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                     else 0 if re.search(rf"no Reward port {port}", arduino_text[i + 1]) else None
                 )
 
-            # If we are in a trial, update the end times until we reach the end of the beam break
+            # If we are in the middle of a beam break, update the end times until we reach the end of the beam break
             if current_trial:
                 current_trial["beam_break_end"] = float(arduino_timestamps[i])
                 current_trial["end_time"] = float(arduino_timestamps[i])
 
-                # If the next timestamp is far enough away (>100ms), the beam break is over, so end the trial
-                beam_break_time_thresh = 0.1 # seconds
+                # If the next timestamp is far enough away (>1s), the beam break is over, so end the trial.
+                # Note this threshold should be at the very least 200ms because with arduino jitter, 
+                # if the the threshold is too short (e.g. 100ms), the beam break ends immediately and 
+                # it sets beam_break_start = beam_break_end. This ends up causing issues for us downstream 
+                # (with proper block/trial alignment). 1 second is also a good threshold to properly capture the 
+                # time the animal spends at the port (for SWR, etc.) and is the same threshold as Frank Lab.
+                beam_break_time_thresh = 1 # seconds
                 if (i < len(arduino_timestamps) - 1) and (
                     arduino_timestamps[i + 1] - current_trial["beam_break_end"]
                 ) >= beam_break_time_thresh:
                     trial_data.append(current_trial)
+                    logger.debug(f"Beam break is over. Adding trial {current_trial}")
                     # Reset trial data
                     previous_trial = current_trial
                     current_trial = {}
@@ -150,18 +158,22 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                         current_block["start_time"] = float(arduino_timestamps[i])
                         previous_block["end_time"] = float(arduino_timestamps[i])
                         previous_block["num_trials"] = previous_trial.get("trial_within_block")
+                        logger.debug("This trial triggered a new block.")
+                        logger.debug(f"Adding previous block: {previous_block}")
                         block_data.append(previous_block)
                         previous_block = current_block
                         trial_within_block = 1
                 # If we have reached the last timestamp of the file while in the middle of a beam break,
                 # make the trial end time the last timestamp
                 elif i == len(arduino_timestamps)-1:
+                    logger.debug("Reached the last timestamp of the file in the middle of a beam break.")
                     # Add the last trial
                     trial_data.append(current_trial)
+                    logger.debug(f"Adding final trial: {current_trial}")
                     # Reset trial data (make current_trial = None) so we don't add it twice
                     previous_trial = current_trial
                     current_trial = {}
-                    
+
                     # We sometimes have the case where the last trial in the session triggers a new block
                     # (if we choose to stop the recording after the rat has completed a full block)
                     # This new block does not actually have any trials, so don't add it.
@@ -171,6 +183,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
                         previous_block["end_time"] = float(arduino_timestamps[i])
                         previous_block["num_trials"] = previous_trial.get("trial_within_block")
                         block_data.append(previous_block)
+                        logger.debug(f"Adding final block: {previous_block}")
                         # Make the current block (the new block that this trial started) empty
                         # so we don't add it. 
                         current_block = {}
@@ -178,6 +191,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
     # Append the last trial if it exists
     if current_trial:
         trial_data.append(current_trial)
+        logger.debug(f"Adding last trial: {current_trial}")
         previous_trial = current_trial
         
     # If the last trial in the session triggered a new block,
@@ -191,6 +205,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list):
         current_block["end_time"] = float(previous_trial["end_time"])
         current_block["num_trials"] = previous_trial.get("trial_within_block")
         block_data.append(current_block)
+        logger.debug(f"Adding last block: {current_block}")
 
     return trial_data, block_data
 
@@ -341,15 +356,19 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
     # In a barrier change session, maze configs vary and reward probabilities do not
     elif block_data[0]["task_type"] == "barrier change":
         # Maze configurations should be different for each block
-        assert len({block["maze_configuration"] for block in block_data}) == len(block_data), (
-            "Maze configurations must be different for each block in a barrier change session"
-        )
+        # We choose to log at ERROR level instead of failing an assert because we have 
+        # at least one barrier change session (cough cough Jose) where a maze configuration repeats
+        unique_mazes = {block["maze_configuration"] for block in block_data}
+        if len(unique_mazes) != len(block_data):
+            logger.error("Maze configurations must differ for each block in a barrier change session!")
+            logger.error(f"Got {len(unique_mazes)} unique mazes for {len(block_data)} blocks!")
+        else:
+            logger.debug(f"Found {len(unique_mazes)} for {len(block_data)} blocks.")
         # All reward probabilities should be the same for all blocks
         assert len({block["pA"] for block in block_data}) == 1, "pA should not vary in a barrier change session"
         assert len({block["pB"] for block in block_data}) == 1, "pB should not vary in a barrier change session"
         assert len({block["pC"] for block in block_data}) == 1, "pC should not vary in a barrier change session"
-        logger.debug("All maze configurations are different "
-                     "and all reward probabilities stay the same across blocks")
+        logger.debug("All reward probabilities stay the same across blocks")
 
     summed_trials = 0
     # Check trials within each block
@@ -441,7 +460,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
 
     # Read through the arduino text and timestamps to get trial and block data
     logger.debug("Parsing arduino text file...")
-    trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps)
+    trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps, logger)
     logger.info(f"There are {len(block_data)} blocks and {len(trial_data)} trials")
 
     # Use block data to determine if this is a probability change or barrier change session
