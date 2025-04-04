@@ -137,9 +137,11 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
                 current_trial["end_time"] = float(arduino_timestamps[i])
 
                 # If the next timestamp is far enough away (>1s), the beam break is over, so end the trial.
-                # Note this threshold should be at the very least 200ms because with arduino jitter, if the the threshold is 
-                # too short (e.g. 100ms), the beam break ends immediately and it sets beam_break_start = beam_break_end.
-                # This ends up causing issues for us downstream (with proper block/trial alignment) 
+                # Note this threshold should be at the very least 200ms because with arduino jitter, 
+                # if the the threshold is too short (e.g. 100ms), the beam break ends immediately and 
+                # it sets beam_break_start = beam_break_end. This ends up causing issues for us downstream 
+                # (with proper block/trial alignment). 1 second is also a good threshold to properly capture the 
+                # time the animal spends at the port (for SWR, etc.) and is the same threshold as Frank Lab.
                 beam_break_time_thresh = 1 # seconds
                 if (i < len(arduino_timestamps) - 1) and (
                     arduino_timestamps[i + 1] - current_trial["beam_break_end"]
