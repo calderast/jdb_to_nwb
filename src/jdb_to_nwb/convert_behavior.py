@@ -136,11 +136,11 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
                 current_trial["beam_break_end"] = float(arduino_timestamps[i])
                 current_trial["end_time"] = float(arduino_timestamps[i])
 
-                # If the next timestamp is far enough away (>500ms), the beam break is over, so end the trial.
-                # Note this threshold should be at least 200ms because with arduino jitter, if the the threshold is 
+                # If the next timestamp is far enough away (>1s), the beam break is over, so end the trial.
+                # Note this threshold should be at the very least 200ms because with arduino jitter, if the the threshold is 
                 # too short (e.g. 100ms), the beam break ends immediately and it sets beam_break_start = beam_break_end.
                 # This ends up causing issues for us downstream (with proper block/trial alignment) 
-                beam_break_time_thresh = 0.5 # seconds
+                beam_break_time_thresh = 1 # seconds
                 if (i < len(arduino_timestamps) - 1) and (
                     arduino_timestamps[i + 1] - current_trial["beam_break_end"]
                 ) >= beam_break_time_thresh:
