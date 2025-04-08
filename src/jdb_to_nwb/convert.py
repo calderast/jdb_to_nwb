@@ -128,6 +128,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
 
     logger.info(f"Starting conversion for session_id {session_id}")
+    logger.info(f"Using source script jdb_to_nwb {__version__}")
+    print(f"Starting conversion for session_id {session_id}")
+    print(f"Using source script jdb_to_nwb {__version__}")
 
     # Save a copy of the metadata file to the logging directory
     metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"

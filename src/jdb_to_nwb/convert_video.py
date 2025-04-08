@@ -54,6 +54,7 @@ def add_hex_centroids(nwbfile: NWBFile, metadata: dict, logger):
     # Try to load centroids and complain if we can't find the file
     try:
         hex_centroids = pd.read_csv(hex_centroids_file)
+        logger.debug(f"Found hex centroids file at '{hex_centroids_file}'")
     except FileNotFoundError:
         logger.error(f"The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
         print(f"Error: The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
@@ -66,21 +67,28 @@ def add_hex_centroids(nwbfile: NWBFile, metadata: dict, logger):
     else:
         logger.debug(f"Found the expected number of hex centroids in the centroids file ({num_hexes})")
 
-    expected_columns = {'hex', 'x', 'y'}
-    if set(hex_centroids.columns) != expected_columns:
-        logger.error(f"Expected {expected_columns} columns in the hex centroids file, "
-                     f"got {set(hex_centroids.columns)}!!")
+    # Make sure the file includes columns 'hex', 'x', 'y'
+    required_columns = {"hex", "x", "y"}
+    actual_columns = set(hex_centroids.columns)
+    if not required_columns.issubset(actual_columns):
+        logger.error(f"Expected {required_columns} columns in the hex centroids file, got {actual_columns}!!")
         logger.error("Skipping adding centroids to the nwb")
-        print(f"Expected {expected_columns} columns in the hex centroids file, got {set(hex_centroids.columns)}!")
-        print("Skipping adding centroids to the nwb.")
         return
     else:
-        logger.debug(f"Found expected columns {expected_columns} in the hex centroids file")
+        logger.debug(f"Found expected columns {required_columns} in the hex centroids file")
+
+        # Drop any extra columns. (Our centroids code may produce a file with extra columns
+        # 'x_meters' and 'y_meters', but we instead calculate those here for consistency)
+        extra_columns = actual_columns - required_columns
+        if extra_columns:
+            logger.debug(f"Dropping extra columns from centroids file: {extra_columns}")
+            hex_centroids = hex_centroids[list(required_columns)]  # keep only required columns
 
     # Convert pixels per cm to meters per pixel
     meters_per_pixel = 0.01 / pixels_per_cm
     hex_centroids['x_meters'] = hex_centroids['x'] * meters_per_pixel
     hex_centroids['y_meters'] = hex_centroids['y'] * meters_per_pixel
+    logger.debug(f"Calculating centroids in meters using meters_per_pixel={meters_per_pixel}")
 
     # Set up the hex centroids table
     centroids_table = DynamicTable(name="hex_centroids", 
@@ -94,7 +102,11 @@ def add_hex_centroids(nwbfile: NWBFile, metadata: dict, logger):
             description="The x coordinate of the center of the hex (in meters)")
     centroids_table.add_column(name="y_meters", 
             description="The y coordinate of the center of the hex (in meters)")
-    # Add the hex centroids
+
+    # Add the hex centroids (make sure we keep only desired columns and in the correct order)
+    desired_column_order = ["hex", "x", "y", "x_meters", "y_meters"]
+    columns_to_keep = list(filter(lambda col: col in hex_centroids.columns, desired_column_order))
+    hex_centroids = hex_centroids[columns_to_keep]
     for _, row in hex_centroids.iterrows():
         centroids_table.add_row(**row.to_dict())
 

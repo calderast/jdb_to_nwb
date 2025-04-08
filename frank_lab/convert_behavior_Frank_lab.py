@@ -4,6 +4,7 @@ import ast
 import h5py
 import logging
 import pandas as pd
+from . import __version__
 from pathlib import Path
 from collections import Counter
 from hdmf.common import DynamicTable
@@ -1479,6 +1480,8 @@ def parse_state_script_log(statescriptlog, DIO_events, excel_data_for_epoch, log
 
     # Add combined nosepoke timestamps (both statescript and DIO) to the trial dataframe
     trial_df = combine_nosepoke_and_trial_data(nosepoke_df, trial_data, session_end, logger)
+    
+    # Check the ifDelays!!
 
     # Add reward pump timestamps from DIOs to the combined dataframe
     reward_DIOs = {key: value for key, value in DIO_events.items() if key in ["wellA_pump", "wellB_pump", "wellC_pump"]}
@@ -1825,6 +1828,7 @@ def add_behavioral_data_to_nwb(
     with NWBHDF5IO(nwb_path, mode="r+") as io:
         nwbfile = io.read()
         logger.info(f"Parsing behavior for {nwbfile.session_id} ...")
+        logger.info(f"Using source script jdb_to_nwb {__version__}")
 
         # Get session date assuming session ID is in format rat_date
         session_date = nwbfile.session_id.split("_")[-1]
