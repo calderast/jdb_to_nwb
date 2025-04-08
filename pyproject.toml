@@ -34,6 +34,8 @@ dependencies = [
     "ffmpeg-python",
     "tables",
     "opencv-python",
+    "zarr==2.17.0",
+    "numcodecs==0.12.1",
 ]
 dynamic = ["version"]
 
