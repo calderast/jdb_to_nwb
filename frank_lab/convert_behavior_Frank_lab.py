@@ -891,7 +891,6 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
             # Barrier shifts happen when the rat is at a port (just after poke_in)
             # The next trial (that begins on poke_out) is the first trial of the new block
             trials_pre_shift = trial_data.index[trial_data["poke_in_time"] <= barrier_shift_time]
-            closest_idx = ((trial_data.loc[trials_pre_shift, "poke_in_time"] - barrier_shift_time).abs()).idxmin()
             closest_idx = pd.to_numeric(
                 ((trial_data.loc[trials_pre_shift, "poke_in_time"] - barrier_shift_time).abs())
             ).idxmin()
