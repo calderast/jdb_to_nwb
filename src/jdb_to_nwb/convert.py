@@ -111,7 +111,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     subject = Subject(**metadata["subject"])
 
     # Create session_id in {rat}_{date} format where date is YYYYMMDD
-    session_id = f"{metadata.get("animal_name")}_{metadata.get("datetime").strftime("%Y%m%d")}"
+    session_id = f"{metadata.get('animal_name')}_{metadata.get('datetime').strftime('%Y%m%d')}"
 
     # Create directory for associated figures
     fig_dir = Path(output_nwb_dir) / f"{session_id}_figures"
@@ -192,7 +192,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Otherwise keep the default start time (00:00:00 Pacific Time on the session date)
     else:
         logger.warning("No photometry or ephys start time found, \nso session_start_time is the default start time: "
-                       f"{nwbfile.fields["session_start_time"]} (00:00:00 Pacific Time on the session date)")
+                       f"{nwbfile.fields['session_start_time']} (00:00:00 Pacific Time on the session date)")
 
     # Set the timestamps reference time equal to the session start time
     nwbfile.fields["timestamps_reference_time"] = nwbfile.fields["session_start_time"]
