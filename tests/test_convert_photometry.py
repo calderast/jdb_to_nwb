@@ -398,17 +398,17 @@ def test_add_photometry_metadata(dummy_logger):
         )
 
     assert "Purple LED" in nwbfile.devices
-    assert nwbfile.devices["Purple LED"].excitation_wavelength_in_nm == 470.0
+    assert nwbfile.devices["Purple LED"].excitation_wavelength_in_nm == 405.0
     assert nwbfile.devices["Purple LED"].illumination_type == "LED"
     assert nwbfile.devices["Purple LED"].manufacturer == "ThorLabs"
     assert nwbfile.devices["Purple LED"].model == "M405FP1"
     assert "Blue LED" in nwbfile.devices
-    assert nwbfile.devices["Blue LED"].excitation_wavelength_in_nm == 405.0
+    assert nwbfile.devices["Blue LED"].excitation_wavelength_in_nm == 470.0
     assert nwbfile.devices["Blue LED"].illumination_type == "LED"
     assert nwbfile.devices["Blue LED"].manufacturer == "ThorLabs"
     assert nwbfile.devices["Blue LED"].model == "M470F3"
     assert "Optic Fiber" in nwbfile.devices
-    assert nwbfile.devices["Optic Fiber"].numerical_aperture == 0.39
+    assert nwbfile.devices["Optic Fiber"].numerical_aperture == 0.66
     assert nwbfile.devices["Optic Fiber"].core_diameter_in_um == 200.0
     assert "Newport Femtowatt Photoreceiver" in nwbfile.devices
     assert nwbfile.devices["Newport Femtowatt Photoreceiver"].manufacturer == "Newport"

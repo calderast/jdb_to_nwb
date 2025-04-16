@@ -361,9 +361,9 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
         unique_mazes = {block["maze_configuration"] for block in block_data}
         if len(unique_mazes) != len(block_data):
             logger.error("Maze configurations must differ for each block in a barrier change session!")
-            logger.error(f"Got {len(unique_mazes)} unique mazes for {len(block_data)} blocks!")
+            logger.error(f"Got {len(unique_mazes)} unique maze configs for {len(block_data)} blocks!")
         else:
-            logger.debug(f"Found {len(unique_mazes)} for {len(block_data)} blocks.")
+            logger.debug(f"Found {len(unique_mazes)} unique maze configs for {len(block_data)} blocks.")
         # All reward probabilities should be the same for all blocks
         assert len({block["pA"] for block in block_data}) == 1, "pA should not vary in a barrier change session"
         assert len({block["pB"] for block in block_data}) == 1, "pB should not vary in a barrier change session"
