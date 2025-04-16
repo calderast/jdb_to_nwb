@@ -1,5 +1,7 @@
 # A running list of devices used for photometry. Reference individual devices by name in the metadata yaml file.
 
+# These are the excitation sources for the old maze room.
+# These are used in combination with the Doric ilFMC7 photodetector.
 excitation_sources:
   - name: Blue LED
     excitation_wavelength_in_nm: 470.0
@@ -12,8 +14,8 @@ excitation_sources:
     model: M405FP1
     illumination_type: LED
 
-# excitation sources for Doric minicube: 
-# https://neuro.doriclenses.com/products/fmc7?productoption%5BPort%20Configuration%5D=Built-in%20LED%20and%20DETECTOR
+# These are the excitation sources for the new maze room.
+# These are built-in to the Doric ilFMC7-G2 minicube.
   - name: Doric Blue LED
     excitation_wavelength_in_nm: 470.0
     manufacturer: Doric
@@ -31,19 +33,31 @@ excitation_sources:
     illumination_type: LED
 
 optic_fibers:
-  - name: Optic Fiber
-    numerical_aperture: 0.66  # TODO get correct value for this
+  - name: Doric 0.6mm Flat 40mm Optic Fiber
+    numerical_aperture: 0.66
     core_diameter_in_um: 200.0
+    manufacturer: Doric
+    model: MFC_200/250-0.66_40mm_MF2.5_FLT
+
+  - name: Doric 0.6mm Flat 10mm Optic Fiber
+    numerical_aperture: 0.66
+    core_diameter_in_um: 200.0
+    manufacturer: Doric
+    model: MFC_200/250-0.66_10mm_MF2.5_FLT
 
 photodetectors:
-  - name: Newport Femtowatt Photoreceiver
-    manufacturer: Newport
-    model: "2151"
-    detector_type: Silicon PIN photodiode
-    detected_wavelength_in_nm: 0.0  # TODO modify extension to allow range (320-1050 nm)
-
+# This is the photodetector for the old maze room.
+  - name: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)
+    manufacturer: Doric
+    model: "iFMC7-G2"
+    detector_type: Silicon photodiode
+    detected_wavelength_in_nm: 960.0 # TODO modify extension to allow range (320-1050 nm) currently peak wavelength
+    description: https://neuro.doriclenses.com/products/fmc7?productoption%5BPort%20Configuration%5D=Built-in%20DETECTOR
+    
+# This is the photodetector for the new maze room.
   - name: Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
     manufacturer: Doric
     model: "ilFMC7-G2"
     detector_type: Silicon photodiode
     detected_wavelength_in_nm: 960.0 # TODO modify extension to allow range (320-1050 nm) currently peak wavelength
+    description: https://neuro.doriclenses.com/products/fmc7?productoption%5BPort%20Configuration%5D=Built-in%20LED%20and%20DETECTOR
