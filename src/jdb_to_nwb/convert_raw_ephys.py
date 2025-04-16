@@ -389,7 +389,7 @@ def get_raw_ephys_data(
     # NOTE: We could write our own extractor to handle the relatively simple OpenEphys binary format
     # and surrounding files but it is nice to build on the well-tested code of others when possible.
     # However, we should remember that external code may not be well-maintained or may have bugs of their own.
-    streams = OpenEphysBinaryRecordingExtractor.get_stream_names(folder_path=folder_path)
+    streams, _ = OpenEphysBinaryRecordingExtractor.get_streams(folder_path=folder_path)
     logger.debug(f"Found streams in the OpenEphys binary data: {streams}")
 
     streams_without_adc = [s for s in streams if not s.endswith("_ADC")]
@@ -403,7 +403,10 @@ def get_raw_ephys_data(
     assert all([ch.startswith("CH") for ch in recording_sliced.channel_ids]), \
         (f"Some channels do not start with 'CH': {recording_sliced.channel_ids}")
 
-    logger.debug(f"Found {len(recording_sliced.channel_ids)} Open Ephys channels to convert: {recording_sliced.channel_ids}")
+    logger.debug(
+        f"Found {len(recording_sliced.channel_ids)} Open Ephys channels to convert: "
+        f"{recording_sliced.channel_ids}"
+    )
 
     # Get the channel conversion factor
     channel_conversion_factors_uv = recording_sliced.get_channel_gains()
