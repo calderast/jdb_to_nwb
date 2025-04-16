@@ -33,13 +33,13 @@ excitation_sources:
     illumination_type: LED
 
 optic_fibers:
-  - name: Doric 0.6mm Flat 40mm Optic Fiber
+  - name: Doric 0.66mm Flat 40mm Optic Fiber
     numerical_aperture: 0.66
     core_diameter_in_um: 200.0
     manufacturer: Doric
     model: MFC_200/250-0.66_40mm_MF2.5_FLT
 
-  - name: Doric 0.6mm Flat 10mm Optic Fiber
+  - name: Doric 0.66mm Flat 10mm Optic Fiber
     numerical_aperture: 0.66
     core_diameter_in_um: 200.0
     manufacturer: Doric
