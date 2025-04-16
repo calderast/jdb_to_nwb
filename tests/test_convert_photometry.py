@@ -408,15 +408,17 @@ def test_add_photometry_metadata(dummy_logger):
     assert nwbfile.devices["Blue LED"].manufacturer == "ThorLabs"
     assert nwbfile.devices["Blue LED"].model == "M470F3"
     assert "Doric 0.66mm Flat 40mm Optic Fiber" in nwbfile.devices
-    assert nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"].numerical_aperture == 0.66
-    assert nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"].core_diameter_in_um == 200.0
-    assert nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"].manufacturer == "Doric"
-    assert nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"].model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
+    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"]
+    assert optic_fiber.numerical_aperture == 0.66
+    assert optic_fiber.core_diameter_in_um == 200.0
+    assert optic_fiber.manufacturer == "Doric"
+    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
     assert "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)" in nwbfile.devices
-    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].manufacturer == "Doric"
-    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].model == "iFMC7-G2"
-    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].detector_type == "Silicon photodiode"
-    assert nwbfile.devices["Newport Femtowatt Photoreceiver"].detected_wavelength_in_nm == 960.0
+    photodetector = nwbfile.devices["Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"]
+    assert photodetector.manufacturer == "Doric"
+    assert photodetector.model == "iFMC7-G2"
+    assert photodetector.detector_type == "Silicon photodiode"
+    assert photodetector.detected_wavelength_in_nm == 960.0
 
 
 def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
