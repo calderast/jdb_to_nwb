@@ -107,9 +107,9 @@ def set_default_metadata(metadata, logger):
     # Set defaults if these fields are missing
     if "institution" not in metadata:
         metadata["institution"] = "University of California, San Francisco"
-        logger.warning("No 'insitution' found in metadata, "
+        logger.warning("No 'institution' found in metadata, "
                        "setting to default 'University of California, San Francisco'")
-        print("No 'insitution' found in metadata, setting to default 'University of California, San Francisco'")
+        print("No 'institution' found in metadata, setting to default 'University of California, San Francisco'")
     if "lab" not in metadata:
         metadata["lab"] = "Berke Lab"
         logger.warning("No 'lab' found in metadata, setting to default 'Berke Lab'")
