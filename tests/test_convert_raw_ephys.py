@@ -18,7 +18,7 @@ def test_add_electrode_data(dummy_logger):
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["device"] = {
+    metadata["ephys"]["probe"] = {
         "name": "3mm Probe",
         "description": "Test Probe",
         "manufacturer": "Test Manufacturer",
@@ -67,10 +67,10 @@ def test_add_electrode_data(dummy_logger):
 
     # Test that the nwbfile has the expected device
     assert "3mm Probe" in nwbfile.devices
-    device = nwbfile.devices["3mm Probe"]
-    assert device is not None
-    assert device.description == "Test Probe"
-    assert device.manufacturer == "Test Manufacturer"
+    probe = nwbfile.devices["3mm Probe"]
+    assert probe is not None
+    assert probe.description == "Test Probe"
+    assert probe.manufacturer == "Test Manufacturer"
 
     # Test that the nwbfile has the expected electrode group
     assert len(nwbfile.electrode_groups) == 1
@@ -79,7 +79,7 @@ def test_add_electrode_data(dummy_logger):
     assert eg is not None
     assert eg.description == "All electrodes"
     assert eg.location == "Hippocampus CA1"
-    assert eg.device is device
+    assert eg.device is probe
 
     # Test that the nwbfile has the expected electrodes after filtering
     assert len(nwbfile.electrodes) == 256
@@ -182,7 +182,7 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["device"] = {
+    metadata["ephys"]["probe"] = {
         "name": "3mm Probe",
         "description": "Test Probe",
         "manufacturer": "Test Manufacturer",
