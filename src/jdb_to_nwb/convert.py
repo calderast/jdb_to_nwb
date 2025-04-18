@@ -207,7 +207,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     logger.info(f"Original metadata file path was {metadata_file_path}")
     logger.info(f"Saved a copy of metadata to {metadata_copy_file_path}")
 
-    # Set default lab, insitution, and experiment_description if unspecified
+    # Set default lab, institution, and experiment_description if unspecified
     set_default_metadata(metadata, logger)
 
     # Parse subject metadata
