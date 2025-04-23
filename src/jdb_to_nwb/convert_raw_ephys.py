@@ -111,6 +111,7 @@ def add_electrode_data(
     assert required_probe_keys.issubset(probe_metadata.keys()), (
         f"Probe is missing required keys {required_probe_keys - probe_metadata.keys()}"
     )
+    # Create the Probe device and add it to the nwb
     probe_obj = Probe(
         id=0,  # int
         name=probe_metadata["name"],  # str
@@ -129,6 +130,10 @@ def add_electrode_data(
 
     channel_map_df = pd.read_csv(CHANNEL_MAP_PATH)
     channel_map = np.array(channel_map_df[plug_order])
+
+    # Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
+    # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
+    # (electrode coords CSV).
 
     # Get electrode coordinates as a (2, 256) array based on the probe name
     # The first column is the relative x coordinate, and the second column is the relative y coordinate
@@ -150,21 +155,47 @@ def add_electrode_data(
     logger.debug(f"Lengths of channel geometry and channel map match (length={len(channel_map)})!")
 
     plot_channel_map(probe_name, channel_geometry, fig_dir=fig_dir)
-    
-    # Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
-    # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
-    # (electrode coords CSV).
 
-    # Add Shanks to Probe
+    # Get general metadata for the Probe
+    electrodes_location = metadata["ephys"].get("electrodes_location")
+    logger.info(f"Electrodes location is {electrodes_location}")
+    targeted_x = metadata["ephys"].get("targeted_x")
+    targeted_y = metadata["ephys"].get("targeted_y")
+    targeted_z = metadata["ephys"].get("targeted_z")
+    logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
+
     electrode_to_shank_map = {}
+    electrode_groups_by_shank = {}
+
+    # Process each Shank on the Probe
     for shank_dict in probe_metadata["shanks"]:
         for shank_index, shank_electrode_indices in shank_dict.items():
-            logger.debug(f"Adding shank {shank_index} with electrodes {shank_electrode_indices}")
             shank = Shank(name=str(shank_index))
+            logger.debug(f"Adding shank {shank_index} with electrodes {shank_electrode_indices}")
+
+            # Make an ElectrodeGroup for this Shank and add it to the nwb
+            electrode_group = NwbElectrodeGroup(
+                name=str(shank_index),
+                description=f"Electrodes on shank {shank_index}",
+                location=electrodes_location,
+                targeted_location=electrodes_location,
+                targeted_x=float(targeted_x),
+                targeted_y=float(targeted_y),
+                targeted_z=float(targeted_z),
+                units="mm",
+                device=probe_obj, # TODO: Confirm this is correct. Must be a Device (so the Probe object), 
+                # but not all electrodes on the Probe are in the same electrode group.
+                # AFAIK, Frank Lab does not have this issue because each tetrode is a separate Probe
+            )
+            nwbfile.add_electrode_group(electrode_group)
+            # Store the group so we can reference it when adding electrodes to the electrodes table
+            electrode_groups_by_shank[shank_index] = electrode_group
+
+            # Add each Shank and its ShanksElectrodes to the Probe 
             for electrode_index in shank_electrode_indices:
                 # NOTE: We follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode
                 # even though it is redundant with NWB's electrode table fields, for consistency
-                # when using Spyglass
+                # with Frank Lab when using Spyglass
                 shank.add_shanks_electrode(
                     ShanksElectrode(  
                         name=str(electrode_index),
@@ -175,26 +206,6 @@ def add_electrode_data(
                 )
                 electrode_to_shank_map[electrode_index] = shank_index
             probe_obj.add_shank(shank)
-
-    electrodes_location = metadata["ephys"].get("electrodes_location")
-    logger.info(f"Electrodes location is {electrodes_location}")
-    targeted_x = metadata["ephys"].get("targeted_x")
-    targeted_y = metadata["ephys"].get("targeted_y")
-    targeted_z = metadata["ephys"].get("targeted_z")
-    logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
-
-    electrode_group = NwbElectrodeGroup(
-        name=probe_obj.name,
-        description=probe_obj.probe_description,
-        location=electrodes_location,
-        targeted_location=electrodes_location,
-        targeted_x=float(targeted_x),
-        targeted_y=float(targeted_y),
-        targeted_z=float(targeted_z),
-        units="mm",
-        device=probe_obj,
-    )
-    nwbfile.add_electrode_group(electrode_group)
 
     impedance_file_path = metadata["ephys"]["impedance_file_path"]
     impedance_data = pd.read_csv(impedance_file_path)
@@ -321,7 +332,7 @@ def add_electrode_data(
     )
     nwbfile.add_electrode_column(
         name="probe_electrode",
-        description="The index of the electrode on the probe. There is just one probe, so this is equivalent to electrode index",
+        description="The index of the electrode on the probe. There is only one probe, so this is equivalent to electrode index",
     )
     nwbfile.add_electrode_column(
         name="probe_shank",
@@ -333,7 +344,10 @@ def add_electrode_data(
     )
 
     for i, row in impedance_data.iterrows():
-        # NOTE since there is only one probe, probe_electrode is just the electrode index
+        # Get the Shank and ElectrodeGroup for this electrode
+        shank_index = electrode_to_shank_map[i]
+        electrode_group = electrode_groups_by_shank[shank_index]
+
         nwbfile.add_electrode(
             channel_name=row["Channel Name"],
             port=row["Port"],
@@ -351,7 +365,7 @@ def add_electrode_data(
             headstage_channel_number=headstage_channel_numbers[i],
             ref_elect_id=ref_elect_id[i],  # used by Spyglass
             probe_electrode=i,  # used by Spyglass
-            probe_shank=electrode_to_shank_map[i],  # used by Spyglass
+            probe_shank=shank_index,  # used by Spyglass
         )
 
 
