@@ -25,13 +25,23 @@ def to_datetime(date_str):
     Return a datetime object from a date string in MMDDYYYY or YYYYMMDD format.
     Set the HH:MM:SS time to 00:00:00 Pacific Time.
     """
+    # If it's already a datetime, we're good to go
+    if isinstance(date_str, datetime):
+        return date_str
 
-    # Convert to string if it's an int, and add a leading 0 if needed
-    # If things get weird here, just specify the date as a string in the first place
-    date_str = str(date_str).zfill(8)
+    # Try ISO format first (e.g. "2024-01-22T00:00:00-08:00")
+    if "T" in str(date_str):
+        try:
+            dt = datetime.fromisoformat(str(date_str))
+            return dt.astimezone(ZoneInfo("America/Los_Angeles"))
+        except (ValueError, TypeError, AttributeError):
+            pass  # If ISO parsing fails, continue with other formats
 
     # Remove slashes and dashes so we can handle formats like MM/DD/YYYY, MM-DD-YYYY, etc
-    date_str = date_str.replace("/", "").replace("-", "")
+    date_str = str(date_str).replace("/", "").replace("-", "").strip()
+
+    # Add a leading 0 if needed (if date_str was specified as an int, leading 0s get clipped)
+    date_str = date_str.zfill(8)
 
     if len(date_str) != 8:
         raise ValueError("Date string must be exactly 8 characters long. "
@@ -48,6 +58,66 @@ def to_datetime(date_str):
     dt = datetime.strptime(date_str, date_format)
     dt = dt.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     return dt
+
+
+def check_required_metadata(metadata):
+    """
+    Make sure all required basic metadata fields are present before doing conversion to nwb.
+    """
+
+    # Break if these fields are missing!!
+    assert "experimenter" in metadata, (
+        "Required field 'experimenter' not found in metadata!! Add this field and re-run conversion."
+    )
+    assert "date" in metadata, (
+        "Required field 'date' not found in metadata!! Add this field and re-run conversion."
+    )
+    assert "subject" in metadata, (
+        "Required field 'subject' not found in metadata!! Add this field and re-run conversion."
+    )
+    # Make sure subject has the required subfields
+    subject_fields = set(metadata.get("subject").keys())
+    required_subject_fields = {"subject_id", "species", "genotype", "sex", "description"}
+    missing_subject_fields = required_subject_fields - subject_fields
+    assert not missing_subject_fields, (
+        f"Required subfields {missing_subject_fields} not found in subject metadata! "
+        "Add these fielda and re-run conversion"
+    )
+    assert "age" in subject_fields or "date_of_birth" in subject_fields, (
+        "Required subfield 'age' or 'date_of_birth' not found in subject metadata! "
+        "Add one of these fields and re-run conversion. ('date_of_birth' is strongly preferred)"
+    )
+    # If date_of_birth is specified as a string, convert to a datetime object to make nwb happy
+    # They are working on fixing this, so this will eventually be removed
+    if "date_of_birth" in subject_fields:
+        metadata["subject"]["date_of_birth"] = to_datetime(metadata.get("subject").get("date_of_birth"))
+
+    # If animal_name not set in metadata, set it to subject_id.
+    # We do this here instead of in set_default_metadata because animal_name needed
+    # to name the file and set up logging
+    if "animal_name" not in metadata:
+        metadata["animal_name"] = metadata["subject"]["subject_id"]
+
+
+def set_default_metadata(metadata, logger):
+    """
+    Set default values for some metadata fields if they are not specified in the metadata file.
+    Log this at WARNING level.
+    """
+    # Set defaults if these fields are missing
+    if "institution" not in metadata:
+        metadata["institution"] = "University of California, San Francisco"
+        logger.warning("No 'institution' found in metadata, "
+                       "setting to default 'University of California, San Francisco'")
+        print("No 'institution' found in metadata, setting to default 'University of California, San Francisco'")
+    if "lab" not in metadata:
+        metadata["lab"] = "Berke Lab"
+        logger.warning("No 'lab' found in metadata, setting to default 'Berke Lab'")
+        print("No 'lab' found in metadata, setting to default 'Berke Lab'")
+    if "experiment_description" not in metadata:
+        metadata["experiment_description"] = "Hex maze task"
+        logger.warning("No 'experiment_description' found in metadata, setting to default 'Hex maze task'")
+        print("No 'experiment_description' found in metadata, setting to default 'Hex maze task'")
 
 
 def setup_logger(log_name, path_logfile_info, path_logfile_warn, path_logfile_debug) -> logging.Logger:
@@ -102,13 +172,11 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     with open(metadata_file_path, "r") as f:
         metadata = yaml.safe_load(f)
 
-    # TODO: Add checks for required metadata?
+    # Check that required metadata fields are present before doing conversion
+    check_required_metadata(metadata)
 
     # Convert date in metadata to datetime object
     metadata["datetime"] = to_datetime(metadata.get("date"))
-
-    # Parse subject metadata
-    subject = Subject(**metadata["subject"])
 
     # Create session_id in {rat}_{date} format where date is YYYYMMDD
     session_id = f"{metadata.get('animal_name')}_{metadata.get('datetime').strftime('%Y%m%d')}"
@@ -138,6 +206,13 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
 
     logger.info(f"Original metadata file path was {metadata_file_path}")
     logger.info(f"Saved a copy of metadata to {metadata_copy_file_path}")
+
+    # Set default lab, institution, and experiment_description if unspecified
+    set_default_metadata(metadata, logger)
+
+    # Parse subject metadata
+    subject = Subject(**metadata["subject"])
+    logger.info(f"Created subject: {subject}")
 
     nwbfile = NWBFile(
         session_description="Placeholder description",  # Placeholder: updated in add_behavior

@@ -451,14 +451,24 @@ def get_raw_ephys_data(
     # NOTE: We could write our own extractor to handle the relatively simple OpenEphys binary format
     # and surrounding files but it is nice to build on the well-tested code of others when possible.
     # However, we should remember that external code may not be well-maintained or may have bugs of their own.
-    recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path)
+    streams, _ = OpenEphysBinaryRecordingExtractor.get_streams(folder_path=folder_path)
+    logger.debug(f"Found streams in the OpenEphys binary data: {streams}")
 
-    # Select only the channels that start with "CH"
+    streams_without_adc = [s for s in streams if not s.endswith("_ADC")]
+    assert len(streams_without_adc) == 1, \
+        (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
+    
     # Ignore the "ADC" channels
-    channel_ids_to_convert = [ch for ch in recording.channel_ids if ch.startswith("CH")]
-    recording_sliced = recording.select_channels(channel_ids=channel_ids_to_convert)
+    recording_sliced = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
+    
+    # Confirm all channel names start with "CH"
+    assert all([ch.startswith("CH") for ch in recording_sliced.channel_ids]), \
+        (f"Some channels do not start with 'CH': {recording_sliced.channel_ids}")
 
-    logger.debug(f"Found {len(channel_ids_to_convert)} Open Ephys channels to convert: {channel_ids_to_convert}")
+    logger.debug(
+        f"Found {len(recording_sliced.channel_ids)} Open Ephys channels to convert: "
+        f"{recording_sliced.channel_ids}"
+    )
 
     # Get the channel conversion factor
     channel_conversion_factors_uv = recording_sliced.get_channel_gains()
@@ -482,7 +492,7 @@ def get_raw_ephys_data(
     # Get the original timestamps (in seconds)
     original_timestamps = recording_sliced.get_times()
 
-    logger.debug(f"Open Ephys sampling frequency: {recording.get_sampling_frequency()}")
+    logger.debug(f"Open Ephys sampling frequency: {recording_sliced.get_sampling_frequency()}")
 
     # Create a SpikeInterfaceRecordingDataChunkIterator using all default buffering and
     # chunking options. This will be passed to the pynwb.ecephys.ElectricalSeries
