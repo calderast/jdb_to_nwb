@@ -95,7 +95,11 @@ def add_electrode_data(
         logger.error(f"Probe '{probe_name}' not found in resources/ephys_devices.yaml")
         raise ValueError(f"Probe '{probe_name}' not found in resources/ephys_devices.yaml")
 
-    assert set(probe_metadata.keys()) == {
+    logger.debug("Probe metadata:")
+    for key in probe_metadata:
+        logger.debug(f"{key}: {probe_metadata[key]}")
+
+    required_probe_keys = {
         "name",
         "description",
         "manufacturer",
@@ -103,15 +107,18 @@ def add_electrode_data(
         "contact_size",
         "units",
         "shanks",
-    }, "Probe metadata do not match expected keys."
+    }
+    assert required_probe_keys.issubset(probe_metadata.keys()), (
+        f"Probe is missing required keys {required_probe_keys - probe_metadata.keys()}"
+    )
     probe_obj = Probe(
-        id=probe_metadata["name"],  # str
+        id=0,  # int
         name=probe_metadata["name"],  # str
         probe_type=probe_metadata["name"],  # str
-        probe_description=probe_metadata["probe_description"],  # str
+        probe_description=probe_metadata["description"],  # str
         manufacturer=probe_metadata["manufacturer"],  # str
         contact_side_numbering=probe_metadata["contact_side_numbering"],  # bool
-        contact_size=probe_metadata["contact_size"],  # float
+        contact_size=float(probe_metadata["contact_size"]),  # float
         units=probe_metadata["units"],  # str (um or mm)
     )
     nwbfile.add_device(probe_obj)
@@ -125,8 +132,15 @@ def add_electrode_data(
 
     # Get electrode coordinates as a (2, 256) array based on the probe name
     # The first column is the relative x coordinate, and the second column is the relative y coordinate
-    logger.info(f"Using electrode coords specified in {probe_metadata['electrode_coords']}")
-    channel_geometry = pd.read_csv(probe_metadata["electrode_coords"])
+    if probe_metadata["name"] == "256-ch Silicon Probe, 3mm length, 66um pitch":
+        electrode_coords_path = ELECTRODE_COORDS_PATH_3MM_PROBE
+    elif probe_metadata["name"] == "256-ch Silicon Probe, 6mm length, 80um pitch":
+        electrode_coords_path = ELECTRODE_COORDS_PATH_6MM_PROBE
+    else:
+        raise ValueError(f"Unknown probe '{probe_metadata["name"]}' has no associated electrode coordinates file.")
+
+    logger.info(f"Using electrode coords specified in {electrode_coords_path}")
+    channel_geometry = pd.read_csv(electrode_coords_path)
 
     assert len(channel_geometry) == len(channel_map), (
         "Mismatch in lengths: "
@@ -140,26 +154,27 @@ def add_electrode_data(
     # Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
     # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
     # (electrode coords CSV).
-    # TODO: Make sure Stephanie's understanding of the channel map indexing is correct!!
 
-    # add Shanks to Probe
+    # Add Shanks to Probe
     electrode_to_shank_map = {}
-    for shank_index, shank_electrode_indices in enumerate(probe_metadata["shanks"]):
-        shank = Shank(name=str(shank_index))
-        for electrode_index in shank_electrode_indices:
-            # NOTE: We follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode
-            # even though it is redundant with NWB's electrode table fields, for consistency
-            # when using Spyglass
-            shank.add_shanks_electrode(
-                ShanksElectrode(  
-                    name=str(electrode_index),
-                    rel_x=channel_geometry["x"][electrode_index],
-                    rel_y=channel_geometry["y"][electrode_index],
-                    rel_z=0.0,
+    for shank_dict in probe_metadata["shanks"]:
+        for shank_index, shank_electrode_indices in shank_dict.items():
+            logger.debug(f"Adding shank {shank_index} with electrodes {shank_electrode_indices}")
+            shank = Shank(name=str(shank_index))
+            for electrode_index in shank_electrode_indices:
+                # NOTE: We follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode
+                # even though it is redundant with NWB's electrode table fields, for consistency
+                # when using Spyglass
+                shank.add_shanks_electrode(
+                    ShanksElectrode(  
+                        name=str(electrode_index),
+                        rel_x=float(channel_geometry["x"][electrode_index]),
+                        rel_y=float(channel_geometry["y"][electrode_index]),
+                        rel_z=0.0,
+                    )
                 )
-            )
-            electrode_to_shank_map[electrode_index] = shank_index
-        probe_obj.add_shank(shank)
+                electrode_to_shank_map[electrode_index] = shank_index
+            probe_obj.add_shank(shank)
 
     electrodes_location = metadata["ephys"].get("electrodes_location")
     logger.info(f"Electrodes location is {electrodes_location}")
@@ -305,8 +320,16 @@ def add_electrode_data(
         description="The headstage channel number (1-indexed) for the electrode",
     )
     nwbfile.add_electrode_column(
-        name="reference_daq_channel_index",
-        description="The index of the reference channel in this table. -1 if not set.",
+        name="probe_electrode",
+        description="The index of the electrode on the probe. There is just one probe, so this is equivalent to electrode index",
+    )
+    nwbfile.add_electrode_column(
+        name="probe_shank",
+        description="The index of the shank this electrode is on",
+    )
+    nwbfile.add_electrode_column(
+        name="ref_elect_id",
+        description="The id of the reference electrode in this table. -1 if not set. Also known as 'reference_daq_channel_index'",
     )
 
     for i, row in impedance_data.iterrows():
@@ -320,8 +343,8 @@ def add_electrode_data(
             series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
             series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
             bad_channel=bad_channel_mask[i],  # used by Spyglass
-            rel_x=channel_geometry["x"][i],
-            rel_y=channel_geometry["y"][i],
+            rel_x=float(channel_geometry["x"][i]),
+            rel_y=float(channel_geometry["y"][i]),
             group=electrode_group,
             location=electrodes_location,
             filtering=filtering_list[i],
@@ -457,10 +480,12 @@ def get_raw_ephys_data(
     streams_without_adc = [s for s in streams if not s.endswith("_ADC")]
     assert len(streams_without_adc) == 1, \
         (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
-    
+
     # Ignore the "ADC" channels
-    recording_sliced = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
-    
+    recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
+    channel_ids_to_convert = [ch for ch in recording.channel_ids if ch.startswith("CH")]
+    recording_sliced = recording.select_channels(channel_ids=channel_ids_to_convert)
+
     # Confirm all channel names start with "CH"
     assert all([ch.startswith("CH") for ch in recording_sliced.channel_ids]), \
         (f"Some channels do not start with 'CH': {recording_sliced.channel_ids}")
@@ -760,7 +785,7 @@ def add_raw_ephys(
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys
-    required_ephys_keys = {"openephys_folder_path", "device", "impedance_file_path"}
+    required_ephys_keys = {"openephys_folder_path", "probes", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
         print(
@@ -799,7 +824,7 @@ def add_raw_ephys(
         raw_settings_xml,
     ) = get_raw_ephys_metadata(openephys_folder_path, logger)
 
-    logger.debug("Saving the settings.xml file as an AssociatedFiles object")
+    # Create an AssociatedFiles object to save settings.xml
     raw_settings_xml_file = AssociatedFiles(
         name="open_ephys_settings_xml",
         description="Raw settings.xml file from OpenEphys",
@@ -807,9 +832,15 @@ def add_raw_ephys(
         task_epochs="0",  # Berke Lab only has one epoch (session) per day
     )
 
-    # Add settings.xml to the NWB under acquisition as an associated file
-    nwbfile.add_acquisition(raw_settings_xml_file)
-    
+    # If it doesn't exist already, make a processing module for associated files
+    if "associated_files" not in nwbfile.processing:
+        logger.debug("Creating nwb processing module for associated files")
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+
+    # Add settings.xml to the nwb as an associated file
+    logger.debug("Saving the settings.xml file as an AssociatedFiles object")
+    nwbfile.processing["associated_files"].add(raw_settings_xml_file)
+
     # Get port visits recorded by Open Ephys for timestamp alignment
     ephys_visit_times = get_port_visits(openephys_folder_path, logger)
     print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")

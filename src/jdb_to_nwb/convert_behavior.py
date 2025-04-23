@@ -657,10 +657,12 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         task_epochs="0",  # Berke Lab only has one epoch (session) per day
     )
 
+    # If it doesn't exist already, make a processing module for associated files
+    if "associated_files" not in nwbfile.processing:
+        logger.debug("Creating nwb processing module for associated files")
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+
     # Add arduino text and timestamps to the NWB as associated files
-    nwbfile.create_processing_module(
-        name="associated_files", description="Contains all associated files for behavioral data"
-    )
     nwbfile.processing["associated_files"].add(raw_arduino_text_file)
     nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
 
