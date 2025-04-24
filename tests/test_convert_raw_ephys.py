@@ -19,6 +19,9 @@ def test_add_electrode_data(dummy_logger):
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
+    metadata["ephys"]["targeted_x"] = 4.5  # AP in mm
+    metadata["ephys"]["targeted_y"] = 2.2  # ML in mm
+    metadata["ephys"]["targeted_z"] = 2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     metadata["ephys"]["plug_order"] = "chip_first"
 
@@ -85,8 +88,11 @@ def test_add_electrode_data(dummy_logger):
     # Check data for each electrode group
     for name, egroup in nwbfile.electrode_groups.items():
         assert egroup.location == "Hippocampus CA1"
+        assert egroup.targeted_x == 4.5
+        assert egroup.targeted_y == 2.2
+        assert egroup.targeted_z == 2.0
         assert egroup.device is probe
-            
+
         # Electrode group description should be "Electrodes on shank {shank_index}"
         match = re.match(r"Electrodes on shank (\d+)", egroup.description)
         assert match, f"Unexpected description in group {name}: {egroup.description}"
@@ -204,6 +210,9 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
+    metadata["ephys"]["targeted_x"] = 4.5  # AP in mm
+    metadata["ephys"]["targeted_y"] = 2.2  # ML in mm
+    metadata["ephys"]["targeted_z"] = 2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
 
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
@@ -305,6 +314,9 @@ def test_add_raw_ephys_complete_data():
     metadata["ephys"]["openephys_folder_path"] = "/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
+    metadata["ephys"]["targeted_x"] = 4.5  # AP in mm
+    metadata["ephys"]["targeted_y"] = 2.2  # ML in mm
+    metadata["ephys"]["targeted_z"] = 2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
