@@ -12,6 +12,7 @@ from importlib.resources import files
 import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
 import numpy as np
+import yaml
 from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator import (
     SpikeInterfaceRecordingDataChunkIterator,
 )
@@ -21,8 +22,7 @@ from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
 from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map
-from ndx_franklab_novela import AssociatedFiles
-
+from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
 MICROVOLTS_PER_VOLT = 1e6
 VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
@@ -41,7 +41,7 @@ if not RESOURCES_DIR.exists():
 CHANNEL_MAP_PATH = RESOURCES_DIR / "channel_map.csv"
 ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
 ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
-
+DEVICES_PATH = RESOURCES_DIR / "ephys_devices.yaml"
 
 def add_electrode_data(
     *,
@@ -74,28 +74,141 @@ def add_electrode_data(
         The directory to save the figure. If None, the figure will not be saved.
     """
 
-    device_args = metadata["ephys"]["device"]
-    assert set(device_args.keys()) == {
+    with open(DEVICES_PATH, "r") as f:
+        devices = yaml.safe_load(f)
+
+    if "probe" not in metadata["ephys"]:
+        print("No 'probe' found in ephys metadata.")
+        logger.warning("No 'probe' found in ephys metadata.")
+        return
+
+    probe_args = metadata["ephys"]["probe"]
+    assert len(probe_args) == 1, "Only one probe is supported at this time."
+    probe_name = probe_args[0]
+    logger.info(f"Probe name is: {probe_name}")
+    # Find the matching device by name in the devices list
+    for device in devices["probe"]:
+        if device["name"] == probe_name:
+            probe_metadata = device
+            break
+    else:
+        logger.error(f"Probe '{probe_name}' not found in resources/ephys_devices.yaml")
+        raise ValueError(f"Probe '{probe_name}' not found in resources/ephys_devices.yaml")
+
+    logger.debug("Probe metadata:")
+    for key in probe_metadata:
+        logger.debug(f"{key}: {probe_metadata[key]}")
+
+    required_probe_keys = {
         "name",
         "description",
         "manufacturer",
-    }, "Device arguments do not match expected keys."
-    device = nwbfile.create_device(**device_args)
+        "contact_side_numbering",
+        "contact_size",
+        "units",
+        "shanks",
+    }
+    assert required_probe_keys.issubset(probe_metadata.keys()), (
+        f"Probe is missing required keys {required_probe_keys - probe_metadata.keys()}"
+    )
+    # Create the Probe device and add it to the nwb
+    probe_obj = Probe(
+        id=0,  # int
+        name=probe_metadata["name"],  # str
+        probe_type=probe_metadata["name"],  # str
+        probe_description=probe_metadata["description"],  # str
+        manufacturer=probe_metadata["manufacturer"],  # str
+        contact_side_numbering=probe_metadata["contact_side_numbering"],  # bool
+        contact_size=float(probe_metadata["contact_size"]),  # float
+        units=probe_metadata["units"],  # str (um or mm)
+    )
+    nwbfile.add_device(probe_obj)
 
+    # Get the channel map based on how the rat was plugged in (assume "chip_first" if none specified)
+    plug_order = metadata["ephys"].get("plug_order", "chip_first")
+    logger.info(f"Plug order is: {plug_order}")
+
+    channel_map_df = pd.read_csv(CHANNEL_MAP_PATH)
+    channel_map = np.array(channel_map_df[plug_order])
+
+    # Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
+    # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
+    # (electrode coords CSV).
+
+    # Get electrode coordinates as a (2, 256) array based on the probe name
+    # The first column is the relative x coordinate, and the second column is the relative y coordinate
+    if probe_metadata["name"] == "256-ch Silicon Probe, 3mm length, 66um pitch":
+        electrode_coords_path = ELECTRODE_COORDS_PATH_3MM_PROBE
+    elif probe_metadata["name"] == "256-ch Silicon Probe, 6mm length, 80um pitch":
+        electrode_coords_path = ELECTRODE_COORDS_PATH_6MM_PROBE
+    else:
+        raise ValueError(f"Unknown probe '{probe_metadata["name"]}' has no associated electrode coordinates file.")
+
+    logger.info(f"Using electrode coords specified in {electrode_coords_path}")
+    channel_geometry = pd.read_csv(electrode_coords_path)
+
+    assert len(channel_geometry) == len(channel_map), (
+        "Mismatch in lengths: "
+        f"channel_geometry ({len(channel_geometry)}), "
+        f"channel_map ({len(channel_map)}), "
+    )
+    logger.debug(f"Lengths of channel geometry and channel map match (length={len(channel_map)})!")
+
+    plot_channel_map(probe_name, channel_geometry, fig_dir=fig_dir)
+
+    # Get general metadata for the Probe
     electrodes_location = metadata["ephys"].get("electrodes_location")
     logger.info(f"Electrodes location is {electrodes_location}")
+    targeted_x = metadata["ephys"].get("targeted_x")
+    targeted_y = metadata["ephys"].get("targeted_y")
+    targeted_z = metadata["ephys"].get("targeted_z")
+    logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
 
-    # Create an NWB ElectrodeGroup for all electrodes
-    # TODO: confirm that all electrodes are in the same group
-    electrode_group = nwbfile.create_electrode_group(
-        name="ElectrodeGroup",
-        description="All electrodes",
-        location=electrodes_location,
-        device=device,
-    )
+    electrode_to_shank_map = {}
+    electrode_groups_by_shank = {}
+
+    # Process each Shank on the Probe
+    for shank_dict in probe_metadata["shanks"]:
+        for shank_index, shank_electrode_indices in shank_dict.items():
+            shank = Shank(name=str(shank_index))
+            logger.debug(f"Adding shank {shank_index} with electrodes {shank_electrode_indices}")
+
+            # Make an ElectrodeGroup for this Shank and add it to the nwb
+            electrode_group = NwbElectrodeGroup(
+                name=str(shank_index),
+                description=f"Electrodes on shank {shank_index}",
+                location=electrodes_location,
+                targeted_location=electrodes_location,
+                targeted_x=float(targeted_x),
+                targeted_y=float(targeted_y),
+                targeted_z=float(targeted_z),
+                units="mm",
+                device=probe_obj, # TODO: Confirm this is correct. Must be a Device (so the Probe object), 
+                # but not all electrodes on the Probe are in the same electrode group.
+                # AFAIK, Frank Lab does not have this issue because each tetrode is a separate Probe
+            )
+            nwbfile.add_electrode_group(electrode_group)
+            # Store the group so we can reference it when adding electrodes to the electrodes table
+            electrode_groups_by_shank[shank_index] = electrode_group
+
+            # Add each Shank and its ShanksElectrodes to the Probe 
+            for electrode_index in shank_electrode_indices:
+                # NOTE: We follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode
+                # even though it is redundant with NWB's electrode table fields, for consistency
+                # with Frank Lab when using Spyglass
+                shank.add_shanks_electrode(
+                    ShanksElectrode(  
+                        name=str(electrode_index),
+                        rel_x=float(channel_geometry["x"][channel_map[electrode_index]]),
+                        rel_y=float(channel_geometry["y"][channel_map[electrode_index]]),
+                        rel_z=0.0,
+                    )
+                )
+                electrode_to_shank_map[electrode_index] = shank_index
+            probe_obj.add_shank(shank)
 
     impedance_file_path = metadata["ephys"]["impedance_file_path"]
-    electrode_data = pd.read_csv(impedance_file_path)
+    impedance_data = pd.read_csv(impedance_file_path)
 
     # Check that the expected columns are present in order and no extra columns are present
     expected_columns = [
@@ -108,31 +221,48 @@ def add_electrode_data(
         "Series RC equivalent R (Ohms)",
         "Series RC equivalent C (Farads)",
     ]
-    assert electrode_data.columns.tolist() == expected_columns, (
-        f"Impedance file has columns {electrode_data.columns.tolist()}, "
+    assert impedance_data.columns.tolist() == expected_columns, (
+        f"Impedance file has columns {impedance_data.columns.tolist()}, "
         f"does not match expected columns {expected_columns}"
     )
     logger.debug(f"Impedance file has expected columns {expected_columns}")
+
+    assert len(channel_map) == len(impedance_data), (
+        "Mismatch in lengths: "
+        f"channel_map ({len(channel_map)}), "
+        f"impedance_data ({len(impedance_data)})"
+    )
+    logger.debug(f"Channel map and impedance data have the same length ({len(channel_map)})")
     
+    # Drop the first column which should be the same as the second column
+    assert (impedance_data["Channel Number"] == impedance_data["Channel Name"]).all(), (
+        "First column is not the same as the second column."
+    )
+    impedance_data.drop(columns=["Channel Number"], inplace=True)
+
     # Check that the filtering list has the same length as the number of channels
-    assert len(filtering_list) == len(electrode_data), (
+    assert len(filtering_list) == len(impedance_data), (
         f"Filtering list does not have the same length ({len(filtering_list)}) "
-        f"as the number of channels ({len(electrode_data)})."
+        f"as the number of channels ({len(impedance_data)})."
     )
     logger.debug(f"Filtering list has the same length ({len(filtering_list)}) as number of channels")
 
-    # Drop the first column which should be the same as the second column
-    assert (
-        electrode_data["Channel Number"] == electrode_data["Channel Name"]
-    ).all(), "First column is not the same as the second column."
-    electrode_data.drop(columns=["Channel Number"], inplace=True)
+    assert len(headstage_channel_numbers) == len(impedance_data), (
+        f"Headstage channel numbers do not have the same length ({len(headstage_channel_numbers)}) "
+        f"as the number of channels ({len(impedance_data)})."
+    )
+    logger.debug(
+        f"Headstage channel numbers have the same length ({len(headstage_channel_numbers)}) as number of channels"
+    )
 
-    # Get the channel map based on how the rat was plugged in (assume "chip_first" if none specified)
-    plug_order = metadata["ephys"].get("plug_order", "chip_first")
-    logger.info(f"Plug order is: {plug_order}")
-
-    channel_map_df = pd.read_csv(CHANNEL_MAP_PATH)
-    channel_map = np.array(channel_map_df[plug_order])
+    assert len(reference_daq_channel_indices) == len(impedance_data), (
+        f"Reference DAQ channel indices do not have the same length ({len(reference_daq_channel_indices)}) "
+        f"as the number of channels ({len(impedance_data)})."
+    )
+    logger.debug(
+        f"Reference DAQ channel indices have the same length ({len(reference_daq_channel_indices)}) "
+        "as number of channels"
+    )
 
     # Convert the headstage channel numbers to 0-indexed
     headstage_channel_indices = np.array(headstage_channel_numbers) - 1
@@ -146,44 +276,20 @@ def add_electrode_data(
             "This is unexpected and may indicate a problem with the channel map."
         )
 
-    # Get electrode coordinates as a (2, 256) array based on the probe name
-    # The first column is the relative x coordinate, and the second column is the relative y coordinate
-    probe_name = metadata["ephys"]["device"].get("name")
-    logger.info(f"Probe name is: {probe_name}")
-    if "3mm" in probe_name:
-        logger.info(f"Using electrode coords for 3mm probe at {ELECTRODE_COORDS_PATH_3MM_PROBE}")
-        channel_geometry = pd.read_csv(ELECTRODE_COORDS_PATH_3MM_PROBE)
-    elif "6mm" in probe_name:
-        logger.info(f"Using electrode coords for 6mm probe at {ELECTRODE_COORDS_PATH_6MM_PROBE}")
-        channel_geometry = pd.read_csv(ELECTRODE_COORDS_PATH_6MM_PROBE)
-    else:
-        logger.error(f"Expected either '3mm' or '6mm' in device name '{probe_name}'")
-        raise ValueError(f"Expected either '3mm' or '6mm' in device name '{probe_name}'")
-
-    assert len(channel_geometry) == len(channel_map) == len(electrode_data), (
-        "Mismatch in lengths: "
-        f"channel_geometry ({len(channel_geometry)}), "
-        f"channel_map ({len(channel_map)}), "
-        f"electrode_data ({len(electrode_data)})"
-    )
-    logger.debug(f"Length of channel geometry, channel map, and electrode data matches (length={len(channel_map)})!")
-
-    plot_channel_map(probe_name, channel_map, channel_geometry, fig_dir=fig_dir)
-    
-    # Append the x and y coordinates to the impedance data using the channel map
-    # For example: Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
-    # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
-    # (electrode coords CSV).
-    # TODO: Make sure Stephanie's understanding of the channel map indexing is correct!!
-    electrode_data["rel_x"] = [channel_geometry.iloc[idx]["x"] for idx in channel_map]
-    electrode_data["rel_y"] = [channel_geometry.iloc[idx]["y"] for idx in channel_map]
+    # Apply the channel map to the reference DAQ channel indices to get the reference electrode ID (0-indexed)
+    ref_elect_id = []
+    for i in reference_daq_channel_indices:
+        if i != -1:
+            ref_elect_id.append(headstage_channel_indices[i])  # TODO test this
+        else:
+            ref_elect_id.append(-1)
 
     # Mark electrodes with impedance that is less than 0.1 MOhms or more than 3.0 MOhms
     # as bad electrodes
     logger.info(f"Marking channels with impedance>{MAX_IMPEDANCE_OHMS} or <{MIN_IMPEDANCE_OHMS} as 'bad_channel'")
-    electrode_data["bad_channel"] = (
-        electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
-        electrode_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
+    bad_channel_mask = (
+        impedance_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
+        impedance_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
     )
 
     # Add the electrode data to the NWB file, one column at a time
@@ -233,24 +339,33 @@ def add_electrode_data(
     )
     nwbfile.add_electrode_column(
         name="headstage_channel_number",
-        description="The headstage channel number (1-indexed)for the electrode",
+        description="The headstage channel number (1-indexed) for the electrode",
     )
     nwbfile.add_electrode_column(
-        name="reference_daq_channel_index",
-        description="The index of the reference channel in this table. -1 if not set.",
+        name="probe_electrode",
+        description= (
+            "The index of the electrode on the probe. "
+            "There is only one probe, so this is equivalent to electrode index"
+        ),
+    )
+    nwbfile.add_electrode_column(
+        name="probe_shank",
+        description="The index of the shank this electrode is on",
+    )
+    nwbfile.add_electrode_column(
+        name="ref_elect_id",
+        description=(
+            "The id of the reference electrode in this table. "
+            "-1 if not set. Also known as 'reference_daq_channel_index'"
+        ),
     )
 
-    assert len(filtering_list) == len(
-        electrode_data
-    ), "Filtering list does not have the same length as the number of channels."
-    assert len(headstage_channel_numbers) == len(
-        electrode_data
-    ), "Headstage channel numbers do not have the same length as the number of channels."
-    assert len(reference_daq_channel_indices) == len(
-        electrode_data
-    ), "Reference DAQ channel indices do not have the same length as the number of channels."
+    for i, row in impedance_data.iterrows():
+        # Get the Shank and ElectrodeGroup for this electrode
+        shank_index = electrode_to_shank_map[i]
+        electrode_group = electrode_groups_by_shank[shank_index]
+        channel_num = channel_map[i]
 
-    for i, row in electrode_data.iterrows():
         nwbfile.add_electrode(
             channel_name=row["Channel Name"],
             port=row["Port"],
@@ -259,14 +374,16 @@ def add_electrode_data(
             imp_phase=row["Impedance Phase at 1000 Hz (degrees)"],
             series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
             series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
-            bad_channel=row["bad_channel"],
-            rel_x=float(row["rel_x"]),
-            rel_y=float(row["rel_y"]),
+            bad_channel=bad_channel_mask[i],  # used by Spyglass
+            rel_x=float(channel_geometry["x"][channel_num]),
+            rel_y=float(channel_geometry["y"][channel_num]),
             group=electrode_group,
-            filtering=filtering_list[i],
             location=electrodes_location,
+            filtering=filtering_list[i],
             headstage_channel_number=headstage_channel_numbers[i],
-            reference_daq_channel_index=reference_daq_channel_indices[i],
+            ref_elect_id=ref_elect_id[i],  # used by Spyglass
+            probe_electrode=i,  # used by Spyglass
+            probe_shank=shank_index,  # used by Spyglass
         )
 
 
@@ -395,10 +512,12 @@ def get_raw_ephys_data(
     streams_without_adc = [s for s in streams if not s.endswith("_ADC")]
     assert len(streams_without_adc) == 1, \
         (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
-    
+
     # Ignore the "ADC" channels
-    recording_sliced = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
-    
+    recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
+    channel_ids_to_convert = [ch for ch in recording.channel_ids if ch.startswith("CH")]
+    recording_sliced = recording.select_channels(channel_ids=channel_ids_to_convert)
+
     # Confirm all channel names start with "CH"
     assert all([ch.startswith("CH") for ch in recording_sliced.channel_ids]), \
         (f"Some channels do not start with 'CH': {recording_sliced.channel_ids}")
@@ -581,11 +700,6 @@ def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name
             "The channel filtering is not the same for all channels. "
             "This is unexpected and may indicate a problem with the filtering settings."
         )
-
-    # TODO: save reference information from settings.xml
-
-    # TODO: save settings.xml as an associated file using the ndx-franklab-novela extension
-
     return filtering_list
 
 
@@ -698,7 +812,7 @@ def add_raw_ephys(
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys
-    required_ephys_keys = {"openephys_folder_path", "device", "impedance_file_path"}
+    required_ephys_keys = {"openephys_folder_path", "probe", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
         print(
@@ -737,7 +851,7 @@ def add_raw_ephys(
         raw_settings_xml,
     ) = get_raw_ephys_metadata(openephys_folder_path, logger)
 
-    logger.debug("Saving the settings.xml file as an AssociatedFiles object")
+    # Create an AssociatedFiles object to save settings.xml
     raw_settings_xml_file = AssociatedFiles(
         name="open_ephys_settings_xml",
         description="Raw settings.xml file from OpenEphys",
@@ -745,10 +859,17 @@ def add_raw_ephys(
         task_epochs="0",  # Berke Lab only has one epoch (session) per day
     )
 
-    # Add settings.xml to the NWB under acquisition as an associated file
-    nwbfile.add_acquisition(raw_settings_xml_file)
-    
+    # If it doesn't exist already, make a processing module for associated files
+    if "associated_files" not in nwbfile.processing:
+        logger.debug("Creating nwb processing module for associated files")
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+
+    # Add settings.xml to the nwb as an associated file
+    logger.debug("Saving the settings.xml file as an AssociatedFiles object")
+    nwbfile.processing["associated_files"].add(raw_settings_xml_file)
+
     # Get port visits recorded by Open Ephys for timestamp alignment
+    logger.info("Getting port visits recorded by Open Ephys...")
     ephys_visit_times = get_port_visits(openephys_folder_path, logger)
     print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
     logger.info(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
