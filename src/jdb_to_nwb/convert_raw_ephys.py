@@ -870,7 +870,7 @@ def add_raw_ephys(
 
     # Get port visits recorded by Open Ephys for timestamp alignment
     logger.info("Getting port visits recorded by Open Ephys...")
-    ephys_visit_times = [0]#get_port_visits(openephys_folder_path, logger)
+    ephys_visit_times = get_port_visits(openephys_folder_path, logger)
     print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
     logger.info(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
     logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
