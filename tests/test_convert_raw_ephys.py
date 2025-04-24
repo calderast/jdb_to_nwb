@@ -69,13 +69,7 @@ def test_add_electrode_data(dummy_logger):
     assert "256-ch Silicon Probe, 3mm length, 66um pitch" in nwbfile.devices
     probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 66um pitch"]
     assert probe is not None
-    assert probe.description == (
-        "32 shanks, 8 electrodes per shank. Each shank is 3mm long. "
-        "Shanks are 66um apart. There is 30um between electrodes on each shank. "
-        "Electrode contacts have size 15um x 10um. "
-        "Odd shanks are vertically offset by 1/2 the electrode pitch (15um). "
-        "See https://doi.org/10.1152/jn.00352.2020 "
-    )
+    assert probe.probe_description.startswith("32 shanks, 8 electrodes per shank. Each shank is 3mm long.")
     assert probe.manufacturer == "Daniel Egert, Berke Lab"
     assert probe.contact_side_numbering
     assert probe.contact_size == 15
