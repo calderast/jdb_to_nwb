@@ -19,7 +19,7 @@ def test_add_electrode_data(dummy_logger):
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 80um pitch"]
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     metadata["ephys"]["plug_order"] = "chip_first"
 
     # Create a test NWBFile
@@ -63,8 +63,8 @@ def test_add_electrode_data(dummy_logger):
     )
 
     # Test that the nwbfile has the expected probe info under 'devices'
-    assert "256-ch Silicon Probe, 3mm length, 80um pitch" in nwbfile.devices
-    probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 80um pitch"]
+    assert "256-ch Silicon Probe, 3mm length, 66um pitch" in nwbfile.devices
+    probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 66um pitch"]
     assert probe is not None
     assert probe.description == (
         "32 shanks, 8 electrodes per shank. Each shank is 3mm long. "
@@ -204,7 +204,7 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 80um pitch"]
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
 
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
@@ -305,7 +305,7 @@ def test_add_raw_ephys_complete_data():
     metadata["ephys"]["openephys_folder_path"] = "/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 80um pitch"]
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
