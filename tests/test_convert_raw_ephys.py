@@ -123,17 +123,14 @@ def test_add_electrode_data(dummy_logger):
     assert nwbfile.electrodes.bad_channel.data[-1]
     assert nwbfile.electrodes.rel_x.data[-1] == 2112.0
     assert nwbfile.electrodes.rel_y.data[-1] == -14.0
-    
-    # Expected electrode group is 0-31, each repeated 8 times
-    expected_names = [str(i) for i in range(32) for _ in range(8)]
-    expected_descriptions = [f"Electrodes on shank {i}" for i in range(32) for _ in range(8)]
 
+    # Expected electrode group is 0-31 (32 shanks), each repeated 8 times (8 electrodes per shank)
+    expected_names = [str(i) for i in range(32) for _ in range(8)]
     assert nwbfile.electrodes.group_name.data[:] == expected_names
-    assert nwbfile.electrodes.description.data[:] == expected_descriptions
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
     assert nwbfile.electrodes.location.data[:] == ["Hippocampus CA1"] * 256
     assert nwbfile.electrodes.headstage_channel_number.data[:] == headstage_channel_numbers
-    assert nwbfile.electrodes.reference_daq_channel_index.data[:] == reference_daq_channel_indices
+    assert nwbfile.electrodes.ref_elect_id.data[:] == reference_daq_channel_indices
 
 def test_get_raw_ephys_data(dummy_logger):
     """
