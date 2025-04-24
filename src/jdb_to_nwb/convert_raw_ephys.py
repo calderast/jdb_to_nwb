@@ -77,17 +77,17 @@ def add_electrode_data(
     with open(DEVICES_PATH, "r") as f:
         devices = yaml.safe_load(f)
 
-    if "probes" not in metadata["ephys"]:
-        print("No 'probes' found in ephys metadata.")
-        logger.warning("No 'probes' found in ephys metadata.")
+    if "probe" not in metadata["ephys"]:
+        print("No 'probe' found in ephys metadata.")
+        logger.warning("No 'probe' found in ephys metadata.")
         return
-    
-    probe_args = metadata["ephys"]["probes"]
+
+    probe_args = metadata["ephys"]["probe"]
     assert len(probe_args) == 1, "Only one probe is supported at this time."
     probe_name = probe_args[0]
     logger.info(f"Probe name is: {probe_name}")
     # Find the matching device by name in the devices list
-    for device in devices["probes"]:
+    for device in devices["probe"]:
         if device["name"] == probe_name:
             probe_metadata = device
             break
@@ -247,11 +247,22 @@ def add_electrode_data(
     )
     logger.debug(f"Filtering list has the same length ({len(filtering_list)}) as number of channels")
 
-    assert len(headstage_channel_numbers) == len(impedance_data), (f"Headstage channel numbers do not have the same length ({len(headstage_channel_numbers)}) as the number of channels ({len(impedance_data)}).")
-    logger.debug(f"Headstage channel numbers have the same length ({len(headstage_channel_numbers)}) as number of channels")
+    assert len(headstage_channel_numbers) == len(impedance_data), (
+        f"Headstage channel numbers do not have the same length ({len(headstage_channel_numbers)}) "
+        f"as the number of channels ({len(impedance_data)})."
+    )
+    logger.debug(
+        f"Headstage channel numbers have the same length ({len(headstage_channel_numbers)}) as number of channels"
+    )
 
-    assert len(reference_daq_channel_indices) == len(impedance_data), (f"Reference DAQ channel indices do not have the same length ({len(reference_daq_channel_indices)}) as the number of channels ({len(impedance_data)}).")
-    logger.debug(f"Reference DAQ channel indices have the same length ({len(reference_daq_channel_indices)}) as number of channels")
+    assert len(reference_daq_channel_indices) == len(impedance_data), (
+        f"Reference DAQ channel indices do not have the same length ({len(reference_daq_channel_indices)}) "
+        f"as the number of channels ({len(impedance_data)})."
+    )
+    logger.debug(
+        f"Reference DAQ channel indices have the same length ({len(reference_daq_channel_indices)}) "
+        "as number of channels"
+    )
 
     # Convert the headstage channel numbers to 0-indexed
     headstage_channel_indices = np.array(headstage_channel_numbers) - 1
@@ -332,7 +343,10 @@ def add_electrode_data(
     )
     nwbfile.add_electrode_column(
         name="probe_electrode",
-        description="The index of the electrode on the probe. There is only one probe, so this is equivalent to electrode index",
+        description= (
+            "The index of the electrode on the probe. "
+            "There is only one probe, so this is equivalent to electrode index"
+        ),
     )
     nwbfile.add_electrode_column(
         name="probe_shank",
@@ -340,7 +354,10 @@ def add_electrode_data(
     )
     nwbfile.add_electrode_column(
         name="ref_elect_id",
-        description="The id of the reference electrode in this table. -1 if not set. Also known as 'reference_daq_channel_index'",
+        description=(
+            "The id of the reference electrode in this table. "
+            "-1 if not set. Also known as 'reference_daq_channel_index'"
+        ),
     )
 
     for i, row in impedance_data.iterrows():
@@ -799,7 +816,7 @@ def add_raw_ephys(
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys
-    required_ephys_keys = {"openephys_folder_path", "probes", "impedance_file_path"}
+    required_ephys_keys = {"openephys_folder_path", "probe", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
         print(

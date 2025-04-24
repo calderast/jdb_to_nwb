@@ -2,7 +2,7 @@
 # Reference individual devices by name in the metadata yaml file.
 # Berke Lab currently uses 2 possible probes for the hex maze task, specified below.
 
-probes:
+probe:
   - name: "256-ch Silicon Probe, 3mm length, 66um pitch"
     description: >
       32 shanks, 8 electrodes per shank. Each shank is 3mm long. 
@@ -92,4 +92,3 @@ probes:
       - 29: [232, 233, 234, 235, 236, 237, 238, 239]
       - 30: [240, 241, 242, 243, 244, 245, 246, 247]
       - 31: [248, 249, 250, 251, 252, 253, 254, 255]
-

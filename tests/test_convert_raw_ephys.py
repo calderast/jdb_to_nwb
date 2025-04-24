@@ -5,6 +5,7 @@ from dateutil import tz
 from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 import pytest
+import re
 
 from jdb_to_nwb.convert_raw_ephys import add_electrode_data, add_raw_ephys, get_raw_ephys_data, get_raw_ephys_metadata
 
@@ -19,12 +20,10 @@ def test_add_electrode_data(dummy_logger):
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["probe"] = {
-        "name": "3mm Probe",
-        "description": "Test Probe",
-        "manufacturer": "Test Manufacturer",
+        ["256-ch Silicon Probe, 3mm length, 80um pitch"]
     }
     metadata["ephys"]["plug_order"] = "chip_first"
-    
+
     # Create a test NWBFile
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -65,21 +64,40 @@ def test_add_electrode_data(dummy_logger):
         logger=dummy_logger,
     )
 
-    # Test that the nwbfile has the expected device
-    assert "3mm Probe" in nwbfile.devices
-    probe = nwbfile.devices["3mm Probe"]
+    # Test that the nwbfile has the expected probe info under 'devices'
+    assert "256-ch Silicon Probe, 3mm length, 80um pitch" in nwbfile.devices
+    probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 80um pitch"]
     assert probe is not None
-    assert probe.description == "Test Probe"
-    assert probe.manufacturer == "Test Manufacturer"
+    assert probe.description == (
+        "32 shanks, 8 electrodes per shank. Each shank is 3mm long. "
+        "Shanks are 66um apart. There is 30um between electrodes on each shank. "
+        "Electrode contacts have size 15um x 10um. "
+        "Odd shanks are vertically offset by 1/2 the electrode pitch (15um). "
+        "See https://doi.org/10.1152/jn.00352.2020 "
+    )
+    assert probe.manufacturer == "Daniel Egert, Berke Lab"
+    assert probe.contact_side_numbering == True
+    assert probe.contact_size == 15
+    assert probe.units == "um"
 
-    # Test that the nwbfile has the expected electrode group
-    assert len(nwbfile.electrode_groups) == 1
-    assert "ElectrodeGroup" in nwbfile.electrode_groups
-    eg = nwbfile.electrode_groups["ElectrodeGroup"]
-    assert eg is not None
-    assert eg.description == "All electrodes"
-    assert eg.location == "Hippocampus CA1"
-    assert eg.device is probe
+    # Test that the nwbfile has the expected 32 electrode groups (one per shank)
+    assert len(nwbfile.electrode_groups) == 32
+    found_shanks = set()
+    
+    # Check data for each electrode group
+    for name, egroup in nwbfile.electrode_groups.items():
+        assert egroup.location == "Hippocampus CA1"
+        assert egroup.device is probe
+            
+        # Electrode group description should be "Electrodes on shank {shank_index}"
+        match = re.match(r"Electrodes on shank (\d+)", egroup.description)
+        assert match, f"Unexpected description in group {name}: {egroup.description}"
+        # Add the shank to our set of found shanks
+        shank = int(match.group(1))
+        found_shanks.add(shank)
+
+    # Check that we found an electrode group for each of the 32 shanks
+    assert found_shanks == set(range(32))
 
     # Test that the nwbfile has the expected electrodes after filtering
     assert len(nwbfile.electrodes) == 256
@@ -107,9 +125,15 @@ def test_add_electrode_data(dummy_logger):
     assert nwbfile.electrodes.bad_channel.data[-1]
     assert nwbfile.electrodes.rel_x.data[-1] == 2112.0
     assert nwbfile.electrodes.rel_y.data[-1] == -14.0
+    
+    # Expected electrode group is 0-31, each repeated 8 times
+    expected_egroups = [i for i in range(32) for _ in range(8)]
+    expected_names = [str(i) for i in range(32) for _ in range(8)]
+    expected_descriptions = [f"Electrodes on shank {i}" for i in range(32) for _ in range(8)]
 
-    assert nwbfile.electrodes.group.data[:] == [eg] * 256
-    assert nwbfile.electrodes.group_name.data[:] == ["ElectrodeGroup"] * 256
+    assert nwbfile.electrodes.group.data[:] == expected_egroups
+    assert nwbfile.electrodes.group_name.data[:] == expected_names
+    assert nwbfile.electrodes.description.data[:] == expected_descriptions
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
     assert nwbfile.electrodes.location.data[:] == ["Hippocampus CA1"] * 256
     assert nwbfile.electrodes.headstage_channel_number.data[:] == headstage_channel_numbers
@@ -183,16 +207,14 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["probe"] = {
-        "name": "3mm Probe",
-        "description": "Test Probe",
-        "manufacturer": "Test Manufacturer",
+        ["256-ch Silicon Probe, 3mm length, 80um pitch"]
     }
 
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     assert len(nwbfile.electrodes) == 256
-    assert len(nwbfile.electrode_groups) == 1
-    assert len(nwbfile.acquisition) == 2
+    assert len(nwbfile.electrode_groups) == 32
+    assert len(nwbfile.acquisition) == 1
     assert "ElectricalSeries" in nwbfile.acquisition
     es = nwbfile.acquisition["ElectricalSeries"]
     assert es.description == (
@@ -204,13 +226,17 @@ def test_add_raw_ephys(dummy_logger):
     assert es.timestamps.shape == (3_000,)
     assert es.conversion == 0.19499999284744263 * 1e-6
 
-    assert "open_ephys_settings_xml" in nwbfile.acquisition
-    assert nwbfile.acquisition["open_ephys_settings_xml"].description == "Raw settings.xml file from OpenEphys"
+    # Test that the nwbfile has the expected associated files
+    assert "associated_files" in nwbfile.processing
+    assert "open_ephys_settings_xml" in nwbfile.processing["associated_files"].data_interfaces
+    assert nwbfile.processing["associated_files"]["open_ephys_settings_xml"].description == (
+        "Raw settings.xml file from OpenEphys"
+    )
 
     settings_file_path = Path(metadata["ephys"]["openephys_folder_path"]) / "settings.xml"
     with open(settings_file_path, "r") as settings_file:
         expected_raw_settings_xml = settings_file.read()
-    assert nwbfile.acquisition["open_ephys_settings_xml"].content == expected_raw_settings_xml
+    assert nwbfile.processing["associated_files"]["open_ephys_settings_xml"].content == expected_raw_settings_xml
 
     expected_ephys_start = datetime.strptime("2022-07-25_15-30-00", "%Y-%m-%d_%H-%M-%S")
     expected_ephys_start = expected_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
@@ -283,17 +309,15 @@ def test_add_raw_ephys_complete_data():
     metadata["ephys"]["openephys_folder_path"] = "/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["device"] = {
-        "name": "3mm Probe",
-        "description": "Test Probe",
-        "manufacturer": "Test Manufacturer",
+    metadata["ephys"]["probe"] = {
+        ["256-ch Silicon Probe, 3mm length, 80um pitch"]
     }
     
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
     assert len(nwbfile.electrodes) == 256
-    assert len(nwbfile.electrode_groups) == 1
-    assert len(nwbfile.acquisition) == 2
+    assert len(nwbfile.electrode_groups) == 32
+    assert len(nwbfile.acquisition) == 1
     assert "ElectricalSeries" in nwbfile.acquisition
     es = nwbfile.acquisition["ElectricalSeries"]
     assert es.description == (
@@ -305,13 +329,17 @@ def test_add_raw_ephys_complete_data():
     assert es.timestamps.shape == (157_733_308,)
     assert es.conversion == 0.19499999284744263 * 1e-6
 
-    assert "open_ephys_settings_xml" in nwbfile.acquisition
-    assert nwbfile.acquisition["open_ephys_settings_xml"].description == "Raw settings.xml file from OpenEphys"
+    # Test that the nwbfile has the expected associated files
+    assert "associated_files" in nwbfile.processing
+    assert "open_ephys_settings_xml" in nwbfile.processing["associated_files"].data_interfaces
+    assert nwbfile.processing["associated_files"]["open_ephys_settings_xml"].description == (
+        "Raw settings.xml file from OpenEphys"
+    )
 
     settings_file_path = Path(metadata["ephys"]["openephys_folder_path"]) / "settings.xml"
     with open(settings_file_path, "r") as settings_file:
         expected_raw_settings_xml = settings_file.read()
-    assert nwbfile.acquisition["open_ephys_settings_xml"].content == expected_raw_settings_xml
+    assert nwbfile.processing["associated_files"]["open_ephys_settings_xml"].content == expected_raw_settings_xml
 
     expected_ephys_start = datetime.strptime("2022-07-25_15-30-00", "%Y-%m-%d_%H-%M-%S")
     expected_ephys_start = expected_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))

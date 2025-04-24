@@ -8,7 +8,7 @@ experimenter:
 
 # General information about the subject and session
 experiment_description: Hex maze task
-animal_name: "IM-1478"
+animal_name: "IM-1478" # Used for name of nwb file. Only needed if different from subject_id
 date: "07252022"  # MMDDYYYY or YYYYMMDD
 subject:
   subject_id: "IM-1478"
@@ -23,9 +23,9 @@ ephys:
   openephys_folder_path: "tests/test_data/raw_ephys/2022-07-25_15-30-00"
   impedance_file_path: "tests/test_data/processed_ephys/impedance.csv"
   electrodes_location: "Hippocampus CA1"
-  targeted_x: 0.0  # AP in mm
-  targeted_y: 0.0  # ML in mm
-  targeted_z: 0.0  # DV in mm
+  targeted_x: 4.5  # AP in mm
+  targeted_y: 2.2  # ML in mm
+  targeted_z: 2.0  # DV in mm
   reference_skull_screw_location: Medial cerebellum, 1.0 mm posterior to lambda
   plug_order: "chip_first" # "chip_first" or "cable_first". Defaults to "chip_first" if none specified
 
@@ -35,7 +35,7 @@ ephys:
 
   # Berke Lab currently uses 2 possible probes for the hex maze task, specified below.
   # Un-comment the probe used for your experiment.
-  probes:  # reference existing probes from resources/ephys_devices.yaml
+  probe: # reference existing probes from resources/ephys_devices.yaml
     - "256-ch Silicon Probe, 3mm length, 66um pitch"
     # - "256-ch Silicon Probe, 6mm length, 80um pitch"
 
@@ -56,7 +56,7 @@ photometry:
     - Purple LED
     - Blue LED
   optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
-    - Optic Fiber
+    - Doric 0.66mm Flat 40mm Optic Fiber
 
   # Note "optic_fiber_implant_sites", "viruses", and "virus_injections" 
   # are not currently parsed and will be ignored.
@@ -68,7 +68,7 @@ photometry:
       ap_in_mm: 1.7
       ml_in_mm: 1.7
       dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
-      optic_fiber: Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
+      optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
       excitation_sources:  # names of excitation sources in the 'excitation_sources' field
         - Purple LED  
         - Blue LED
@@ -79,7 +79,7 @@ photometry:
       manufacturer: Vigene
       titer_in_vg_per_ml: 2e12
   virus_injections:
-    - description: Injection of dLight AAV virus into right nucleus accumbens core
+    - description: Injection of dLight AAV virus into nucleus accumbens core
       location: NAcc
       hemisphere: right
       reference: bregma at the cortical surface
@@ -89,7 +89,7 @@ photometry:
       volume_in_uL: 1.0
       virus: dLight  # name of a virus in the 'viruses' field
   photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
-    - Newport Femtowatt Photoreceiver
+    - Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)
 
 behavior:
   arduino_text_file_path: "tests/test_data/behavior/arduinoraw0.txt"
