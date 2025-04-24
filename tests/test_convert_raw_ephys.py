@@ -19,9 +19,7 @@ def test_add_electrode_data(dummy_logger):
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["probe"] = {
-        ["256-ch Silicon Probe, 3mm length, 80um pitch"]
-    }
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 80um pitch"]
     metadata["ephys"]["plug_order"] = "chip_first"
 
     # Create a test NWBFile
@@ -76,7 +74,7 @@ def test_add_electrode_data(dummy_logger):
         "See https://doi.org/10.1152/jn.00352.2020 "
     )
     assert probe.manufacturer == "Daniel Egert, Berke Lab"
-    assert probe.contact_side_numbering == True
+    assert probe.contact_side_numbering
     assert probe.contact_size == 15
     assert probe.units == "um"
 
@@ -206,9 +204,7 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["probe"] = {
-        ["256-ch Silicon Probe, 3mm length, 80um pitch"]
-    }
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 80um pitch"]
 
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
@@ -309,9 +305,7 @@ def test_add_raw_ephys_complete_data():
     metadata["ephys"]["openephys_folder_path"] = "/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["probe"] = {
-        ["256-ch Silicon Probe, 3mm length, 80um pitch"]
-    }
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 80um pitch"]
     
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
