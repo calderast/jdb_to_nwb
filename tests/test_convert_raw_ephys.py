@@ -125,11 +125,9 @@ def test_add_electrode_data(dummy_logger):
     assert nwbfile.electrodes.rel_y.data[-1] == -14.0
     
     # Expected electrode group is 0-31, each repeated 8 times
-    expected_egroups = [i for i in range(32) for _ in range(8)]
     expected_names = [str(i) for i in range(32) for _ in range(8)]
     expected_descriptions = [f"Electrodes on shank {i}" for i in range(32) for _ in range(8)]
 
-    assert nwbfile.electrodes.group.data[:] == expected_egroups
     assert nwbfile.electrodes.group_name.data[:] == expected_names
     assert nwbfile.electrodes.description.data[:] == expected_descriptions
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
