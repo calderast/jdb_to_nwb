@@ -700,11 +700,6 @@ def get_filtering_info(settings_root: ET.Element, channel_number_to_channel_name
             "The channel filtering is not the same for all channels. "
             "This is unexpected and may indicate a problem with the filtering settings."
         )
-
-    # TODO: save reference information from settings.xml
-
-    # TODO: save settings.xml as an associated file using the ndx-franklab-novela extension
-
     return filtering_list
 
 
@@ -910,11 +905,11 @@ def add_raw_ephys(
     # We could also add compression here. zstd/blosc-zstd are recommended by the NWB team, but
     # they require the hdf5plugin library to be installed. gzip is available by default.
     # Use gzip for now, but consider zstd/blosc-zstd in the future.
-    # data_data_io = H5DataIO(
-    #     traces_as_iterator,
-    #     chunks=(min(num_samples, 81920), min(num_channels, 64)),
-    #     compression="gzip",
-    # )
+    data_data_io = H5DataIO(
+        traces_as_iterator,
+        chunks=(min(num_samples, 81920), min(num_channels, 64)),
+        compression="gzip",
+    )
 
     # If we have ground truth port visit times (photometry), align timestamps to that
     ground_truth_time_source = metadata.get("ground_truth_time_source")
@@ -922,10 +917,10 @@ def add_raw_ephys(
 
         logger.info(f"Aligning ephys visit times to ground truth ({ground_truth_time_source})")
         ground_truth_visit_times = metadata.get("ground_truth_visit_times")
-        # ephys_timestamps = align_via_interpolation(unaligned_timestamps=original_timestamps,
-        #                                            unaligned_visit_times=ephys_visit_times,
-        #                                            ground_truth_visit_times=ground_truth_visit_times,
-        #                                            logger=logger)
+        ephys_timestamps = align_via_interpolation(unaligned_timestamps=original_timestamps,
+                                                   unaligned_visit_times=ephys_visit_times,
+                                                   ground_truth_visit_times=ground_truth_visit_times,
+                                                   logger=logger)
     else:
         # If we don't have photometry, keep the original timestamps
         ephys_timestamps = original_timestamps
@@ -936,19 +931,19 @@ def add_raw_ephys(
         metadata["ground_truth_time_source"] = "ephys"
         metadata["ground_truth_visit_times"] = ephys_visit_times
 
-    # # Create the ElectricalSeries
-    # # For now, we do not chunk or compress the timestamps, which are relatively small
-    # eseries = ElectricalSeries(
-    #     name="ElectricalSeries",
-    #     description="Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts).",
-    #     data=data_data_io,
-    #     timestamps=ephys_timestamps,
-    #     electrodes=electrode_table_region,
-    #     conversion=channel_conversion_factor_v,
-    # )
+    # Create the ElectricalSeries
+    # For now, we do not chunk or compress the timestamps, which are relatively small
+    eseries = ElectricalSeries(
+        name="ElectricalSeries",
+        description="Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts).",
+        data=data_data_io,
+        timestamps=ephys_timestamps,
+        electrodes=electrode_table_region,
+        conversion=channel_conversion_factor_v,
+    )
 
-    # # Add the ElectricalSeries to the NWBFile
-    # logger.info("Adding raw ephys to the nwbfile as an ElectricalSeries")
-    # nwbfile.add_acquisition(eseries)
+    # Add the ElectricalSeries to the NWBFile
+    logger.info("Adding raw ephys to the nwbfile as an ElectricalSeries")
+    nwbfile.add_acquisition(eseries)
 
     return {"ephys_start": open_ephys_start, "port_visits": ephys_visit_times}
