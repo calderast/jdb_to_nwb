@@ -183,9 +183,7 @@ def add_electrode_data(
                 targeted_y=float(targeted_y),
                 targeted_z=float(targeted_z),
                 units="mm",
-                device=probe_obj, # TODO: Confirm this is correct. Must be a Device (so the Probe object), 
-                # but not all electrodes on the Probe are in the same electrode group.
-                # AFAIK, Frank Lab does not have this issue because each tetrode is a separate Probe
+                device=probe_obj,
             )
             nwbfile.add_electrode_group(electrode_group)
             # Store the group so we can reference it when adding electrodes to the electrodes table
@@ -355,7 +353,7 @@ def add_electrode_data(
     nwbfile.add_electrode_column(
         name="ref_elect_id",
         description=(
-            "The id of the reference electrode in this table. "
+            "The index of the reference electrode in this table. "
             "-1 if not set. Also known as 'reference_daq_channel_index'"
         ),
     )
