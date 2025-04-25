@@ -35,10 +35,8 @@ def test_add_electrode_data(dummy_logger):
     # Create a test filtering list
     filtering_list = ["Bandpass Filter"] * 256
 
-    # The headstage channel numbers are 1-indexed - see settings.xml file
-    # They should match the chip first channel map in resources/channel_map.csv
     # fmt: off
-    headstage_channel_numbers = list(np.array([
+    headstage_channel_indices = list(np.array([
         191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,128,129,130,
         131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,
         157,158,159,160,161,162,163,164,165,166,167,168,192,193,194,195,196,197,198,199,200,201,202,203,204,205,
@@ -48,8 +46,12 @@ def test_add_electrode_data(dummy_logger):
         101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,
         127,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,
         56,57,58,59,60,61,62,63,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
-    ]) + 1)
+    ]))
     # fmt: on
+
+    # The headstage channel numbers are 1-indexed - see settings.xml file
+    # They should match the chip first channel map in resources/channel_map.csv
+    headstage_channel_numbers = np.array(headstage_channel_indices) + 1
 
     # Create a test reference daq channel indices list
     reference_daq_channel_indices = list(range(256))
@@ -129,8 +131,12 @@ def test_add_electrode_data(dummy_logger):
     assert nwbfile.electrodes.group_name.data[:] == expected_names
     assert nwbfile.electrodes.filtering.data[:] == filtering_list
     assert nwbfile.electrodes.location.data[:] == ["Hippocampus CA1"] * 256
-    assert nwbfile.electrodes.headstage_channel_number.data[:] == headstage_channel_numbers
-    #assert nwbfile.electrodes.ref_elect_id.data[:] == reference_daq_channel_indices
+    assert nwbfile.electrodes.headstage_channel_number.data[:] == list(headstage_channel_numbers)
+
+    np.testing.assert_array_equal(
+        nwbfile.electrodes.ref_elect_id.data[:],
+        np.array(headstage_channel_indices)[np.array(reference_daq_channel_indices)]
+    )
 
 def test_get_raw_ephys_data(dummy_logger):
     """
