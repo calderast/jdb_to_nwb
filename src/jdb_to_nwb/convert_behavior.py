@@ -571,6 +571,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
 
     # Add each trial to the NWB
     logger.debug("Adding each trial to the trial table in the NWB")
+    nwbfile.intervals.add(nwbfile.trials)
     for trial in trial_data:
         nwbfile.add_trial(
             epoch=0, # Berke Lab only has one epoch (session) per day

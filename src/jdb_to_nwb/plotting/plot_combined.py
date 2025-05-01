@@ -1,264 +1,91 @@
-# Some plots for combined photometry and behavior (things aligned to port entry, rewarded/omitted etc!)
-# Implement eventually. For now, comment it all out! 
-
-# import numpy as np
-# import matplotlib.pyplot as plt
-
-# def plot_signals_aligned_port_entry(sampling_rate, time_seconds, visits, 
-#                                     port_entry_indices, aligned_time,ratio_highpass, 
-#                                     highpass_405, green_highpass, red_highpass, 
-#                                     mean_ratio, sem_ratio, mean_green, sem_green, 
-#                                     mean_405, sem_405, mean_red, sem_red, 
-#                                     total_rewarded_trials, total_omitted_trials):
-#     """
-#     """
-#     time_window_in_sec = 10
-    
-#     samples_window = time_window_in_sec * sampling_rate
-#     total_rewarded_trials = (rwd == 1).sum()
-#     print("Total rewarded trials: "+str(total_rewarded_trials))
-
-#     total_omitted_trials = (rwd == 0).sum()
-#     print("Total omitted trials: "+str(total_omitted_trials))
-
-#     # Initialize lists for aligned traces
-#     aligned_ratio = []
-#     aligned_green = []
-#     aligned_405 = []
-#     aligned_red = []
-
-# #################################################################################
-#     # QUESTION FOR STEPH:
-#     # I need this code to run some of the plotting from this point forward.
-#     # Is there a way to get this information from convert_behvaior?
-#     # For now, I'll keep everything the way it is using "visinds" and "port_entry_indices"
-#     visinds = sampledata.loc[sampledata.port.notnull()].index.values
-#     port_entry_indices = visinds 
-# #################################################################################
-
-#     # Align windows
-#     for idx in visits:
-#         if idx - samples_window >= 0 and idx + samples_window < len(time_seconds):  # Ensure indices are in bounds
-#             aligned_ratio.append(ratio_highpass[idx - samples_window:idx + samples_window])
-#             aligned_green.append(green_highpass[idx - samples_window:idx + samples_window])
-#             aligned_405.append(highpass_405[idx - samples_window:idx + samples_window])
-#             aligned_red.append(red_highpass[idx - samples_window:idx + samples_window])
-
-#     # Convert to numpy arrays for easier averaging
-#     aligned_ratio = np.array(aligned_ratio)
-#     aligned_green = np.array(aligned_green)
-#     aligned_405 = np.array(aligned_405)
-#     aligned_red = np.array(aligned_red)
-
-#     # Calculate means and SEMs
-#     mean_ratio = np.mean(aligned_ratio, axis=0)
-#     sem_ratio = np.std(aligned_ratio, axis=0) / np.sqrt(len(aligned_ratio))
-
-#     mean_green = np.mean(aligned_green, axis=0)
-#     sem_green = np.std(aligned_green, axis=0) / np.sqrt(len(aligned_green))
-
-#     mean_405 = np.mean(aligned_405, axis=0)
-#     sem_405 = np.std(aligned_405, axis=0) / np.sqrt(len(aligned_405))
-
-#     mean_red = np.mean(aligned_red, axis=0)
-#     sem_red = np.std(aligned_red, axis=0) / np.sqrt(len(aligned_red))
-
-#     # Generate time axis for aligned data
-#     aligned_time = np.linspace(-time_window_in_sec, time_window_in_sec, 2 * samples_window)
-#     # Plot averaged traces
-#     plt.figure(figsize=(16, 10))
-#     plt.title("Average Traces Aligned to Port Entry ("+str(len(port_entry_indices))+" total trials)")
-
-#     # Plot each trace with SEM shading
-#     plt.plot(aligned_time, mean_ratio, label='470/405', color='b')
-#     plt.fill_between(aligned_time, mean_ratio - sem_ratio, mean_ratio + sem_ratio, color='b', alpha=0.2)
-
-#     plt.plot(aligned_time, mean_green, label='470 GACh3.8', color='g')
-#     plt.fill_between(aligned_time, mean_green - sem_green, mean_green + sem_green, color='g', alpha=0.2)
-
-#     plt.plot(aligned_time, mean_405, label='405', color='y')
-#     plt.fill_between(aligned_time, mean_405 - sem_405, mean_405 + sem_405, color='y', alpha=0.2)
-
-#     plt.plot(aligned_time, mean_red, label='565 rDA3m', color='r')
-#     plt.fill_between(aligned_time, mean_red - sem_red, mean_red + sem_red, color='r', alpha=0.2)
-
-#     # Add vertical line at port entry
-#     plt.axvline(x=0, ls='--', color='k', 
-#                 label='Port Entry ('+str(total_rewarded_trials)+' RWD; '+str(total_omitted_trials)+' OMT)')
-
-#     # Add labels and legend
-#     plt.xlabel("Time (s)")
-#     plt.ylabel("Volts (V)")
-#     plt.legend()
-#     plt.tight_layout()
-#     plt.show()
-
-#     return None
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import sem
 
 
-# def plot_ratio_and_565_signals_aligned_port_entry(rat, date, time_window, time_window_xvals, 
-#                                                   ratio_traces_mean, ratio_traces_sem, red_traces_mean, 
-#                                                   red_traces_sem, visinds): 
-#     """
-#     """
-#     ratio_traces = []
-#     red_traces = [] 
-#     time_window_in_sec = 10
+def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=None):
+    """
+    Plots an average photometry signal (DA or ACh) aligned to port entry, 
+    split by rewarded and unrewarded trials. Also plots the full-session signal trace
+    with rewarded and unrewarded poke times indicated.
+    """
+    session_id = nwbfile.session_id
 
-#     time_window_xvals = np.arange(-time_window_in_sec*86,time_window_in_sec*86+1)/86
+    # Get trial and reward data
+    trials = nwbfile.intervals["trials"]
+    poke_in_times = trials["poke_in"].data[:]
+    rewards = trials["reward"].data[:]
 
-#     # Loop through each index in visinds
-#     for i in visinds:
-#         # Extract a time window of data around the current index
-#         start_idx = i - 86 * time_window_in_sec
-#         end_idx = i + 86 * time_window_in_sec
-#         ratio_trace = sampledata.loc[start_idx:end_idx, "ratio_z_scored"].values
-#         red_trace = sampledata.loc[start_idx:end_idx, "red_z_scored"].values
+    # Get photometry signal trace
+    photometry_signal_object = nwbfile.acquisition[signal_name]
+    signal_trace = photometry_signal_object.data[:]
+    timestamps = photometry_signal_object.get_timestamps()
+    sampling_rate = photometry_signal_object.rate  
 
-#         # Only use traces of the correct length (matching xvals)
-#         if len(ratio_trace) == len(time_window_xvals):
-#             ratio_traces.append(ratio_trace)
+    # Define time window
+    time_window = 3  # seconds
+    num_samples = int(2 * time_window * sampling_rate)
+    time_vector = np.arange(-time_window, time_window, 1/sampling_rate)[:num_samples]
 
-#         if len(red_trace) == len(time_window_xvals):
-#             red_traces.append(red_trace)
+    # Split by rewarded vs unrewarded trials
+    rewarded, un_rewarded = [], []
 
-#     # Calculate mean and SEM 
-#     if ratio_traces: 
-#         ratio_traces_mean = np.mean(ratio_traces, axis=0)
-#         ratio_traces_sem = np.std(ratio_traces, axis=0) / np.sqrt(len(ratio_traces))
-#     else:  # If no traces, create empty arrays
-#         ratio_traces_rwd_mean = np.zeros_like(time_window_xvals)
-#         ratio_traces_rwd_sem = np.zeros_like(time_window_xvals)
+    for poke_in, reward in zip(poke_in_times, rewards):
+        
+        # Extract signal trace centered on poke_in
+        idx = np.where(timestamps == poke_in)[0][0]
+        start_idx = max(0, idx - num_samples // 2)
+        end_idx = start_idx + num_samples
 
-#     # Calculate mean and SEM 
-#     if red_traces: 
-#         red_traces_mean = np.mean(red_traces, axis=0)
-#         red_traces_sem = np.std(red_traces, axis=0) / np.sqrt(len(red_traces))
-#     else:  # If no traces, create empty arrays
-#         red_traces_mean = np.zeros_like(time_window_xvals)
-#         red_traces_sem = np.zeros_like(time_window_xvals)
-#     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, sharex=True, sharey=True, figsize=(19, 10))
+        if end_idx <= len(signal_trace):  # Ensure within bounds
+            trace = signal_trace[start_idx:end_idx]
+            (rewarded if reward == 1 else un_rewarded).append(trace)
 
-#     plt.suptitle(f'Z-scored ratiometric 470/405 & 565 fluorescence signals {rat} {date} {time_window}sec', 
-#                  fontsize=16)
+    # Convert to arrays
+    rewarded, un_rewarded = map(np.array, (rewarded, un_rewarded))
+    n_trials = len(poke_in_times)
+    n_rewarded = rewarded.shape[0]
+    n_unrewarded = un_rewarded.shape[0]
 
-#     ax1.plot(time_window_xvals, ratio_traces_mean, color='g')
-#     ax1.fill_between(time_window_xvals, 
-#                      ratio_traces_mean - ratio_traces_sem, 
-#                      ratio_traces_mean + ratio_traces_sem, 
-#                      color='g', alpha=0.2)
-#     ax1.axvline(x=0, ls='--', color='k', label='Port Entry')
-#     ax1.set_title('470/405 Ratio')
-#     ax1.set_xlabel('Time (s)')
-#     ax1.set_ylabel('Z-score')
+    # Get mean and SEM
+    rewarded_mean = rewarded.mean(axis=0)
+    rewarded_sem = sem(rewarded, axis=0)
+    unrewarded_mean = un_rewarded.mean(axis=0)
+    unrewarded_sem = sem(un_rewarded, axis=0)
 
-#     ax2.plot(time_window_xvals, red_traces_mean, color='r')
-#     ax2.fill_between(time_window_xvals, 
-#                      red_traces_mean - red_traces_sem, 
-#                      red_traces_mean + red_traces_sem, 
-#                      color='r', alpha=0.2)
-#     ax2.axvline(x=0, ls='--', color='k', label=str(len(visinds))+' Port Entries')
-#     ax2.set_title('565 rDA3m')
-#     ax2.set_xlabel('Time (s)')
+    # First plot: Average signal response across all trials
+    plt.figure(figsize=(8, 5))
+    plt.plot(time_vector, rewarded_mean, label=f"rewarded (n={n_rewarded})", color="red")
+    plt.fill_between(time_vector, rewarded_mean - rewarded_sem, rewarded_mean + rewarded_sem, color="red", alpha=0.3)
+    plt.plot(time_vector, unrewarded_mean, label=f"unrewarded (n={n_unrewarded})", color="blue")
+    plt.fill_between(time_vector, unrewarded_mean - unrewarded_sem, unrewarded_mean + unrewarded_sem, color="blue", alpha=0.3)
+    plt.axvline(0, linestyle="--", color="black", label="Poke In")
+    plt.xlabel("Time (s)")
+    plt.ylabel(f"{signal_name}")
+    plt.title(f"{signal_name} aligned to port entry ({session_id}, {n_trials} trials)")
+    plt.legend()
+    plt.tight_layout()
 
-#     plt.tight_layout()
-#     plt.legend()
-#     plt.plot()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, f"{signal_name}_aligned_to_port_entry.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
 
-#     return None
+    # Second plot: Full session signal trace
+    plt.figure(figsize=(20, 5))
+    plt.plot(timestamps, signal_trace)
+    for poke_in, reward in zip(poke_in_times, rewards):
+        color = "red" if reward == 1 else "blue"
+        plt.axvline(poke_in, linestyle="--", color=color)
+    plt.xlabel("Time (s)")
+    plt.ylabel(f"{signal_name}")
+    plt.title(f"Full session {signal_name} and port entries")
+    plt.ylim([-2, 10])
+    plt.xlim([min(timestamps)-10, max(timestamps)+10])
+    plt.tight_layout()
 
-# def plot_ratio_and_565_signals_aligned_port_entry_separated_by_rewarded_or_omitted(rat, date, visinds, 
-#         time_window_in_sec, xvals, ratio_rwd_mean, ratio_rwd_sem, ratio_om_mean, ratio_om_sem, 
-#         red_rwd_mean, red_rwd_sem, red_om_mean, red_om_sem, total_rewarded_trials, total_omitted_trials):
-#     """
-#     """
-#     ratio_rwd_traces = []
-#     ratio_om_traces = []
-#     red_rwd_traces = []
-#     red_om_traces = []
-
-#     time_window_in_sec = 10
-
-#     time_window_xvals = np.arange(-time_window_in_sec*86,time_window_in_sec*86+1)/86
-
-#     # Loop through each index in visinds
-#     for i in visinds:
-#         # Extract a time window of data around the current index
-#         start_idx = i - 86 * time_window_in_sec
-#         end_idx = i + 86 * time_window_in_sec
-#         ratio_trace = sampledata.loc[start_idx:end_idx, "ratio_z_scored"].values
-#         red_trace = sampledata.loc[start_idx:end_idx, "red_z_scored"].values
-
-#         # Only use traces of the correct length (matching xvals)
-#         if len(ratio_trace) == len(time_window_xvals):
-#             # Check if the trial is rewarded or omitted
-#             if sampledata.loc[i, 'rwd'] == 1:
-#                 ratio_rwd_traces.append(ratio_trace)  # Add to rewarded traces
-#             else:
-#                 ratio_om_traces.append(ratio_trace)  # Add to omitted traces
-
-#             # Only use traces of the correct length (matching xvals)
-#         if len(red_trace) == len(time_window_xvals):
-#             # Check if the trial is rewarded or omitted
-#             if sampledata.loc[i, 'rwd'] == 1:
-#                 red_rwd_traces.append(red_trace)  # Add to rewarded traces
-#             else:
-#                 red_om_traces.append(red_trace)  # Add to omitted traces
-
-#     # Calculate mean and SEM for rewarded traces
-#     if ratio_rwd_traces:  # If there are any rewarded traces
-#         ratio_rwd_mean = np.mean(ratio_rwd_traces, axis=0)
-#         ratio_rwd_sem = np.std(ratio_rwd_traces, axis=0) / np.sqrt(len(ratio_rwd_traces))
-#     else:  # If no rewarded traces, create empty arrays
-#         ratio_rwd_mean = np.zeros_like(time_window_xvals)
-#         ratio_rwd_sem = np.zeros_like(time_window_xvals)
-
-#     # Calculate mean and SEM for rewarded traces
-#     if red_rwd_traces:  # If there are any rewarded traces
-#         red_rwd_mean = np.mean(red_rwd_traces, axis=0)
-#         red_rwd_sem = np.std(red_rwd_traces, axis=0) / np.sqrt(len(red_rwd_traces))
-#     else:  # If no rewarded traces, create empty arrays
-#         red_rwd_mean = np.zeros_like(time_window_xvals)
-#         red_rwd_sem = np.zeros_like(time_window_xvals)
-
-#     # Calculate mean and SEM for omitted traces
-#     if ratio_om_traces:  # If there are any omitted traces
-#         ratio_om_mean = np.mean(ratio_om_traces, axis=0)
-#         ratio_om_sem = np.std(ratio_om_traces, axis=0) / np.sqrt(len(ratio_om_traces))
-#     else:  # If no omitted traces, create empty arrays
-#         ratio_om_mean = np.zeros_like(time_window_xvals)
-#         ratio_om_sem = np.zeros_like(time_window_xvals)
-
-#     # Calculate mean and SEM for omitted traces
-#     if red_om_traces:  # If there are any omitted traces
-#         red_om_mean = np.mean(red_om_traces, axis=0)
-#         red_om_sem = np.std(red_om_traces, axis=0) / np.sqrt(len(red_om_traces))
-#     else:  # If no omitted traces, create empty arrays
-#         red_om_mean = np.zeros_like(time_window_xvals)
-#         red_om_sem = np.zeros_like(time_window_xvals)
-
-#     fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, sharex=True, sharey=True, figsize=(19, 10))
-
-#     plt.suptitle(f'Z-scored ratiometric 470/405 & 565 fluorescence signals {rat} {date} {time_window_in_sec}sec', 
-#                  fontsize=16)
-
-#     ax1.plot(xvals, ratio_rwd_mean, label=str(total_rewarded_trials)+' Rewarded', color='r')
-#     ax1.plot(xvals, ratio_om_mean, label=str(total_omitted_trials)+' Omitted', color='b')
-#     ax1.fill_between(xvals, ratio_rwd_mean - ratio_rwd_sem, ratio_rwd_mean + ratio_rwd_sem, color='r', alpha=0.2)
-#     ax1.fill_between(xvals, ratio_om_mean - ratio_om_sem, ratio_om_mean + ratio_om_sem, color='b', alpha=0.2)
-#     ax1.axvline(x=0, ls='--', color='k', label='Port Entry')
-#     ax1.set_title('470/405 Ratio')
-#     ax1.set_xlabel('Time (s)')
-#     ax1.set_ylabel('Z-score')
-
-#     ax2.plot(xvals, red_rwd_mean, label=str(total_rewarded_trials)+' Rewarded', color='r')
-#     ax2.plot(xvals, red_om_mean, label=str(total_omitted_trials)+' Omitted', color='b')
-#     ax2.fill_between(xvals, red_rwd_mean - red_rwd_sem, red_rwd_mean + red_rwd_sem, color='r', alpha=0.2)
-#     ax2.fill_between(xvals, red_om_mean - red_om_sem, red_om_mean + red_om_sem, color='b', alpha=0.2)
-#     ax2.axvline(x=0, ls='--', color='k', label='Port Entry')
-#     ax2.set_title('565 rDA3m')
-#     ax2.set_xlabel('Time (s)')
-
-#     plt.tight_layout()
-#     plt.legend()
-#     plt.plot()
+    if fig_dir:
+        save_path = os.path.join(fig_dir, f"{signal_name}_full_session_trace.png")
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()
