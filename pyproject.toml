@@ -4,7 +4,6 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jdb_to_nwb"
-# Emails are omitted from author list due to PyPI display issue https://github.com/pypi/warehouse/issues/12877
 authors = [
   { name="Stephanie Crater" },
   { name="Ryan Ly" },
