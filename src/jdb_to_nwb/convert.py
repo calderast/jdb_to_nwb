@@ -252,7 +252,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Aligns timestamps to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path, logger=logger)
-    add_position(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
 
     # Add spikes
     add_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
