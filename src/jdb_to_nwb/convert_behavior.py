@@ -8,6 +8,7 @@ from pynwb import NWBFile
 from hdmf.common.table import DynamicTable, VectorData
 from ndx_franklab_novela import AssociatedFiles
 from .timestamps_alignment import trim_sync_pulses
+from .plotting.plot_behavior import plot_maze_configurations, plot_trial_time_histogram
 
 
 def load_maze_configurations(maze_configuration_file_path: Path):
@@ -426,7 +427,8 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
     logger.debug(f"The number of trials in each block sums to the total number of trials {len(trial_data)}")
 
 
-def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
+def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
+    """Add trial and block data to the nwbfile"""
     print("Adding behavior...")
     logger.info("Adding behavior...")
 
@@ -501,6 +503,9 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
         logger.debug(f"Block {i} maze: {barrier_set_to_string(maze)}")
         block["maze_configuration"] = barrier_set_to_string(maze)
 
+    # Plot maze configurations for each block
+    plot_maze_configurations(block_data=block_data, fig_dir=fig_dir)
+
     # Save original arduino visit times for alignment before we re-align to photometry/ephys  
     arduino_visit_times = [trial['beam_break_start'] for trial in trial_data]
 
@@ -511,6 +516,9 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger):
     logger.debug("Validating trial and block data...")
     validate_trial_and_block_data(trial_data, block_data, logger)
     logger.debug("All validation checks passed.")
+
+    # Plot histogram of trial times
+    plot_trial_time_histogram(trial_data=trial_data, fig_dir=fig_dir)
 
     # Add columns for block data to the NWB file
     block_table = nwbfile.create_time_intervals(
