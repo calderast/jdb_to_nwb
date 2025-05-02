@@ -59,9 +59,11 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
     # First plot: Average signal response across all trials
     plt.figure(figsize=(8, 5))
     plt.plot(time_vector, rewarded_mean, label=f"rewarded (n={n_rewarded})", color="red")
-    plt.fill_between(time_vector, rewarded_mean - rewarded_sem, rewarded_mean + rewarded_sem, color="red", alpha=0.3)
+    plt.fill_between(time_vector, rewarded_mean - rewarded_sem, 
+                     rewarded_mean + rewarded_sem, color="red", alpha=0.3)
     plt.plot(time_vector, unrewarded_mean, label=f"unrewarded (n={n_unrewarded})", color="blue")
-    plt.fill_between(time_vector, unrewarded_mean - unrewarded_sem, unrewarded_mean + unrewarded_sem, color="blue", alpha=0.3)
+    plt.fill_between(time_vector, unrewarded_mean - unrewarded_sem, 
+                     unrewarded_mean + unrewarded_sem, color="blue", alpha=0.3)
     plt.axvline(0, linestyle="--", color="black", label="Poke In")
     plt.xlabel("Time (s)")
     plt.ylabel(f"{signal_name}")
@@ -95,7 +97,7 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
 
 def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
     """
-    For each block, create a heatmap of rat positon overlayed on the hex maze.
+    For each block, create a heatmap of rat position overlaid on the hex maze.
     Also create one big plot for the session where position is split by first vs second half
     of each block, to (hopefully) see refinement of trajectories as the rat adapts to the new config.
     """
@@ -128,7 +130,7 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
         maze = block.maze_configuration
         reward_probs = [block.pA, block.pB, block.pC]
 
-        # Filter position data for this block (exluding nans)
+        # Filter position data for this block (excluding nans)
         block_times = (position_df["timestamp"] >= block.start_time) & (position_df["timestamp"] <= block.stop_time)
         block_positions = position_df[block_times].dropna(subset=['x', 'y'])
 
@@ -187,8 +189,9 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
                     invert_yaxis=True
                 )
             # Plot rat position heatmap on top of the hexes
-            im = ax.imshow(
-                log_heatmap.T, origin='lower', cmap='viridis', extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+            ax.imshow(
+                log_heatmap.T, origin='lower', cmap='viridis', 
+                extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
                 aspect='equal', zorder=1
             )
             ax.set_xticks([])
