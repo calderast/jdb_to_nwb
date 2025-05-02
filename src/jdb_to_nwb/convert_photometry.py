@@ -644,7 +644,10 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     nwbfile.add_acquisition(z_scored_ratio_response_series)
 
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
-    return {'sampling_rate': sampling_rate, 'port_visits': visits, 'photometry_start': photometry_start}
+    # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
+    signals_to_plot = ["zscored_565", "zscored_470_405_ratio"]
+    return {'sampling_rate': sampling_rate, 'port_visits': visits, 
+            'photometry_start': photometry_start, 'signals_to_plot': signals_to_plot}
 
 
 def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
@@ -775,7 +778,10 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     nwbfile.add_acquisition(raw_reference_response_series)
 
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
-    return {'sampling_rate': Fs, 'port_visits': port_visits, 'photometry_start': signals.get('photometry_start')}
+    # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
+    signals_to_plot = ['z_scored_green_dFF']
+    return {'sampling_rate': Fs, 'port_visits': port_visits, 
+            'photometry_start': signals.get('photometry_start'), 'signals_to_plot': signals_to_plot}
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):

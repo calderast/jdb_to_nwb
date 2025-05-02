@@ -150,14 +150,15 @@ def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, pre
 def add_camera(nwbfile: NWBFile, metadata: dict):
     '''
     Adds camera because this is required to create a TaskEpoch in spyglass.
-    Camera metadata (lens, model) is currently placeholder values.
-
-    NOTE: We may want to eventually store camera metadata in the resources folder
-    instead of just here/make the user be able to specify values in metadata.
+    Camera metadata (lens, model) is currently placeholder values.    
     '''
 
     pixels_per_cm = metadata["pixels_per_cm"]
     meters_per_pixel = 0.01 / pixels_per_cm
+    mpp_rounded = f"{meters_per_pixel:.6f}"
+    # In spyglass, the camera_name is used as a primary key. 
+    # We add the meters_per_pixel to the camera_name so we get a distinct
+    # camera entry in the table each time the meters_per_pixel changes.
 
     # Note that the name "camera_device 1" is required for spyglass compatibility
     # (it must match format "camera_device {epoch+1}")
@@ -168,7 +169,7 @@ def add_camera(nwbfile: NWBFile, metadata: dict):
             manufacturer="Logitech",
             model="Brio webcam",
             lens="lens",
-            camera_name="maze_camera",
+            camera_name=f"berke_maze_cam_{mpp_rounded}m_per_pixel",
         )
     )
 
@@ -201,7 +202,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
     print("Adding camera...")
     logger.info("Adding camera...")
     add_camera(nwbfile=nwbfile, metadata=metadata)
-        
+
     # Now check if we actually have video data to add
     if "video" not in metadata:
         print("No video metadata found for this session. Skipping video conversion.")

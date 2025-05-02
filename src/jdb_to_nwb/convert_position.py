@@ -5,6 +5,7 @@ from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
 from .timestamps_alignment import align_via_interpolation
+from .plotting.plot_combined import plot_rat_position_heatmap
 
 
 def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9, cam_fps=15):
@@ -210,7 +211,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     nwbfile.processing["behavior"].add(position)
 
 
-def add_position(nwbfile: NWBFile, metadata: dict, logger):
+def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """ 
     Add position data from DeeplabCut to the nwbfile.
     """
@@ -292,3 +293,9 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger):
     # Add x, y position data to the nwbfile
     add_position_to_nwb(nwbfile, position_data=position_dfs, 
                         pixels_per_cm=pixels_per_cm, video_timestamps=true_video_timestamps, logger=logger)
+
+    # Plot the rat's position (for each spatial series added to the nwb)
+    if fig_dir is not None:
+        position_object = nwbfile.processing["behavior"].data_interfaces["position"]
+        for name, spatial_series in position_object.spatial_series.items():
+            plot_rat_position_heatmap(nwbfile=nwbfile, spatial_series_name=name, fig_dir=fig_dir)

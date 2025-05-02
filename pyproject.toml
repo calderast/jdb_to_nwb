@@ -34,10 +34,12 @@ dependencies = [
     "ndx_franklab_novela",
     "scikit-learn",
     "matplotlib",
+    "imageio-ffmpeg",
     "ffmpeg-python",
     "tables",
     "opencv-python",
     "numcodecs==0.12.1",
+    "hex-maze-neuro",
 ]
 dynamic = ["version"]
 

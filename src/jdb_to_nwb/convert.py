@@ -19,6 +19,7 @@ from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
 
+from .plotting.plot_combined import plot_photometry_signal_aligned_to_port_entry
 
 def to_datetime(date_str):
     """
@@ -243,7 +244,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     ephys_start = ephys_data_dict.get('ephys_start')
 
     # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
-    behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
     metadata["photometry_start_in_arduino_ms"] = behavior_data_dict.get("photometry_start_in_arduino_time")
     metadata['arduino_visit_times'] = behavior_data_dict.get("port_visits")
 
@@ -251,10 +252,15 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # Aligns timestamps to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     output_video_path = Path(output_nwb_dir) / f"{session_id}_video.mp4"
     add_video(nwbfile=nwbfile, metadata=metadata, output_video_path=output_video_path, logger=logger)
-    add_position(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
 
     # Add spikes
     add_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
+
+    # Now that we have added both photometry and behavior, plot photometry signals aligned to port entry
+    if photometry_data_dict.get('signals_to_plot') is not None:
+        for signal in photometry_data_dict.get('signals_to_plot'):
+            plot_photometry_signal_aligned_to_port_entry(nwbfile=nwbfile, signal_name=signal, fig_dir=fig_dir)
 
     # If we have an exact photometry start time, use that as the session start time
     if photometry_start is not None:
@@ -273,11 +279,13 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     nwbfile.fields["timestamps_reference_time"] = nwbfile.fields["session_start_time"]
 
     print("Writing file...")
+    logger.info("Writing file...")
     output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
     with NWBHDF5IO(output_nwb_file_path, mode="w") as io:
         io.write(nwbfile)
 
     print(f"NWB file created successfully at {output_nwb_file_path}")
+    logger.info(f"NWB file created successfully at {output_nwb_file_path}")
 
 
 def cli():
