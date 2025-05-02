@@ -295,6 +295,7 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
                         pixels_per_cm=pixels_per_cm, video_timestamps=true_video_timestamps, logger=logger)
 
     # Plot the rat's position (for each spatial series added to the nwb)
-    position_object = nwbfile.processing["behavior"].data_interfaces["position"]
-    for name, spatial_series in position_object.spatial_series.items():
-        plot_rat_position_heatmap(nwbfile=nwbfile, spatial_series_name=name, fig_dir=fig_dir)
+    if fig_dir is not None:
+        position_object = nwbfile.processing["behavior"].data_interfaces["position"]
+        for name, spatial_series in position_object.spatial_series.items():
+            plot_rat_position_heatmap(nwbfile=nwbfile, spatial_series_name=name, fig_dir=fig_dir)
