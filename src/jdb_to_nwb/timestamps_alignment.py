@@ -2,6 +2,64 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 
+def handle_timestamps_reset(timestamps, logger):
+    """
+    In our setup, arduino and video timestamps reset to 0 after 86,400,000 
+    (aka 24:00:00 in ms), which happens at 12pm recording computer time. 
+
+    Given a list of timestamps (in ms), check if the timestamps reset to 0 
+    and if so, unwrap them such that they are consistently increasing.
+
+    We expect maximum 1 reset. If we encounter any time drops that do not
+    fit this expectation, error so we can figure out what went wrong.
+    """
+    # Helper to convert timestamp in ms to HH:MM:SS.mmmm for logging
+    ms_to_hhmmss = lambda ms: f"{ms//3600000:02}:{(ms//60000)%60:02}:{(ms//1000)%60:02}.{ms%1000:03}"
+    reset_threshold = 86_400_000 # 24:00:00 in ms
+
+    # If all timestamps are already increasing (no reset), return as-is
+    if all(t2 >= t1 for t1, t2 in zip(timestamps, timestamps[1:])):
+        logger.debug("Check passed: All timestamps are increasing.")
+        return timestamps
+
+    # Otherwise, find indices where timestamps drop (potential resets)
+    logger.info("Detected a potential timestamp reset. This is expected when the recording passes 12:00pm.")
+    time_drops = [i for i in range(1, len(timestamps)) if timestamps[i] < timestamps[i - 1]]
+
+    # Timestamps should only reset once. Break if >1 so we can figure out what happened
+    if len(time_drops) != 1:
+        logger.error(f"Expected at most one timestamp reset, found {len(time_drops)}!!")
+        raise ValueError(f"Expected at most one timestamp reset, found {len(time_drops)}!!")
+
+    reset_idx = time_drops[0]
+    time_pre_reset = timestamps[reset_idx - 1]
+    time_post_reset = timestamps[reset_idx]
+
+    # Make sure the time drop matches a 24h reset
+    drop = time_pre_reset - time_post_reset
+    if drop < 0.9 * reset_threshold:
+        logger.error(f"Timestamp drop at index {reset_idx} too small to be a 24h reset!")
+        logger.error(f"Timestamp before reset={time_pre_reset} ({ms_to_hhmmss(time_pre_reset)}), "
+                     f"timestamp post reset={time_post_reset} ({ms_to_hhmmss(time_post_reset)}), "
+                     f"drop={drop}ms ({ms_to_hhmmss(drop)})")
+        raise ValueError("Drop in timestamps too small to be a valid reset!")
+
+    logger.debug(f"Timestamps reset at index {reset_idx}.")
+    logger.info(f"Timestamp before reset: {time_pre_reset} ({ms_to_hhmmss(time_pre_reset)})")
+    logger.info(f"Timestamp after reset: {time_post_reset} ({ms_to_hhmmss(time_post_reset)})")
+    logger.info("Adjusting timestamps to account for reset...")
+
+    # Adjust all timestamps after the reset so they are increasing
+    adjusted_timestamps = timestamps[:reset_idx] + [t + reset_threshold for t in timestamps[reset_idx:]]
+
+    # Final sanity check that the adjusted timestamps are increasing
+    if not all(t2 >= t1 for t1, t2 in zip(adjusted_timestamps, adjusted_timestamps[1:])):
+        logger.error("Timestamps are not increasing after adjustment for 24h reset!!")
+        raise AssertionError("Timestamps are not increasing after adjustment for 24h reset!")
+
+    return adjusted_timestamps
+
+
 def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger):
     """
     We may have an unequal number of sync pulses (port visit times) recorded by different datastreams
