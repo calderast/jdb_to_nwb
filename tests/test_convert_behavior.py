@@ -1,6 +1,8 @@
 from datetime import datetime
 from dateutil import tz
 from pynwb import NWBFile
+from pynwb.file import ProcessingModule
+from hdmf.common.table import DynamicTable, VectorData
 
 from jdb_to_nwb.convert_behavior import add_behavior
 
@@ -33,6 +35,28 @@ def test_convert_behavior(dummy_logger):
     # enumerated correctly, block metadata is valid, number of trials per block adds to the
     # total number of trials, block start/end times are aligned to trial start/end times)
     # because these checks are already run by validate_trial_and_block_data every time add_behavior is run
+    
+    # Test that the tasks processing module has been added
+    assert "tasks" in nwbfile.processing
+    tasks_module = nwbfile.processing["tasks"]
+    assert isinstance(tasks_module, ProcessingModule)
+    assert tasks_module.name == "tasks"
+    assert tasks_module.description == "Contains all tasks information"
+
+    # We should have a single task named task_0
+    assert len(tasks_module.data_interfaces) == 1
+    task = tasks_module.data_interfaces["task_0"]
+    assert isinstance(task, DynamicTable)
+    assert task.name == "task_0"
+    assert task.description == ""
+
+    # Check if the task metadata columns were added correctly
+    for val in task.columns:
+        assert isinstance(val, VectorData)
+    expected_task_columns = {"task_name", "task_description", "task_epochs", "task_environment", "camera_id"}
+    assert set(task.colnames) == expected_task_columns, (
+        f"Task columns {set(task.colnames)} did not match expected {expected_task_columns}"
+    )
 
     # Test that the nwbfile has the expected associated files
     assert "associated_files" in nwbfile.processing

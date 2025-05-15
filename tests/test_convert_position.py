@@ -1,24 +1,22 @@
 from datetime import datetime
 from dateutil import tz
-from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 from pathlib import Path
 
-from jdb_to_nwb.convert_dlc import add_dlc
+from jdb_to_nwb.convert_position import add_position
 
 
 def test_add_dlc_one_bodypart(dummy_logger):
     """
-    Test the add_dlc function where the DeepLabCut h5 file has position data 
+    Test the add_position function where the DeepLabCut h5 file has position data 
     for a single bodypart ('cap')
     """
 
     test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
-    
+
     metadata = {}
-    metadata["datetime"] = datetime.strptime("11062024", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
     metadata["video"] = {}
-    metadata["video"]["video_file_path"] = test_data_dir / "Behav_Vid0.avi"
+    metadata["pixels_per_cm"] = 2.688
     metadata["video"]["video_timestamps_file_path"] = test_data_dir / "testvidtimes0.csv"
     metadata["video"]["dlc_path"] = test_data_dir / "Behav_Vid0DLC_resnet50_Triangle_Maze_PhotFeb12shuffle1_800000.h5"
 
@@ -28,7 +26,7 @@ def test_add_dlc_one_bodypart(dummy_logger):
         identifier="mock_session",
     )
 
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
@@ -68,16 +66,15 @@ def test_add_dlc_one_bodypart(dummy_logger):
 
 def test_add_dlc_two_bodyparts(dummy_logger):
     """
-    Test the add_dlc function where the DeepLabCut h5 file has position data 
+    Test the add_position function where the DeepLabCut h5 file has position data 
     for 2 bodyparts ('cap_front' and 'cap_back')
     """
     
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
 
     metadata = {}
-    metadata["datetime"] = datetime.strptime("07252022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles")) 
     metadata["video"] = {}
-    metadata["video"]["video_file_path"] = test_data_dir / "Behav_Vid0.avi"
+    metadata["pixels_per_cm"] = 2.688
     metadata["video"]["video_timestamps_file_path"] = test_data_dir / "testvidtimes0.csv"
     metadata["video"]["dlc_path"] = test_data_dir / "Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
 
@@ -87,7 +84,7 @@ def test_add_dlc_two_bodyparts(dummy_logger):
         identifier="mock_session",
     )
 
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check that behavior processing module has been added
     assert "behavior" in nwbfile.processing
@@ -125,9 +122,9 @@ def test_add_dlc_two_bodyparts(dummy_logger):
         assert dlc_likelihood.comments.startswith(expected_comment)
 
 
-def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
+def test_add_position_with_incomplete_metadata(capsys, dummy_logger):
     """
-    Test that the add_dlc function responds appropriately to missing or incomplete metadata.
+    Test that the add_position function responds appropriately to missing or incomplete metadata.
     
     If no 'video' key is in the metadata dictionary, it should silently return and 
     skip conversion.
@@ -147,34 +144,28 @@ def test_add_dlc_with_incomplete_metadata(capsys, dummy_logger):
     # 1. Test with no 'video' key
     metadata = {}
 
-    # Call the add_dlc function with no 'video' key in metadata and see there are no errors
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    
-    
-    # 2. Test with 'video' key and no 'dlc_path'
+    # Call the add_position function with no 'video' key in metadata and see that we return with no errors
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # 2. Test with 'video' key and no 'dlc_path' or 'hex_centroids_file_path'
     metadata["video"] = {}
 
-    # Call the add_video function with 'video' key in metadata, but no 'dlc_path'
-    add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Call the add_position function
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
 
-    # Check that the correct message was printed to stdout
+    # Check that the correct messages were printed to stdout
     assert "No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion." in captured.out
-    
-    
+
     # 3. Test with 'video' key and 'dlc_path', but no 'video_timestamps_file_path'
     metadata["video"] = {}
     metadata["video"]["dlc_path"] = (
         "tests/test_data/downloaded/IM-1478/07252022/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
     )
 
-    # Check that add_dlc raises a ValueError about missing fields in the metadata dictionary
-    try:
-        add_dlc(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    except ValueError as e:
-        assert str(e).startswith("Video subfield 'video_timestamps_file_path' not found in metadata.")
-    else:
-        assert False, (
-            "Expected ValueError was not raised in response to "
-            "missing timestamp subfields in the metadata dict."
-        )
+    # Check that add_position complains about missing video timestamps in the metadata dictionary
+    add_position(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    captured = capsys.readouterr() # capture stdout
+    
+    # Check that the correct message was printed to stdout
+    assert "Video subfield 'video_timestamps_file_path' not found in metadata." in captured.out

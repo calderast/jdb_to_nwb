@@ -1,38 +1,11 @@
 import csv
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from zoneinfo import ZoneInfo
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
-
-
-def assign_pixels_per_cm(session_date):
-    """
-    Assigns default PIXELS_PER_CM based on the date of the session.
-    PIXELS_PER_CM is 3.14 if video is before IM-1594 (before 01/01/2023), 
-    2.3 before (01/11/2024), or 2.688 after (old maze)
-
-    Args:
-    session_date (datetime): Datetime object for the date of this session
-
-    Returns:
-    float: The corresponding PIXELS_PER_CM value.
-    """
-
-    # Define cutoff dates
-    cutoff1 = datetime.strptime("12312022", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Dec 31, 2022
-    cutoff2 = datetime.strptime("01112024", "%m%d%Y").replace(tzinfo=ZoneInfo("America/Los_Angeles"))  # Jan 11, 2024
-
-    # Assign pixels per cm based on the session date
-    if session_date <= cutoff1:
-        pixels_per_cm = 3.14
-    elif cutoff1 < session_date <= cutoff2:
-        pixels_per_cm = 2.3
-    else:
-        pixels_per_cm = 2.688 # After January 11, 2024
-    return pixels_per_cm
+from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
+from .plotting.plot_combined import plot_rat_position_heatmap
 
 
 def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9, cam_fps=15):
@@ -186,20 +159,20 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     pixels_per_cm: pixels per cm conversion rate of the position data
     video_timestamps: timestamps of each camera frame (aka position datapoint) in seconds
     """
-    
+
     # Convert pixels_per_cm to meters_per_pixel for consistency with Frank Lab
     meters_per_pixel = 0.01 / pixels_per_cm
     logger.debug(f"Meters per pixel: {meters_per_pixel}")
 
     # Make a processing module for behavior and add to the nwbfile
-    logger.debug("Creating nwb behavior processing module for position data")
     if "behavior" not in nwbfile.processing:
+        logger.debug("Creating nwb behavior processing module for position data")
         nwbfile.create_processing_module(
             name="behavior", description="Contains all behavior-related data"
         )
 
     position = Position(name="position")
-    
+
     # Add x,y position to the nwb as a SpatialSeries for each tracked body part
     for body_part_name, body_part_position_df in position_data:
         logger.info(f"Adding position data for {body_part_name} to the nwb...")
@@ -238,7 +211,10 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
     nwbfile.processing["behavior"].add(position)
 
 
-def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
+def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
+    """ 
+    Add position data from DeeplabCut to the nwbfile.
+    """
 
     if "video" not in metadata:
         # Do not print "no video metadata found" message, because we already print that in add_video
@@ -248,7 +224,7 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
     # The user may wish to only convert the raw video file and do position tracking later
     if "dlc_path" not in metadata["video"]:
         print("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
-        logger.info("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
+        logger.warning("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
         return
 
     # If we do have dlc_path, we must also have video timestamps for DLC conversion
@@ -257,49 +233,53 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
             "This is required along with 'dlc_path' for DLC position conversion. \n"
             "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
             )
-        raise ValueError("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
+        print("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
             "This is required along with 'dlc_path' for DLC position conversion. \n"
             "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
             )
+        return
+
+    # At this point, pixels_per_cm must exist in metadata. If it did not exist, 
+    # it was automatically assigned based on session date in convert_video
+    pixels_per_cm = metadata["pixels_per_cm"]
+
+    # If we already have aligned video timestamps, use those
+    video_files = nwbfile.processing.get("video_files", None) 
+    if video_files and isinstance(video_files, dict) and "behavior_video" in video_files:
+        # Pynwb will link the timestamps here instead of creating a new array! Cool!
+        true_video_timestamps = nwbfile.processing["video_files"]["behavior_video"]
+
+    # Otherwise read timestamps of each camera frame (in ms) and align them
     else:
-        # Read timestamps of each camera frame (in ms)
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
         with open(video_timestamps_file_path, "r") as video_timestamps_file:
             video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
- 
-        # Adjust video timestamps so photometry starts at time 0 and convert to seconds to match NWB standard
+
+        # Check for and handle potential timestamps reset (happens when the recording passes 12:00pm)
+        video_timestamps_ms = handle_timestamps_reset(timestamps=video_timestamps_ms, logger=logger)
+
+        # Adjust video timestamps so photometry starts at time 0 (this is also done to match arduino visit times)
         video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
+
+        # Convert video timestamps to seconds to match NWB standard
         video_timestamps_seconds = video_timestamps_ms / 1000
 
-        # Align video timestamps to photometry/ephys
-        ground_truth_visit_times = metadata.get("photometry_visit_times", metadata.get("ephys_visit_times"))
+        # Get port visits in video time (aka arduino time)
         arduino_visit_times = metadata.get("arduino_visit_times")
 
-        if ground_truth_visit_times is not None:
-            logger.info("Aligning DLC timestamps...")
-            # Make sure we have the same number of arduino and ground truth visit times for alignment
-            assert len(arduino_visit_times) == len(ground_truth_visit_times), (
-                f"Expected the same number of port visits recorded by arduino and ephys/photometry! \n"
-                f"Got {len(arduino_visit_times)} arduino visits, "
-                f"but {len(ground_truth_visit_times)} visits for alignment!"
-            )
-            # Align video timestamps via interpolation. For timestamps out of visit bounds, 
-            # use the ratio of spacing between arduino_visit_times and ground_truth_visit_times
-            true_video_timestamps = np.interp(
-                x=video_timestamps_seconds,
-                xp=arduino_visit_times,
-                fp=ground_truth_visit_times,
-                left=ground_truth_visit_times[0] + 
-                    (video_timestamps_seconds[0] - arduino_visit_times[0]) * 
-                    (ground_truth_visit_times[1] - ground_truth_visit_times[0]) / 
-                    (arduino_visit_times[1] - arduino_visit_times[0]),
-                right=ground_truth_visit_times[-1] + 
-                    (video_timestamps_seconds[-1] - arduino_visit_times[-1]) * 
-                    (ground_truth_visit_times[-1] - ground_truth_visit_times[-2]) / 
-                    (arduino_visit_times[-1] - arduino_visit_times[-2])
-            )
+        # If we have ground truth port visit times, align video timestamps to that
+        ground_truth_time_source = metadata.get("ground_truth_time_source")
+        if ground_truth_time_source is not None:
+
+            logger.info(f"Aligning position (video) timestamps to ground truth ({ground_truth_time_source})")
+            ground_truth_visit_times = metadata.get("ground_truth_visit_times")
+            true_video_timestamps = align_via_interpolation(unaligned_timestamps=video_timestamps_seconds,
+                                                    unaligned_visit_times=arduino_visit_times,
+                                                    ground_truth_visit_times=ground_truth_visit_times,
+                                                    logger=logger)
         else:
             # If we don't have port visits for alignment, keep the original timestamps
+            logger.info("No ground truth port visits found, keeping original position (video) timestamps.")
             true_video_timestamps = video_timestamps_seconds
 
     print("Adding position data from DeepLabCut...")
@@ -309,20 +289,16 @@ def add_dlc(nwbfile: NWBFile, metadata: dict, logger):
     # e.g. Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5
     deeplabcut_file_path = metadata["video"]["dlc_path"]
 
-    # If pixels_per_cm exists in metadata, use that value
-    if "pixels_per_cm" in metadata["video"]:
-        PIXELS_PER_CM = metadata["video"]["pixels_per_cm"]
-        logger.info(f"Assigning video PIXELS_PER_CM={PIXELS_PER_CM} from metadata.")
-    # Otherwise, assign it based on the date of the experiment
-    else:
-        PIXELS_PER_CM = assign_pixels_per_cm(metadata["datetime"])
-        logger.info("No 'pixels_per_cm' value found in video metadata.")
-        logger.info(f"Automatically assigned video PIXELS_PER_CM={PIXELS_PER_CM} based on date of experiment.")
-
     # Read x, y position data and calculate velocity and acceleration
-    position_dfs = read_dlc(deeplabcut_file_path, pixels_per_cm=PIXELS_PER_CM, logger=logger, 
+    position_dfs = read_dlc(deeplabcut_file_path, pixels_per_cm=pixels_per_cm, logger=logger, 
                             likelihood_cutoff=0.9, cam_fps=15)
 
     # Add x, y position data to the nwbfile
     add_position_to_nwb(nwbfile, position_data=position_dfs, 
-                        pixels_per_cm=PIXELS_PER_CM, video_timestamps=true_video_timestamps, logger=logger)
+                        pixels_per_cm=pixels_per_cm, video_timestamps=true_video_timestamps, logger=logger)
+
+    # Plot the rat's position (for each spatial series added to the nwb)
+    if fig_dir is not None:
+        position_object = nwbfile.processing["behavior"].data_interfaces["position"]
+        for name, spatial_series in position_object.spatial_series.items():
+            plot_rat_position_heatmap(nwbfile=nwbfile, spatial_series_name=name, fig_dir=fig_dir)

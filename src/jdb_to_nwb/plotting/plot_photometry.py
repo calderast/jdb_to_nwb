@@ -5,6 +5,8 @@ from scipy.stats import linregress
 
 
 # The following plots are called by process_and_add_pyphotometry_to_nwb
+# They plot various steps of the photometry signal processing sequence used by Jose. 
+# Plot labels assume photometry signals are GACh3.8 (470/405 ratio) and rDA3m (565)
 
 def plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405, 
                                 relative_raw_signal, sampling_rate, fig_dir=None): 
@@ -186,68 +188,3 @@ def plot_normalized_signals(visits, green_zscored, zscored_405, red_zscored,
         save_path = os.path.join(fig_dir, "processed_pyphotometry_signals.png")
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
-
-# Commenting out the following plot for now.
-# We will probably not do interactive with the conversion pipeline.
-# But keeping this here for now
-# # from matplotlib.widgets import Slider
-
-
-# def plot_interactive_filtered_signals(time_seconds, filtered_ratio, 
-#                                       filtered_green, filtered_405, filtered_red):
-#     """
-#     """
-
-#     fig,ax1=plt.subplots(figsize=(16, 10))  
-#     plot1=ax1.plot(time_seconds, filtered_ratio, 'b', label='470/405')
-#     plot2=ax1.plot(time_seconds, filtered_green, 'g', label='470 GACh3.8')
-#     plot3=ax1.plot(time_seconds, filtered_405, 'y', label='405')
-
-#     ax2=plt.twinx()
-#     plot4=ax2.plot(time_seconds, filtered_red, color='r', label='565 rDA3m') 
-
-#     ax1.set_xlabel('Time (seconds)')
-#     ax1.set_ylabel('ACh & 405 Signals (V)', color='k')
-#     ax2.set_ylabel('565 DA Signal (V)', color='r')
-#     ax1.set_title('Denoised and Bleach Corrected by Highpass Filtering at 0.001Hz and Lowpass Filtering at 10Hz')
-
-#     lines = plot1+plot2+plot3+plot4
-#     labels = [l.get_label() for l in lines]  
-#     ax2.set_ylim(ax1.get_ylim())
-
-#     # Setup the plot
-
-#     plt.subplots_adjust(bottom=0.25)  # Adjust bottom to give space for the slider
-
-#     ax2.set_ylabel('')  # This removes the y-axis label for ax2
-#     ax2.yaxis.set_ticks([]) 
-
-
-#     # Set the limits for the initial plot
-#     ax1.set_xlim(0, 120)
-
-#     # Create the slider
-#     ax_slider = plt.axes([0.1, 0.1, 0.8, 0.05])  # position for the slider
-#     slider = Slider(ax_slider, 'Time', 0, max(time_seconds) - 120, valinit=0, valstep=0.1)
-
-#     # Update function for the slider
-#     def update(val):
-#         start = slider.val
-#         ax1.set_xlim(start, start + 120)
-#         ax2.set_xlim(start, start + 120)
-#         fig.canvas.draw_idle()
-
-#     # Register the update function with the slider
-#     slider.on_changed(update)
-
-#     # Show legends
-#     lines = plot1 + plot2 + plot3 + plot4 # Combine all plot handles
-#     labels = [line.get_label() for line in lines]  # Extract labels
-#     ax1.legend(lines, labels, loc='upper right')
-
-#     # Show the plot
-#     plt.show()
-#     return None
-
-

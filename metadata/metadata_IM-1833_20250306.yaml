@@ -12,7 +12,7 @@ subject:
   species: Rattus norvegicus
   genotype: Wildtype
   sex: Male
-  date_of_birth: 2024-11-08
+  date_of_birth: 2024-11-08T00:00:00-08:00
   description: Long Evans Rat
 
 # If your experiment included electrophysiology, include field 'ephys' and the following subfields:
@@ -44,7 +44,6 @@ subject:
 #       Odd shanks are vertically offset by 1/2 the electrode pitch (15um).
 #     manufacturer: "Daniel Egert, Berke Lab"
 
-W:/Ephys/IM-1788/20241219/2024-12-19_18-17-42
 # If your experiment included photometry, include field 'photometry' and the following subfields:
 # BOTH "phot_file_path" and "box_file_path" for raw LabVIEW data,
 # OR "signals_mat_file_path" for preprocessed LabVIEW data,
@@ -61,14 +60,14 @@ photometry:
     - Purple LED
     - Blue LED
   optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
-    - Doric 0.66mm Flat 40mm Optic Fiber
+    - Optic Fiber
   optic_fiber_implant_sites:
     - reference: bregma at the cortical surface
       hemisphere: right
       ap_in_mm: 1.7
       ml_in_mm: 1.6
       dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
-      optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
+      optic_fiber: Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
       excitation_sources:  # names of excitation sources in the 'excitation_sources' field
         - Purple LED  
         - Blue LED
@@ -89,7 +88,7 @@ photometry:
       volume_in_uL: 1.0
       virus: dLight  # name of a virus in the 'viruses' field
   photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
-    - Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
+    - 7 ports Fluorescence Mini Cube - Three Fluorophores
     
 behavior:
   arduino_text_file_path: "W:/Photometry/IM-1833/20250306/arduinoraw0.txt"

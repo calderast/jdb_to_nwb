@@ -5,7 +5,7 @@ from pynwb import NWBFile
 from jdb_to_nwb.convert_spikes import add_spikes
 
 
-def test_add_spikes():
+def test_add_spikes(dummy_logger):
     """
     Test the add_spikes function.
 
@@ -23,7 +23,7 @@ def test_add_spikes():
         identifier="mock_session",
     )
 
-    add_spikes(nwbfile, metadata)
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     assert len(nwbfile.units) == 17
     assert nwbfile.units["spike_times"] is not None
@@ -33,7 +33,7 @@ def test_add_spikes():
     assert len(nwbfile.units.spike_times.data) == 30  # Check total number of spikes
 
 
-def test_add_spikes_with_incomplete_metadata(capsys):
+def test_add_spikes_with_incomplete_metadata(dummy_logger, capsys):
     """
     Test that the add_spikes function responds appropriately to missing or incomplete metadata.
     
@@ -57,12 +57,12 @@ def test_add_spikes_with_incomplete_metadata(capsys):
     # If we call the add_spikes function with no 'ephys' key in metadata,
     # it should skip ephys conversion and return with no errors
     # (No output because we have already printed that we are skipping ephys in add_raw_ephys)
-    add_spikes(nwbfile=nwbfile, metadata=metadata)
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Create a test metadata dictionary with an ephys field but no spike data
     metadata["ephys"] = {}
 
-    add_spikes(nwbfile=nwbfile, metadata=metadata)
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
     captured = capsys.readouterr() # capture stdout
 
     # Check that the correct message was printed to stdout
