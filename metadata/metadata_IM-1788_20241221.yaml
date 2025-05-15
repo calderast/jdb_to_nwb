@@ -1,14 +1,14 @@
 institution: University of California, San Francisco
 lab: Berke Lab
 experimenter:
-  - Hwang, Yang-Sun
+  - Yang-Sun Hwang
 
 # General information about the subject and session
 experiment_description: Hex maze task
 animal_name: "IM-1788" # This is repetitive
-date: "20241219"  # MMDDYYYY or YYYYMMDD
+date: "20241221"  # MMDDYYYY or YYYYMMDD
 subject:
-  subject_id: "IM-1478"
+  subject_id: "IM-1788"
   species: Rattus norvegicus
   genotype: Wildtype
   sex: Male
@@ -17,14 +17,14 @@ subject:
 
 # If your experiment included electrophysiology, include field 'ephys' and the following subfields:
 ephys:
-  openephys_folder_path: "W:/Ephys/IM-1788/20241219/2024-12-19_18-17-42"
-  impedance_file_path: "W:/Ephys/IM-1788/20241219/12192024 impedance.csv"
+  openephys_folder_path: "W:/Ephys/IM-1788/20241221/2024-12-21_15-46-09"
+  impedance_file_path: "W:/Ephys/IM-1788/20241221/12212024 impedance_maze.csv"
   electrodes_location: "Hippocampus CA1"
   reference_skull_screw_location: Medial cerebellum, 1.5 mm posterior to lambda
   plug_order: "chip_first" # "chip_first" or "cable_first". Defaults to "chip_first" if none specified
 
   # If you have spike sorting data, specify the following ephys subfields:
-  mountain_sort_output_file_path: "W:/Ephys/IM-1788/20241219/mntsort_output/firings.mda"
+  mountain_sort_output_file_path: "W:/Ephys/IM-1788/20241221/mntsort_output/firings.mda"
   sampling_frequency: 30000
 
   # Berke Lab currently uses 2 possible probes for the hex maze task, specified below.
@@ -50,9 +50,9 @@ ephys:
 # OR "signals_mat_file_path" for preprocessed LabVIEW data,
 # OR "ppd_file_path" for pyPhotometry data
 photometry:
-  phot_file_path: "W:/Photometry/IM-1788/20241219/IM-1788_2024-12-19_18-09-10____Tim_Conditioning.phot"
-  box_file_path: "W:/Photometry/IM-1788/20241219/IM-1788_2024-12-19_18-09-10____Tim_Conditioning.box"
-  signals_mat_file_path: "W:/Photometry/IM-1788/20241219/signals.mat"
+  phot_file_path: "W:/Photometry/IM-1788/20241221/IM-1788_2024-12-21_15-37-39____Tim_Conditioning.phot"
+  box_file_path: "W:/Photometry/IM-1788/20241221/IM-1788_2024-12-21_15-37-39____Tim_Conditioning.box"
+  signals_mat_file_path: "W:/Photometry/IM-1788/20241221/signals.mat"
 # ppd_file_path: "tests/test_data/downloaded/IM-1770_corvette/11062024/Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
 
   # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
@@ -61,22 +61,14 @@ photometry:
     - Purple LED
     - Blue LED
   optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
-<<<<<<< Updated upstream
-    - Optic Fiber
-=======
     - Doric 0.66mm Flat 40mm Optic Fiber
->>>>>>> Stashed changes
   optic_fiber_implant_sites:
     - reference: bregma at the cortical surface
       hemisphere: right
       ap_in_mm: 1.7
       ml_in_mm: 1.6
       dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
-<<<<<<< Updated upstream
-      optic_fiber: Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
-=======
       optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
->>>>>>> Stashed changes
       excitation_sources:  # names of excitation sources in the 'excitation_sources' field
         - Purple LED  
         - Blue LED
@@ -97,25 +89,17 @@ photometry:
       volume_in_uL: 1.0
       virus: dLight  # name of a virus in the 'viruses' field
   photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
-<<<<<<< Updated upstream
-    - 7 ports Fluorescence Mini Cube - Three Fluorophores
-
-behavior:
-  arduino_text_file_path: "W:/Photometry/IM-1788/20241219/arduinoraw0.txt"
-  arduino_timestamps_file_path: "W:/Photometry/IM-1788/20241219/ArduinoStamps0.csv"
-=======
     - Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
     
 behavior:
-  arduino_text_file_path: "W:/Photometry/IM-1788/20241219/arduinoraw0_edited.txt"
-  arduino_timestamps_file_path: "W:/Photometry/IM-1788/20241219/ArduinoStamps0_edited.csv"
->>>>>>> Stashed changes
-  maze_configuration_file_path: "W:/Photometry/IM-1788/20241219/barriers.txt"
+  arduino_text_file_path: "W:/Photometry/IM-1788/20241221/arduinoraw0.txt"
+  arduino_timestamps_file_path: "W:/Photometry/IM-1788/20241221/ArduinoStamps0.csv"
+  maze_configuration_file_path: "W:/Photometry/IM-1788/20241221/barriers.txt"
 
 video:
-  video_file_path: "W:/Photometry/IM-1788/20241219/Behav_Vid0.avi"
-  video_timestamps_file_path: "W:/Photometry/IM-1788/20241219/testvidtimes0.csv"
-  dlc_path: "W:/Photometry/IM-1788/20241219/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
+  video_file_path: "W:/Photometry/IM-1788/20241221/Behav_Vid0.avi"
+  video_timestamps_file_path: "W:/Photometry/IM-1788/20241221/testvidtimes0.csv"
+  dlc_path: "W:/Photometry/IM-1788/20241221/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
 
 
 surgery:

@@ -61,14 +61,22 @@ photometry:
     - Purple LED
     - Blue LED
   optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
+<<<<<<< Updated upstream
     - Optic Fiber
+=======
+    - Doric 0.66mm Flat 40mm Optic Fiber
+>>>>>>> Stashed changes
   optic_fiber_implant_sites:
     - reference: bregma at the cortical surface
       hemisphere: right
       ap_in_mm: 1.7
       ml_in_mm: 1.6
       dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
+<<<<<<< Updated upstream
       optic_fiber: Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
+=======
+      optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
+>>>>>>> Stashed changes
       excitation_sources:  # names of excitation sources in the 'excitation_sources' field
         - Purple LED  
         - Blue LED
@@ -89,8 +97,13 @@ photometry:
       volume_in_uL: 1.0
       virus: dLight  # name of a virus in the 'viruses' field
   photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
+<<<<<<< Updated upstream
     - 7 ports Fluorescence Mini Cube - Three Fluorophores
 
+=======
+    - Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
+    
+>>>>>>> Stashed changes
 behavior:
   arduino_text_file_path: "W:/Photometry/IM-1788/20241221/arduinoraw0.txt"
   arduino_timestamps_file_path: "W:/Photometry/IM-1788/20241221/ArduinoStamps0.csv"

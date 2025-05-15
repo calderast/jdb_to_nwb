@@ -1,0 +1,123 @@
+institution: University of California, San Francisco
+lab: Berke Lab
+experimenter:
+  - Yang-Sun Hwang
+
+# General information about the subject and session
+experiment_description: Hex maze task
+animal_name: "IM-1833" # This is repetitive
+date: "20250306"  # MMDDYYYY or YYYYMMDD
+subject:
+  subject_id: "IM-1833"
+  species: Rattus norvegicus
+  genotype: Wildtype
+  sex: Male
+  date_of_birth: 2024-11-08
+  description: Long Evans Rat
+
+# If your experiment included electrophysiology, include field 'ephys' and the following subfields:
+# ephys:
+#   openephys_folder_path: "W:/Ephys/IM-1788/20241221/2024-12-21_15-46-09"
+#   impedance_file_path: "W:/Ephys/IM-1788/20241221/12212024 impedance_maze.csv"
+#   electrodes_location: "Hippocampus CA1"
+#   reference_skull_screw_location: Medial cerebellum, 1.5 mm posterior to lambda
+#   plug_order: "chip_first" # "chip_first" or "cable_first". Defaults to "chip_first" if none specified
+
+#   # If you have spike sorting data, specify the following ephys subfields:
+#   mountain_sort_output_file_path: "W:/Ephys/IM-1788/20241221/mntsort_output/firings.mda"
+#   sampling_frequency: 30000
+
+#   # Berke Lab currently uses 2 possible probes for the hex maze task, specified below.
+#   # Un-comment the probe used for your experiment.
+#   # device:
+#   #   name: "256-ch Silicon Probe, 3mm length, 66um pitch"
+#   #   description: >
+#   #     32 shanks, 8 electrodes per shank. Each shank is 3mm long. 
+#   #     Shanks are 66um apart. There is 30um between electrodes on each shank. 
+#   #     Odd shanks are vertically offset by 1/2 the electrode pitch (15um).
+#   #   manufacturer: "Daniel Egert, Berke Lab"
+#   device:
+#     name: "256-ch Silicon Probe, 6mm length, 80um pitch"
+#     description: >
+#       32 shanks, 8 electrodes per shank. Each shank is 6mm long. 
+#       Shanks are 80um apart. There is 30um between electrodes on each shank. 
+#       Odd shanks are vertically offset by 1/2 the electrode pitch (15um).
+#     manufacturer: "Daniel Egert, Berke Lab"
+
+W:/Ephys/IM-1788/20241219/2024-12-19_18-17-42
+# If your experiment included photometry, include field 'photometry' and the following subfields:
+# BOTH "phot_file_path" and "box_file_path" for raw LabVIEW data,
+# OR "signals_mat_file_path" for preprocessed LabVIEW data,
+# OR "ppd_file_path" for pyPhotometry data
+photometry:
+  phot_file_path: "W:/Photometry/IM-1833/20250306/IM-1833_2025-03-06_22-27-06____Tim_Conditioning.phot"
+  box_file_path: "W:/Photometry/IM-1833/20250306/IM-1833_2025-03-06_22-27-06____Tim_Conditioning.box"
+  signals_mat_file_path: "W:/Photometry/IM-1833/20250306/signals.mat"
+# ppd_file_path: "tests/test_data/downloaded/IM-1770_corvette/11062024/Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+
+  # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
+  # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
+  excitation_sources:  # reference existing excitation sources from resources/photometry_devices.yaml
+    - Purple LED
+    - Blue LED
+  optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
+    - Doric 0.66mm Flat 40mm Optic Fiber
+  optic_fiber_implant_sites:
+    - reference: bregma at the cortical surface
+      hemisphere: right
+      ap_in_mm: 1.7
+      ml_in_mm: 1.6
+      dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
+      optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
+      excitation_sources:  # names of excitation sources in the 'excitation_sources' field
+        - Purple LED  
+        - Blue LED
+  viruses:
+    - name: dLight
+      construct_name: AAVDJ-CAG-dLight3.8
+      description: AAV virus with dLight3.8 sensor, 1:10 diluted
+      manufacturer: UNC
+      titer_in_vg_per_ml: 8e12
+  virus_injections:
+    - description: Injection of dLight AAV virus into both nucleus accumbens core
+      location: NAcc
+      hemisphere: both
+      reference: bregma at the cortical surface
+      ap_in_mm: 1.7
+      ml_in_mm: 1.6
+      dv_in_mm: -6.2  # 6.2 mm deep for males, 6.0 mm deep for females
+      volume_in_uL: 1.0
+      virus: dLight  # name of a virus in the 'viruses' field
+  photodetectors:  # reference existing photodetectors from resources/photometry_devices.yaml
+    - Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
+    
+behavior:
+  arduino_text_file_path: "W:/Photometry/IM-1833/20250306/arduinoraw0.txt"
+  arduino_timestamps_file_path: "W:/Photometry/IM-1833/20250306/ArduinoStamps0.csv"
+  maze_configuration_file_path: "W:/Photometry/IM-1833/20250306/barriers.txt"
+
+video:
+  video_file_path: "W:/Photometry/IM-1833/20250306/Behav_Vid0.avi"
+  video_timestamps_file_path: "W:/Photometry/IM-1833/20250306/testvidtimes0.csv"
+  dlc_path: "W:/Photometry/IM-1833/20250306/Behav_Vid0DLC_resnet50_Triangle_Maze_PhotDec10shuffle1_400000.h5"
+
+
+surgery:
+  ok
+
+virus: 
+  1:10 to match the viral titer with dLight1.3b that our lab used.
+
+notes:
+  Reward used was 40uL sucrose solution (10% sucrose, 0.1% NaCl) at each reward port.
+  The rat was water deprived before the experiment. 
+  Behavior was great. The room has the dimmest ceiling light set.
+
+keywords:
+  - photometry
+  - ephys
+  - behavior
+  - video
+  - hex maze
+  - dopamine
+  - reward
