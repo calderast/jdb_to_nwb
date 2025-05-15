@@ -69,18 +69,25 @@ def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger):
     so both lists are the same length and can be used for timestamps alignment. We auto-detect if the 
     visits to be removed are at the start or the end of the longer list by matching the relative spacing 
     between port visit times for each datastream.
-    
+
     Args:
     ground_truth_visits (list or np.array): List of ground truth port visit times
     unaligned_visits (list or np.array): List of unaligned port visit times
 
     Returns:
-    aligned_timestamps (list or np.array): Timestamps aligned to the ground_truth_visit_times
+    tuple of arrays:
+    ground_truth_visits: ground truth visit times trimmed if it was the longer list
+    unaligned_visits: unaligned visit times trimmed if it was the longer list
     """
 
     # Ensure both lists are arrays
     visits_1, visits_2 = np.array(ground_truth_visits), np.array(unaligned_visits)
     logger.info(f"Initial number of port visits: ground truth={len(visits_1)}, unaligned={len(visits_2)}")
+
+    # If they are already the same length, just return
+    if len(visits_1) == len(visits_2):
+        logger.info("Port visit lists are already the same length!")
+        return visits_1, visits_2
 
     # Determine which list is longer
     if len(visits_1) > len(visits_2):
