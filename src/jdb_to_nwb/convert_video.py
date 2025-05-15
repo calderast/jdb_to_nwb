@@ -10,7 +10,7 @@ from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
 from ndx_franklab_novela import CameraDevice
 from hdmf.common import DynamicTable
-from .timestamps_alignment import align_via_interpolation
+from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
 
 
 def assign_pixels_per_cm(session_date):
@@ -233,6 +233,9 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger):
     # Read timestamps of each camera frame (in ms)
     with open(video_timestamps_file_path, "r") as video_timestamps_file:
         video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
+
+    # Check for and handle potential timestamps reset (happens when the recording passes 12:00pm)
+    video_timestamps_ms = handle_timestamps_reset(timestamps=video_timestamps_ms, logger=logger)
 
     # Adjust video timestamps so photometry starts at time 0 (this is also done to match arduino visit times)
     video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))

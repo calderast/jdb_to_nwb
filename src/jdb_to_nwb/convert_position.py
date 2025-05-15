@@ -4,7 +4,7 @@ import pandas as pd
 from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
-from .timestamps_alignment import align_via_interpolation
+from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
 from .plotting.plot_combined import plot_rat_position_heatmap
 
 
@@ -254,7 +254,10 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         video_timestamps_file_path = metadata["video"]["video_timestamps_file_path"]
         with open(video_timestamps_file_path, "r") as video_timestamps_file:
             video_timestamps_ms = np.array(list(csv.reader(video_timestamps_file)), dtype=float).ravel()
-            
+
+        # Check for and handle potential timestamps reset (happens when the recording passes 12:00pm)
+        video_timestamps_ms = handle_timestamps_reset(timestamps=video_timestamps_ms, logger=logger)
+
         # Adjust video timestamps so photometry starts at time 0 (this is also done to match arduino visit times)
         video_timestamps_ms = np.subtract(video_timestamps_ms, metadata.get("photometry_start_in_arduino_ms", 0))
 

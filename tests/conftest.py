@@ -1,6 +1,5 @@
 import logging
 import pytest
-from unittest.mock import MagicMock
 
 @pytest.fixture
 def dummy_logger():
@@ -8,10 +7,6 @@ def dummy_logger():
     logger.setLevel(logging.DEBUG)
     logger.addHandler(logging.NullHandler())  # Prevents actual logging output
     return logger
-
-@pytest.fixture
-def mock_logger():
-    return MagicMock(spec=logging.Logger)
 
 
 # see https://docs.pytest.org/en/stable/example/simple.html#control-skipping-of-tests-according-to-command-line-option
