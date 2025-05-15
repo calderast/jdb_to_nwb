@@ -30,13 +30,13 @@ def load_maze_configurations(maze_configuration_file_path: Path):
         return []
 
 
-def adjust_arduino_timestamps(arduino_timestamps: list):
+def adjust_arduino_timestamps(arduino_timestamps: list, logger):
     """
     Convert arduino timestamps to seconds and make photometry start at time 0.
     If needed, detect and handle timestamps resetting to 0 when recording passes 12:00pm.
     """
     # Check for and handle potential timestamps reset
-    arduino_timestamps = handle_timestamps_reset(arduino_timestamps)
+    arduino_timestamps = handle_timestamps_reset(timestamps=arduino_timestamps, logger=logger)
 
     # The photometry start time is always the second timestamp in arduino_timestamps
     photometry_start_in_arduino_ms = arduino_timestamps[1]
@@ -464,7 +464,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
 
     # Convert arduino timestamps to seconds and make photometry start at time 0
     # If needed, handle reset to 0 that happens when the recording passes 12:00pm
-    arduino_timestamps, photometry_start_in_arduino_time = adjust_arduino_timestamps(arduino_timestamps)
+    arduino_timestamps, photometry_start_in_arduino_time = adjust_arduino_timestamps(arduino_timestamps, logger)
     logger.debug(f"Photometry start in arduino time: {photometry_start_in_arduino_time}")
 
     # Read through the arduino text and timestamps to get trial and block data
