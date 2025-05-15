@@ -13,8 +13,10 @@ def handle_timestamps_reset(timestamps, logger):
     We expect maximum 1 reset. If we encounter any time drops that do not
     fit this expectation, error so we can figure out what went wrong.
     """
-    # Helper to convert timestamp in ms to HH:MM:SS.mmmm for logging
-    ms_to_hhmmss = lambda ms: f"{ms//3600000:02}:{(ms//60000)%60:02}:{(ms//1000)%60:02}.{ms%1000:03}"
+    # Helper to convert timestamp in ms to HH:MM:SS.mmm for logging
+    def ms_to_hhmmss(ms):
+        return f"{ms // 3600000:02}:{(ms // 60000) % 60:02}:{(ms // 1000) % 60:02}.{ms % 1000:03}"
+
     reset_threshold = 86_400_000 # 24:00:00 in ms
 
     # If all timestamps are already increasing (no reset), return as-is
