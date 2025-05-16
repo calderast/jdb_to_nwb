@@ -52,7 +52,10 @@ def handle_timestamps_reset(timestamps, logger):
     logger.info("Adjusting timestamps to account for reset...")
 
     # Adjust all timestamps after the reset so they are increasing
-    adjusted_timestamps = timestamps[:reset_idx] + [t + reset_threshold for t in timestamps[reset_idx:]]
+    adjusted_timestamps = np.concatenate([
+        timestamps[:reset_idx],
+        timestamps[reset_idx:] + reset_threshold
+    ])
 
     # Final sanity check that the adjusted timestamps are increasing
     if not all(t2 >= t1 for t1, t2 in zip(adjusted_timestamps, adjusted_timestamps[1:])):
