@@ -83,6 +83,9 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
     However, we don't want to start the block at the exact moment the "Block" text appears
     because this is still in the middle of the beam break. We want the new block to start
     once the beam break has ended, so it aligns with the end of the last trial in the block.
+
+    Note that for the first trial and block, the start time is set to 3s before the first beam break 
+    (or 0, to avoid negative start times) to exclude pre-maze times.
     """
     trial_data = []
     block_data = []
@@ -95,7 +98,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
 
     for i, line in enumerate(arduino_text):
         # Detect block starts
-        block_start = re.match(r"Block: (\d)", line)
+        block_start = re.match(r"Block: (\d+)", line)
         if block_start:
             # Get block metadata: reward probabilities are always on the next 3 lines
             current_block = {
@@ -109,10 +112,9 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
             }
             logger.debug(f"Found new block: {current_block}")
 
-            # If this is the first block, we can use the current time as the start time
+            # If this is the first block, wait to set the start time. It will be set to 3s before the first beam break
             if not previous_block:
                 logger.debug("This is the first block.")
-                current_block["start_time"] = float(arduino_timestamps[i])
                 previous_block = current_block
 
         # Detect beam breaks
@@ -122,8 +124,18 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
 
             # If this is the start of a beam break at a new port, create the trial ending at this port
             if not current_trial and port != previous_trial.get("end_port", None):
-                # The first trial starts at the first block start, subsequent trials start at previous trial end
-                current_trial["start_time"] = float(previous_trial.get("end_time", current_block.get("start_time")))
+                # Set the start time of the first trial to 3s before the first beam break to exclude pre-maze times
+                if not previous_trial:
+                    first_trial_start_time = max(float(arduino_timestamps[i]) - 3, 0) # don't allow start time < 0
+                    logger.debug("This is the first trial. Setting start time to 3s before the beam break start "
+                                 "(or 0 to avoid a negative start time).")
+                    logger.debug(f"First beam break start: {float(arduino_timestamps[i])}")
+                    logger.debug(f"Start of first trial/block: {first_trial_start_time}")
+                    current_trial["start_time"] = first_trial_start_time
+                    current_block["start_time"] = first_trial_start_time
+                # Subsequent trials start at previous trial end
+                else:
+                    current_trial["start_time"] = float(previous_trial.get("end_time"))
                 current_trial["beam_break_start"] = float(arduino_timestamps[i])
                 current_trial["start_port"] = previous_trial.get("end_port", "None")
                 current_trial["end_port"] = port
