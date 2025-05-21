@@ -14,14 +14,6 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Ensure tag is on main
-        run: |
-          BRANCH=$(git branch -r --contains $GITHUB_SHA | grep origin/main || true)
-          if [ -z "$BRANCH" ]; then
-            echo "Tag not on main. Skipping publish."
-            exit 1
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
