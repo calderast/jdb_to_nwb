@@ -3,14 +3,14 @@
 # These are the excitation sources for the old maze room.
 # These are used in combination with the Doric ilFMC7 photodetector.
 excitation_sources:
-  - name: Blue LED
+  - name: Thorlabs Blue LED
     excitation_wavelength_in_nm: 470.0
-    manufacturer: ThorLabs
-    model: M470F3 
+    manufacturer: Thorlabs
+    model: M470F3
     illumination_type: LED
-  - name: Purple LED
+  - name: Thorlabs Purple LED
     excitation_wavelength_in_nm: 405.0
-    manufacturer: ThorLabs
+    manufacturer: Thorlabs
     model: M405FP1
     illumination_type: LED
 
