@@ -1,10 +1,10 @@
 institution: University of California, San Francisco
 lab: Berke Lab
 experimenter:
-  - Stephanie Crater
-  - Jose Figueroa
-  - Yang-Sun Hwang
-  - Tim Krausz
+  - Crater, Stephanie
+  - Figueroa, Jose
+  - Hwang, Yang-Sun
+  - Krausz, Tim
 
 # General information about the subject and session
 experiment_description: Hex maze task
