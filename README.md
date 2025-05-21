@@ -1,9 +1,6 @@
 # jdb_to_nwb
 Converts electrophysiology, photometry, and behavioral data for the hex maze task used by the Berke Lab at UCSF to NWB format for sharing and analysis.
 
-## User Note
-This repository is currently in development and should not be treated as a final/working version of an NWB conversion pipeline. Expect the code to change significantly before this pipeline is ready for regular use.
-
 ## Installation
 
 ```bash
@@ -12,24 +9,19 @@ cd jdb_to_nwb
 pip install -e .
 ```
 
-## Current usage
+## Usage
 
-1. Copy `tests/metadata_example.yaml` to the root directory of the repository:
-```bash
-cp tests/metadata_example.yaml .
-```
+1. Open `metadata_example.yaml` in a text editor. Update the paths to point to your data and update the metadata for your experiment.
 
-2. Open `metadata_example.yaml` in a text editor. Update the paths to point to your data and update the metadata for your experiment.
-
-3. Run the conversion to generate an NWB file (replace `output_dir` with your desired output directory).
+2. Run the conversion to generate an NWB file (replace `output_dir` with your desired output directory).
 The nwb file will be automatically named based on the animal name and date (i.e. `rat_date.nwb`):
 ```bash
 jdb_to_nwb metadata_example.yaml output_dir
 ```
 
-4. Sub-directories for associated figures and conversion log files will be created alongside the nwb file in `output_dir`. Check that there are no errors in the error log file and that all figures look as expected.
+3. Sub-directories for associated figures and conversion log files will be created alongside the nwb file in `output_dir`. Check that there are no errors in the error log file and that all figures look as expected.
 
-## Downloading test data
+## Downloading test data (Developers only)
 
 The large test data files are stored in a shared UCSF Box account. To get access to the test data,
 please contact the repo maintainers.

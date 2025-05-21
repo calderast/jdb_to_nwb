@@ -1,10 +1,10 @@
 institution: University of California, San Francisco
 lab: Berke Lab
 experimenter:
-  - Crater, Stephanie
-  - Figueroa, Jose
-  - Hwang, Yang-Sun
-  - Krausz, Tim
+  - Stephanie Crater
+  - Jose Figueroa
+  - Yang-Sun Hwang
+  - Tim Krausz
 
 # General information about the subject and session
 experiment_description: Hex maze task
@@ -53,8 +53,8 @@ photometry:
   # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
   # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
   excitation_sources:  # reference existing excitation sources from resources/photometry_devices.yaml
-    - Purple LED
-    - Blue LED
+    - Thorlabs Purple LED
+    - Thorlabs Blue LED
   optic_fibers:  # reference existing optic fibers from resources/photometry_devices.yaml
     - Doric 0.66mm Flat 40mm Optic Fiber
 
@@ -70,8 +70,8 @@ photometry:
       dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
       optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # name of an optic fiber in the 'optic_fibers' field
       excitation_sources:  # names of excitation sources in the 'excitation_sources' field
-        - Purple LED  
-        - Blue LED
+        - Thorlabs Purple LED  
+        - Thorlabs Blue LED
   viruses:
     - name: dLight
       construct_name: AAVDJ-CAG-dLight1.3b
