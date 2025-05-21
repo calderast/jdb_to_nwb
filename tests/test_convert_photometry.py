@@ -400,12 +400,12 @@ def test_add_photometry_metadata(dummy_logger):
     assert "Thorlabs Purple LED" in nwbfile.devices
     assert nwbfile.devices["Thorlabs Purple LED"].excitation_wavelength_in_nm == 405.0
     assert nwbfile.devices["Thorlabs Purple LED"].illumination_type == "LED"
-    assert nwbfile.devices["Thorlabs Purple LED"].manufacturer == "ThorLabs"
+    assert nwbfile.devices["Thorlabs Purple LED"].manufacturer == "Thorlabs"
     assert nwbfile.devices["Thorlabs Purple LED"].model == "M405FP1"
     assert "Thorlabs Blue LED" in nwbfile.devices
     assert nwbfile.devices["Thorlabs Blue LED"].excitation_wavelength_in_nm == 470.0
     assert nwbfile.devices["Thorlabs Blue LED"].illumination_type == "LED"
-    assert nwbfile.devices["Thorlabs Blue LED"].manufacturer == "ThorLabs"
+    assert nwbfile.devices["Thorlabs Blue LED"].manufacturer == "Thorlabs"
     assert nwbfile.devices["Thorlabs Blue LED"].model == "M470F3"
     assert "Doric 0.66mm Flat 40mm Optic Fiber" in nwbfile.devices
     optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"]
