@@ -75,11 +75,11 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
                                 lw=1.5, label=f'{overlay_label}')
 
         # Set title and ylabel
-        axs[i].set_ylabel(f'{label} ({unit})', fontsize=10)
-        axs[i].set_title(f'{label}', fontsize=12)
+        axs[i].set_ylabel(f'{unit}', fontsize=10)
+        axs[i].set_title(f'{label}', fontsize=15)
         axs[i].legend(loc='upper right')
 
-    axs[-1].set_xlabel('Time (minutes)', fontsize=10)
+    axs[-1].set_xlabel('Time (minutes)', fontsize=12)
 
     # Crop the x axis to only signal times
     margin = 0.01 * (xvals[-1] - xvals[0])

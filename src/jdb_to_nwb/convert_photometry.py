@@ -691,7 +691,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     plot_photometry_signals(visits=port_visits, 
                             sampling_rate=Fs,
                             signals=[raw_green, raw_reference], 
-                            signal_labels=["Raw 470", "Raw 405"],
+                            signal_labels=["Raw 470nm signal", "Raw 405nm signal"],
                             signal_colors=["blue", "purple"],
                             title="Raw LabVIEW photometry signals",
                             signal_units="a.u.", 
@@ -759,29 +759,42 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
 
     # Plot the processing steps for 470nm wavelength
     signals_to_plot = [raw_green, signal_green, baseline_subtracted_green, z_scored_green]
-    signal_labels = ["Raw 470", "Smoothed 470", "Baseline-subtracted 470", "Z-scored 470"]
+    signal_labels = ["Raw 470nm signal", "Smoothed 470nm signal", 
+                     "Baseline-subtracted 470nm signal", "Z-scored 470nm signal"]
     plot_photometry_signals(visits=port_visits, 
                             sampling_rate=Fs,
                             signals=signals_to_plot, 
                             signal_labels=signal_labels,
                             title="470nm signal processing",
-                            signal_units="a.u.", 
-                            overlay_signals=[(green_baseline, 1, "black", "airPLS baseline")],
+                            signal_units=["a.u.", "a.u.", "a.u.", "Z-score"],
+                            overlay_signals=[(green_baseline, 1, "red", "airPLS baseline")],
                             fig_dir=fig_dir)
     
     # Plot the processing steps for 405nm wavelength
     signals_to_plot = [raw_reference, reference, baseline_subtracted_ref, z_scored_reference]
-    signal_labels = ["Raw 405", "Smoothed 405", "Baseline-subtracted 405", "Z-scored 405"]
+    signal_labels = ["Raw 405nm signal", "Smoothed 405nm signal", 
+                     "Baseline-subtracted 405nm signal", "Z-scored 405nm signal"]
     plot_photometry_signals(visits=port_visits, 
                             sampling_rate=Fs,
                             signals=signals_to_plot, 
                             signal_labels=signal_labels,
                             title="405nm signal processing",
-                            signal_units="a.u.", 
-                            overlay_signals=[(ref_baseline, 1, "black", "airPLS baseline")],
+                            signal_units=["a.u.", "a.u.", "a.u.", "Z-score"], 
+                            overlay_signals=[(ref_baseline, 1, "red", "airPLS baseline")],
                             fig_dir=fig_dir)
     
-    # TODO: Plot steps of isosbestic correction
+    # Plot steps of isosbestic correction
+    signals_to_plot = [z_scored_green, z_scored_reference, z_scored_reference_fitted, z_scored_green_dFF]
+    signal_labels = ["Z-scored 470nm signal", "Z-scored 405nm signal", 
+                     "Predicted 470nm signal from 405nm signal", "Z-scored dF/F (post isosbestic correction)"]
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=signals_to_plot, 
+                            signal_labels=signal_labels,
+                            signal_colors=["blue", "purple", "gray", "green"],
+                            title="dLight isosbestic correction",
+                            signal_units=["Z-score", "Z-score", "Z-score", "Z-score"],
+                            fig_dir=fig_dir)
 
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
