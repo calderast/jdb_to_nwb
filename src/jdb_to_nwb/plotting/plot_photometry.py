@@ -5,7 +5,7 @@ from scipy.stats import linregress
 
 
 def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title, 
-                            signal_colors=None, signal_units=None, fig_dir=None):
+                            signal_colors=None, signal_units=None, overlay_signals=None, fig_dir=None):
     """
     Plots photometry signals and port visit times.
 
@@ -22,6 +22,12 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
         signal_colors (list[str]): Optional list of colors for each signal. Defaults to matplotlib blue
         signal_units (str or list[str]): Optional unit to use for all signals, or list
                 of units if different signals have different units. Defaults to a.u.
+        overlay_signals (list[tuple]): Optional list of signals to overlay (used to show airPLS baselines).
+                Each tuple contains:
+                - The signal to overlay
+                - The index of the subplot where the signal should be overlaid
+                - The color for the overlay signal
+                - The label for the overlay signal
     """
     # Sanity check
     assert len(signals) == len(signal_labels), "Each signal must have a corresponding label"
@@ -38,7 +44,7 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
 
     # Set signal colors
     if signal_colors is None:
-        signal_units = ["#1f77b4"] * len(signals) # Default blue
+        signal_colors = ["#1f77b4"] * len(signals) # Default blue
     else:
         assert len(signal_colors) == len(signals), "Length of signal_colors must match the number of signals"
 
@@ -56,9 +62,18 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
     for i, (signal, label, unit, color) in enumerate(zip(signals, signal_labels, signal_units, signal_colors)):
         # Plot the signal
         axs[i].plot(xvals, signal, color=color, lw=1.5, label=f'{label}')
+
         # Mark port visit times with short vertical lines (top 5% of the y axis limits)
         ymin_val = axs[i].get_ylim()[1] - (axs[i].get_ylim()[1] - axs[i].get_ylim()[0]) * 0.05
         axs[i].vlines(port_visit_times, ymin=ymin_val, ymax=axs[i].get_ylim()[1], color='k', lw=1, label='Port visits')
+
+        # Overlay signals if specified
+        if overlay_signals:
+            for overlay_signal, overlay_subplot_idx, overlay_color, overlay_label in overlay_signals:
+                if overlay_subplot_idx == i:
+                    axs[i].plot(xvals, overlay_signal, color=overlay_color, 
+                                lw=1.5, label=f'{overlay_label}')
+
         # Set title and ylabel
         axs[i].set_ylabel(f'{label} ({unit})', fontsize=10)
         axs[i].set_title(f'{label}', fontsize=12)

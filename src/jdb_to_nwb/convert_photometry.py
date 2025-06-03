@@ -701,9 +701,6 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     plot_signal_correlation(sig1=raw_green, sig2=raw_reference, 
                             label1="Raw 470", label2="Raw 405", fig_dir=fig_dir)
 
-    # Convert port visits to seconds
-    port_visits = [visit_time / Fs for visit_time in port_visits]
-
     # Smooth the signals using a rolling mean
     smooth_window = int(Fs / 30)
     min_periods = 1  # Minimum number of observations required for a valid computation
@@ -760,6 +757,32 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     logger.info("Calculating deltaF/F via subtraction (z_scored_green - z_scored_reference_fitted)...")
     z_scored_green_dFF = z_scored_green - z_scored_reference_fitted
 
+    # Plot the processing steps for 470nm wavelength
+    signals_to_plot = [raw_green, signal_green, baseline_subtracted_green, z_scored_green]
+    signal_labels = ["Raw 470", "Smoothed 470", "Baseline-subtracted 470", "Z-scored 470"]
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=signals_to_plot, 
+                            signal_labels=signal_labels,
+                            title="470nm signal processing",
+                            signal_units="a.u.", 
+                            overlay_signals=[(green_baseline, 1, "black", "airPLS baseline")],
+                            fig_dir=fig_dir)
+    
+    # Plot the processing steps for 405nm wavelength
+    signals_to_plot = [raw_reference, reference, baseline_subtracted_ref, z_scored_reference]
+    signal_labels = ["Raw 405", "Smoothed 405", "Baseline-subtracted 405", "Z-scored 405"]
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=signals_to_plot, 
+                            signal_labels=signal_labels,
+                            title="405nm signal processing",
+                            signal_units="a.u.", 
+                            overlay_signals=[(ref_baseline, 1, "black", "airPLS baseline")],
+                            fig_dir=fig_dir)
+    
+    # TODO: Plot steps of isosbestic correction
+
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
@@ -800,10 +823,13 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     nwbfile.add_acquisition(raw_green_response_series)
     nwbfile.add_acquisition(raw_reference_response_series)
 
+    # Convert port visits to seconds to use for alignment
+    visits_in_seconds = [visit_time / Fs for visit_time in port_visits]
+
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
     signals_to_plot = ['z_scored_green_dFF']
-    return {'sampling_rate': Fs, 'port_visits': port_visits, 
+    return {'sampling_rate': Fs, 'port_visits': visits_in_seconds, 
             'photometry_start': signals.get('photometry_start'), 'signals_to_plot': signals_to_plot}
 
 
