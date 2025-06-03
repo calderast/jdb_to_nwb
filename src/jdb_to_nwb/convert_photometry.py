@@ -18,12 +18,8 @@ from sklearn.linear_model import Lasso
 
 from ndx_fiber_photometry import FiberPhotometryResponseSeries, ExcitationSource, OpticalFiber, Photodetector
 from .plotting.plot_photometry import (
-    plot_raw_photometry_signals,
-    plot_405_470_correlation,
-    plot_405_565_correlation,
-    plot_470_565_correlation,
-    plot_ratio_565_correlation,
-    plot_normalized_signals
+    plot_signal_correlation,
+    plot_photometry_signals,
 )
 
 # Get the location of the resources directory when the package is installed from pypi
@@ -501,14 +497,11 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     raw_405 = pd.Series(ppd_data['analog_3'])
     relative_raw_signal = raw_green / raw_405
 
-    # Get port visits and sampling rate from ppd file
+    # Get port visits (in photometry sample time) and sampling rate from ppd file
     visits = ppd_data['pulse_inds_1'][1:]
     logger.debug(f"There were {len(visits)} port visits recorded by pyPhotometry")
     sampling_rate = ppd_data['sampling_rate']
     logger.info(f"pyPhotometry sampling rate: {sampling_rate} Hz")
-
-    # Convert port visits to seconds
-    visits = [visit_time / sampling_rate for visit_time in visits]
 
     # Convert pyphotometry photometry start time to datetime object and set timezone to Pacific Time
     photometry_start = datetime.strptime(ppd_data['date_time'], "%Y-%m-%dT%H:%M:%S.%f")
@@ -519,14 +512,20 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     for phot_key in ppd_data:
         logger.debug(f"{phot_key}: {ppd_data[phot_key]}")
 
-    # Plot the raw signals
-    plot_raw_photometry_signals(visits, raw_green, raw_red, raw_405, relative_raw_signal, 
-                                sampling_rate, fig_dir)
+    # Plot the raw pyPhotometry signals
+    plot_photometry_signals(visits=visits, 
+                            sampling_rate=sampling_rate,
+                            signals=[raw_green, raw_405, relative_raw_signal, raw_red], 
+                            signal_labels=["Raw 470", "Raw 405", "Raw 470/405 ratio", "Raw 565"],
+                            signal_colors=["blue", "purple", "grey", "red"],
+                            title="Raw pyPhotometry signals",
+                            signal_units=["V", "V", "ratio", "V"], 
+                            fig_dir=fig_dir)
 
     # Plot the correlation between the raw signals
-    plot_405_470_correlation(raw_405, raw_green, fig_dir)
-    plot_405_565_correlation(raw_405, raw_red, fig_dir)
-    plot_470_565_correlation(raw_green, raw_red, fig_dir)
+    plot_signal_correlation(sig1=raw_405, sig2=raw_green, label1='Raw 405', label2='Raw 470', fig_dir=fig_dir)
+    plot_signal_correlation(sig1=raw_405, sig2=raw_red, label1='Raw 405', label2='Raw 565', fig_dir=fig_dir)
+    plot_signal_correlation(sig1=raw_green, sig2=raw_red, label1='Raw 470', label2='Raw 565', fig_dir=fig_dir)
 
     # Low pass filter at 10Hz to remove high frequency noise
     print('Filtering data...')
@@ -549,10 +548,11 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     red_highpass = filtfilt(b,a, red_denoised, padtype='even')
     ratio_highpass = filtfilt(b,a, ratio_denoised, padtype='even')
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
-    
+
     # Plot the correlation between the filtered signals of interest (ACh and DA)
-    plot_ratio_565_correlation(ratio_highpass, red_highpass, fig_dir)
-    
+    plot_signal_correlation(sig1=ratio_highpass, sig2=red_highpass, 
+                            label1='GACh3.8 470/405 ratio', label2='rDA3m', fig_dir=fig_dir)
+
     # Z-score each signal to normalize the data
     print('Z-scoring photometry signals...')
     logger.info('Z-scoring filtered photometry signals...')
@@ -561,10 +561,16 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     zscored_405 = np.divide(np.subtract(highpass_405,highpass_405.mean()),highpass_405.std())
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
 
-    # Plot the processed photometry signals
-    plot_normalized_signals(visits, green_zscored, zscored_405, 
-                            red_zscored, ratio_zscored, sampling_rate, fig_dir)
-    
+    # Plot the processed pyPhotometry signals
+    plot_photometry_signals(visits=visits, 
+                            sampling_rate=sampling_rate,
+                            signals=[green_zscored, zscored_405, ratio_zscored, red_zscored], 
+                            signal_labels=["ACh3.8 470nm", "ACh3.8 405nm", "ACh3.8 470/405 ratio", "rDA3m 565nm"],
+                            signal_colors=["blue", "purple", "grey", "red"],
+                            title="Processed pyPhotometry signals",
+                            signal_units="Z-score", 
+                            fig_dir=fig_dir)
+
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
@@ -643,14 +649,17 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     nwbfile.add_acquisition(z_scored_565_response_series)
     nwbfile.add_acquisition(z_scored_ratio_response_series)
 
+    # Convert port visits to seconds to use for alignment
+    visits_in_seconds = [visit_time / sampling_rate for visit_time in visits]
+
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
     signals_to_plot = ["zscored_565", "zscored_470_405_ratio"]
-    return {'sampling_rate': sampling_rate, 'port_visits': visits, 
+    return {'sampling_rate': sampling_rate, 'port_visits': visits_in_seconds, 
             'photometry_start': photometry_start, 'signals_to_plot': signals_to_plot}
 
 
-def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
+def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=None):
     """
     Process LabVIEW signals and add the processed signals to the NWB file.
 
@@ -678,8 +687,19 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     raw_green = pd.Series(np.squeeze(signals["sig1"])[:: int(SR / Fs)])
     port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
 
-    # Convert port visits to seconds
-    port_visits = [visit_time / Fs for visit_time in port_visits]
+    # Plot the raw LabVIEW signals
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=[raw_green, raw_reference], 
+                            signal_labels=["Raw 470nm signal", "Raw 405nm signal"],
+                            signal_colors=["blue", "purple"],
+                            title="Raw LabVIEW photometry signals",
+                            signal_units="a.u.", 
+                            fig_dir=fig_dir)
+
+    # Plot the correlation between the raw 405nm and 470nm signals
+    plot_signal_correlation(sig1=raw_green, sig2=raw_reference, 
+                            label1="Raw 470", label2="Raw 405", fig_dir=fig_dir)
 
     # Smooth the signals using a rolling mean
     smooth_window = int(Fs / 30)
@@ -737,6 +757,45 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     logger.info("Calculating deltaF/F via subtraction (z_scored_green - z_scored_reference_fitted)...")
     z_scored_green_dFF = z_scored_green - z_scored_reference_fitted
 
+    # Plot the processing steps for 470nm wavelength
+    signals_to_plot = [raw_green, signal_green, baseline_subtracted_green, z_scored_green]
+    signal_labels = ["Raw 470nm signal", "Smoothed 470nm signal", 
+                     "Baseline-subtracted 470nm signal", "Z-scored 470nm signal"]
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=signals_to_plot, 
+                            signal_labels=signal_labels,
+                            title="470nm signal processing",
+                            signal_units=["a.u.", "a.u.", "a.u.", "Z-score"],
+                            overlay_signals=[(green_baseline, 1, "red", "airPLS baseline")],
+                            fig_dir=fig_dir)
+    
+    # Plot the processing steps for 405nm wavelength
+    signals_to_plot = [raw_reference, reference, baseline_subtracted_ref, z_scored_reference]
+    signal_labels = ["Raw 405nm signal", "Smoothed 405nm signal", 
+                     "Baseline-subtracted 405nm signal", "Z-scored 405nm signal"]
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=signals_to_plot, 
+                            signal_labels=signal_labels,
+                            title="405nm signal processing",
+                            signal_units=["a.u.", "a.u.", "a.u.", "Z-score"], 
+                            overlay_signals=[(ref_baseline, 1, "red", "airPLS baseline")],
+                            fig_dir=fig_dir)
+    
+    # Plot steps of isosbestic correction
+    signals_to_plot = [z_scored_green, z_scored_reference, z_scored_reference_fitted, z_scored_green_dFF]
+    signal_labels = ["Z-scored 470nm signal", "Z-scored 405nm signal", 
+                     "Predicted 470nm signal from 405nm signal", "Z-scored dF/F (post isosbestic correction)"]
+    plot_photometry_signals(visits=port_visits, 
+                            sampling_rate=Fs,
+                            signals=signals_to_plot, 
+                            signal_labels=signal_labels,
+                            signal_colors=["blue", "purple", "gray", "green"],
+                            title="dLight isosbestic correction",
+                            signal_units=["Z-score", "Z-score", "Z-score", "Z-score"],
+                            fig_dir=fig_dir)
+
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
@@ -777,10 +836,13 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger):
     nwbfile.add_acquisition(raw_green_response_series)
     nwbfile.add_acquisition(raw_reference_response_series)
 
+    # Convert port visits to seconds to use for alignment
+    visits_in_seconds = [visit_time / Fs for visit_time in port_visits]
+
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
     signals_to_plot = ['z_scored_green_dFF']
-    return {'sampling_rate': Fs, 'port_visits': port_visits, 
+    return {'sampling_rate': Fs, 'port_visits': visits_in_seconds, 
             'photometry_start': signals.get('photometry_start'), 'signals_to_plot': signals_to_plot}
 
 
@@ -907,7 +969,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
         signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
-        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger)
+        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
     elif "signals_mat_file_path" in metadata["photometry"]:
@@ -919,8 +981,8 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         print("Processing signals.mat file of photometry signals from LabVIEW...")
         signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
         signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
-        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger)
-    
+        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
+
     # If we have a ppd file from pyPhotometry
     elif "ppd_file_path" in metadata["photometry"]:
         # Process ppd file from pyPhotometry and add signals to the NWB
