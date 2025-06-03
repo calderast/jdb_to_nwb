@@ -183,3 +183,5 @@ frank_lab/data/*
 # Other
 example_data/*
 metadata/*
+output/*
+nwbs/*
