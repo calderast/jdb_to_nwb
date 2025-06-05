@@ -3,6 +3,7 @@
 # so we are doing the conversion manually using PyNWB.
 
 import os
+import re
 import glob
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -507,9 +508,12 @@ def get_raw_ephys_data(
     streams, _ = OpenEphysBinaryRecordingExtractor.get_streams(folder_path=folder_path)
     logger.debug(f"Found streams in the OpenEphys binary data: {streams}")
 
-    streams_without_adc = [s for s in streams if not s.endswith("_ADC")]
+    streams_without_adc = [s for s in streams if not s.endswith("ADC")]
     assert len(streams_without_adc) == 1, \
         (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
+
+    # Note that for bilateral Neuropixels we will have 2 streams without ADC (one for each probe)
+    # We will deal with this later. Probably just do all of the following in a loop (once per probe)?
 
     # Ignore the "ADC" channels
     recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
@@ -829,9 +833,15 @@ def add_raw_ephys(
     logger.info("Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
 
-    # Get Open Ephys start time as datetime object based on the time specified in the path
-    datetime_str = openephys_folder_path.split('/')[-1] # The path ends with the date and time
-    open_ephys_start = datetime.strptime(datetime_str, "%Y-%m-%d_%H-%M-%S")
+    # Get Open Ephys start time as datetime object based on the time specified in the folder name
+    openephys_folder_name = openephys_folder_path.split('/')[-1]
+    match = re.search(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}", openephys_folder_name)
+    if match:
+        datetime_str = match.group(0)
+        open_ephys_start = datetime.strptime(datetime_str, "%Y-%m-%d_%H-%M-%S")
+    else:
+        raise ValueError(f"No valid datetime string found in path: {openephys_folder_path}")
+
     open_ephys_start = open_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"Open Ephys start time: {open_ephys_start}")
 
