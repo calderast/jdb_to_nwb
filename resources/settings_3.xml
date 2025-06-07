@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<SETTINGS>
+  <INFO>
+    <VERSION>0.6.7</VERSION>
+    <PLUGIN_API_VERSION>8</PLUGIN_API_VERSION>
+    <DATE>6 Jun 2025 16:37:42</DATE>
+    <OS>Windows 10</OS>
+    <MACHINE name="DESKTOP-6C5QODO" cpu_model="Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz"
+             cpu_num_cores="8"/>
+  </INFO>
+  <SIGNALCHAIN>
+    <PROCESSOR name="OneBox" insertionPoint="0" pluginName="OneBox" type="4"
+               index="1" libraryName="Neuropix-PXI" libraryVersion="0.7.1" processorType="2"
+               nodeId="100">
+      <GLOBAL_PARAMETERS/>
+      <STREAM name="ProbeA" description="description" sample_rate="30000.0"
+              channel_count="384" device_name="Neuropixels 2.0 - Multishank">
+        <PARAMETERS/>
+      </STREAM>
+      <STREAM name="OneBox-ADC" description="description" sample_rate="30300.5"
+              channel_count="12">
+        <PARAMETERS/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="OneBox" activeStream="0"
+              Type="Visualizer">
+        <TAB Active="0" Index="-1"/>
+        <WINDOW Active="0" x="450" y="130" width="1020" height="780"/>
+        <NEUROPIXELS_EDITOR MainSyncSlot="0" SendSyncAsContinuous="0" SyncDirection="1" SyncFreq="0">
+          <BASESTATION Directory="" Slot="16" NamingScheme="0" port1dock1="slot16-port1-1"
+                       port1dock2="slot16-port1-2" port2dock1="slot16-port2-1" port2dock2="slot16-port2-2"
+                       port3dock1="slot16-port3-1" port3dock2="slot16-port3-2" port4dock1="slot16-port4-1"
+                       port4dock2="slot16-port4-2"/>
+          <CUSTOM_PROBE_NAMES/>
+        </NEUROPIXELS_EDITOR>
+        <NP_PROBE slot="16" bs_firmware_version="3.3134" bs_hardware_version="UNKNOWN"
+                  bs_serial_number="0" bs_part_number="Neuropixels Multiprobe"
+                  headstage_serial_number="24150131" headstage_part_number="NPM_HS_31"
+                  flex_version="0.1" flex_part_number="NPM_HS_31" port="1" dock="1"
+                  probe_serial_number="23299110102" probe_part_number="NP2014"
+                  probe_name="Neuropixels 2.0 - Multishank" num_adcs="24" custom_probe_name="23299110102"
+                  ZoomHeight="80" ZoomOffset="0" electrodeConfigurationPreset="NONE"
+                  referenceChannel="Ground" referenceChannelIndex="5" visualizationMode="0"
+                  activityToView="0" isEnabled="1">
+          <CHANNELS CH1="0:0" CH5="0:0" CH9="0:0" CH13="0:0" CH17="0:0" CH21="0:0"
+                    CH25="0:0" CH29="0:0" CH33="0:0" CH37="0:0" CH41="0:0" CH45="0:0"
+                    CH97="0:0" CH101="0:0" CH105="0:0" CH109="0:0" CH113="0:0" CH117="0:0"
+                    CH121="0:0" CH125="0:0" CH129="0:0" CH133="0:0" CH137="0:0" CH141="0:0"
+                    CH193="0:0" CH197="0:0" CH201="0:0" CH205="0:0" CH209="0:0" CH213="0:0"
+                    CH217="0:0" CH221="0:0" CH224="0:0" CH228="0:0" CH232="0:0" CH236="0:0"
+                    CH288="0:0" CH292="0:0" CH296="0:0" CH300="0:0" CH304="0:0" CH305="0:0"
+                    CH308="0:0" CH309="0:0" CH312="0:0" CH313="0:0" CH316="0:0" CH317="0:0"
+                    CH320="0:0" CH321="0:0" CH324="0:0" CH325="0:0" CH328="0:0" CH329="0:0"
+                    CH332="0:0" CH333="0:0" CH240="0:0" CH241="0:0" CH244="0:0" CH245="0:0"
+                    CH248="0:0" CH249="0:0" CH252="0:0" CH253="0:0" CH256="0:0" CH257="0:0"
+                    CH260="0:0" CH261="0:0" CH264="0:0" CH265="0:0" CH268="0:0" CH269="0:0"
+                    CH272="0:0" CH273="0:0" CH276="0:0" CH277="0:0" CH280="0:0" CH281="0:0"
+                    CH284="0:0" CH285="0:0" CH336="0:0" CH337="0:0" CH340="0:0" CH341="0:0"
+                    CH344="0:0" CH345="0:0" CH348="0:0" CH349="0:0" CH352="0:0" CH353="0:0"
+                    CH356="0:0" CH357="0:0" CH360="0:0" CH361="0:0" CH364="0:0" CH365="0:0"
+                    CH368="0:0" CH369="0:0" CH372="0:0" CH373="0:0" CH376="0:0" CH377="0:0"
+                    CH380="0:0" CH381="0:0" CH48="0:0" CH49="0:0" CH52="0:0" CH53="0:0"
+                    CH56="0:0" CH57="0:0" CH60="0:0" CH61="0:0" CH64="0:0" CH65="0:0"
+                    CH68="0:0" CH69="0:0" CH72="0:0" CH73="0:0" CH76="0:0" CH77="0:0"
+                    CH80="0:0" CH81="0:0" CH84="0:0" CH85="0:0" CH88="0:0" CH89="0:0"
+                    CH92="0:0" CH93="0:0" CH144="0:0" CH145="0:0" CH148="0:0" CH149="0:0"
+                    CH152="0:0" CH153="0:0" CH156="0:0" CH157="0:0" CH160="0:0" CH161="0:0"
+                    CH164="0:0" CH165="0:0" CH168="0:0" CH169="0:0" CH172="0:0" CH173="0:0"
+                    CH176="0:0" CH177="0:0" CH180="0:0" CH181="0:0" CH184="0:0" CH185="0:0"
+                    CH188="0:0" CH189="0:0" CH0="1:0" CH4="1:0" CH8="1:0" CH12="1:0"
+                    CH16="1:0" CH20="1:0" CH24="1:0" CH28="1:0" CH32="1:0" CH36="1:0"
+                    CH40="1:0" CH44="1:0" CH96="1:0" CH100="1:0" CH104="1:0" CH108="1:0"
+                    CH112="1:0" CH116="1:0" CH120="1:0" CH124="1:0" CH128="1:0" CH132="1:0"
+                    CH136="1:0" CH140="1:0" CH192="1:0" CH196="1:0" CH200="1:0" CH204="1:0"
+                    CH208="1:0" CH212="1:0" CH216="1:0" CH220="1:0" CH225="1:0" CH227="1:0"
+                    CH229="1:0" CH231="1:0" CH233="1:0" CH235="1:0" CH237="1:0" CH239="1:0"
+                    CH289="1:0" CH291="1:0" CH293="1:0" CH295="1:0" CH297="1:0" CH299="1:0"
+                    CH301="1:0" CH303="1:0" CH307="1:0" CH311="1:0" CH315="1:0" CH319="1:0"
+                    CH323="1:0" CH327="1:0" CH331="1:0" CH335="1:0" CH243="1:0" CH247="1:0"
+                    CH251="1:0" CH255="1:0" CH259="1:0" CH263="1:0" CH267="1:0" CH271="1:0"
+                    CH275="1:0" CH279="1:0" CH283="1:0" CH287="1:0" CH339="1:0" CH343="1:0"
+                    CH347="1:0" CH351="1:0" CH355="1:0" CH359="1:0" CH363="1:0" CH367="1:0"
+                    CH371="1:0" CH375="1:0" CH379="1:0" CH383="1:0" CH51="1:0" CH55="1:0"
+                    CH59="1:0" CH63="1:0" CH67="1:0" CH71="1:0" CH75="1:0" CH79="1:0"
+                    CH83="1:0" CH87="1:0" CH91="1:0" CH95="1:0" CH147="1:0" CH151="1:0"
+                    CH155="1:0" CH159="1:0" CH163="1:0" CH167="1:0" CH171="1:0" CH175="1:0"
+                    CH179="1:0" CH183="1:0" CH187="1:0" CH191="1:0" CH3="2:0" CH7="2:0"
+                    CH11="2:0" CH15="2:0" CH19="2:0" CH23="2:0" CH27="2:0" CH31="2:0"
+                    CH35="2:0" CH39="2:0" CH43="2:0" CH47="2:0" CH99="2:0" CH103="2:0"
+                    CH107="2:0" CH111="2:0" CH115="2:0" CH119="2:0" CH123="2:0" CH127="2:0"
+                    CH131="2:0" CH135="2:0" CH139="2:0" CH143="2:0" CH195="2:0" CH199="2:0"
+                    CH203="2:0" CH207="2:0" CH211="2:0" CH215="2:0" CH219="2:0" CH223="2:0"
+                    CH226="2:0" CH230="2:0" CH234="2:0" CH238="2:0" CH290="2:0" CH294="2:0"
+                    CH298="2:0" CH302="2:0" CH306="2:0" CH310="2:0" CH314="2:0" CH318="2:0"
+                    CH322="2:0" CH326="2:0" CH330="2:0" CH334="2:0" CH242="2:0" CH246="2:0"
+                    CH250="2:0" CH254="2:0" CH258="2:0" CH262="2:0" CH266="2:0" CH270="2:0"
+                    CH274="2:0" CH278="2:0" CH282="2:0" CH286="2:0" CH338="2:0" CH342="2:0"
+                    CH346="2:0" CH350="2:0" CH354="2:0" CH358="2:0" CH362="2:0" CH366="2:0"
+                    CH370="2:0" CH374="2:0" CH378="2:0" CH382="2:0" CH50="2:0" CH54="2:0"
+                    CH58="2:0" CH62="2:0" CH66="2:0" CH70="2:0" CH74="2:0" CH78="2:0"
+                    CH82="2:0" CH86="2:0" CH90="2:0" CH94="2:0" CH146="2:0" CH150="2:0"
+                    CH154="2:0" CH158="2:0" CH162="2:0" CH166="2:0" CH170="2:0" CH174="2:0"
+                    CH178="2:0" CH182="2:0" CH186="2:0" CH190="2:0" CH2="3:0" CH6="3:0"
+                    CH10="3:0" CH14="3:0" CH18="3:0" CH22="3:0" CH26="3:0" CH30="3:0"
+                    CH34="3:0" CH38="3:0" CH42="3:0" CH46="3:0" CH98="3:0" CH102="3:0"
+                    CH106="3:0" CH110="3:0" CH114="3:0" CH118="3:0" CH122="3:0" CH126="3:0"
+                    CH130="3:0" CH134="3:0" CH138="3:0" CH142="3:0" CH194="3:0" CH198="3:0"
+                    CH202="3:0" CH206="3:0" CH210="3:0" CH214="3:0" CH218="3:0" CH222="3:0"/>
+          <ELECTRODE_XPOS CH1="40" CH5="40" CH9="40" CH13="40" CH17="40" CH21="40" CH25="40"
+                          CH29="40" CH33="40" CH37="40" CH41="40" CH45="40" CH97="40" CH101="40"
+                          CH105="40" CH109="40" CH113="40" CH117="40" CH121="40" CH125="40"
+                          CH129="40" CH133="40" CH137="40" CH141="40" CH193="40" CH197="40"
+                          CH201="40" CH205="40" CH209="40" CH213="40" CH217="40" CH221="40"
+                          CH224="8" CH228="8" CH232="8" CH236="8" CH288="8" CH292="8" CH296="8"
+                          CH300="8" CH304="8" CH305="40" CH308="8" CH309="40" CH312="8"
+                          CH313="40" CH316="8" CH317="40" CH320="8" CH321="40" CH324="8"
+                          CH325="40" CH328="8" CH329="40" CH332="8" CH333="40" CH240="8"
+                          CH241="40" CH244="8" CH245="40" CH248="8" CH249="40" CH252="8"
+                          CH253="40" CH256="8" CH257="40" CH260="8" CH261="40" CH264="8"
+                          CH265="40" CH268="8" CH269="40" CH272="8" CH273="40" CH276="8"
+                          CH277="40" CH280="8" CH281="40" CH284="8" CH285="40" CH336="8"
+                          CH337="40" CH340="8" CH341="40" CH344="8" CH345="40" CH348="8"
+                          CH349="40" CH352="8" CH353="40" CH356="8" CH357="40" CH360="8"
+                          CH361="40" CH364="8" CH365="40" CH368="8" CH369="40" CH372="8"
+                          CH373="40" CH376="8" CH377="40" CH380="8" CH381="40" CH48="8"
+                          CH49="40" CH52="8" CH53="40" CH56="8" CH57="40" CH60="8" CH61="40"
+                          CH64="8" CH65="40" CH68="8" CH69="40" CH72="8" CH73="40" CH76="8"
+                          CH77="40" CH80="8" CH81="40" CH84="8" CH85="40" CH88="8" CH89="40"
+                          CH92="8" CH93="40" CH144="8" CH145="40" CH148="8" CH149="40"
+                          CH152="8" CH153="40" CH156="8" CH157="40" CH160="8" CH161="40"
+                          CH164="8" CH165="40" CH168="8" CH169="40" CH172="8" CH173="40"
+                          CH176="8" CH177="40" CH180="8" CH181="40" CH184="8" CH185="40"
+                          CH188="8" CH189="40" CH0="8" CH4="8" CH8="8" CH12="8" CH16="8"
+                          CH20="8" CH24="8" CH28="8" CH32="8" CH36="8" CH40="8" CH44="8"
+                          CH96="8" CH100="8" CH104="8" CH108="8" CH112="8" CH116="8" CH120="8"
+                          CH124="8" CH128="8" CH132="8" CH136="8" CH140="8" CH192="8" CH196="8"
+                          CH200="8" CH204="8" CH208="8" CH212="8" CH216="8" CH220="8" CH225="40"
+                          CH227="40" CH229="40" CH231="40" CH233="40" CH235="40" CH237="40"
+                          CH239="40" CH289="40" CH291="40" CH293="40" CH295="40" CH297="40"
+                          CH299="40" CH301="40" CH303="40" CH307="40" CH311="40" CH315="40"
+                          CH319="40" CH323="40" CH327="40" CH331="40" CH335="40" CH243="40"
+                          CH247="40" CH251="40" CH255="40" CH259="40" CH263="40" CH267="40"
+                          CH271="40" CH275="40" CH279="40" CH283="40" CH287="40" CH339="40"
+                          CH343="40" CH347="40" CH351="40" CH355="40" CH359="40" CH363="40"
+                          CH367="40" CH371="40" CH375="40" CH379="40" CH383="40" CH51="40"
+                          CH55="40" CH59="40" CH63="40" CH67="40" CH71="40" CH75="40" CH79="40"
+                          CH83="40" CH87="40" CH91="40" CH95="40" CH147="40" CH151="40"
+                          CH155="40" CH159="40" CH163="40" CH167="40" CH171="40" CH175="40"
+                          CH179="40" CH183="40" CH187="40" CH191="40" CH3="40" CH7="40"
+                          CH11="40" CH15="40" CH19="40" CH23="40" CH27="40" CH31="40" CH35="40"
+                          CH39="40" CH43="40" CH47="40" CH99="40" CH103="40" CH107="40"
+                          CH111="40" CH115="40" CH119="40" CH123="40" CH127="40" CH131="40"
+                          CH135="40" CH139="40" CH143="40" CH195="40" CH199="40" CH203="40"
+                          CH207="40" CH211="40" CH215="40" CH219="40" CH223="40" CH226="8"
+                          CH230="8" CH234="8" CH238="8" CH290="8" CH294="8" CH298="8" CH302="8"
+                          CH306="8" CH310="8" CH314="8" CH318="8" CH322="8" CH326="8" CH330="8"
+                          CH334="8" CH242="8" CH246="8" CH250="8" CH254="8" CH258="8" CH262="8"
+                          CH266="8" CH270="8" CH274="8" CH278="8" CH282="8" CH286="8" CH338="8"
+                          CH342="8" CH346="8" CH350="8" CH354="8" CH358="8" CH362="8" CH366="8"
+                          CH370="8" CH374="8" CH378="8" CH382="8" CH50="8" CH54="8" CH58="8"
+                          CH62="8" CH66="8" CH70="8" CH74="8" CH78="8" CH82="8" CH86="8"
+                          CH90="8" CH94="8" CH146="8" CH150="8" CH154="8" CH158="8" CH162="8"
+                          CH166="8" CH170="8" CH174="8" CH178="8" CH182="8" CH186="8" CH190="8"
+                          CH2="8" CH6="8" CH10="8" CH14="8" CH18="8" CH22="8" CH26="8"
+                          CH30="8" CH34="8" CH38="8" CH42="8" CH46="8" CH98="8" CH102="8"
+                          CH106="8" CH110="8" CH114="8" CH118="8" CH122="8" CH126="8" CH130="8"
+                          CH134="8" CH138="8" CH142="8" CH194="8" CH198="8" CH202="8" CH206="8"
+                          CH210="8" CH214="8" CH218="8" CH222="8"/>
+          <ELECTRODE_YPOS CH1="0" CH5="30" CH9="60" CH13="90" CH17="120" CH21="150" CH25="180"
+                          CH29="210" CH33="240" CH37="270" CH41="300" CH45="330" CH97="360"
+                          CH101="390" CH105="420" CH109="450" CH113="480" CH117="510" CH121="540"
+                          CH125="570" CH129="600" CH133="630" CH137="660" CH141="690" CH193="720"
+                          CH197="750" CH201="780" CH205="810" CH209="840" CH213="870" CH217="900"
+                          CH221="930" CH224="960" CH228="990" CH232="1020" CH236="1050"
+                          CH288="1080" CH292="1110" CH296="1140" CH300="1170" CH304="1200"
+                          CH305="1200" CH308="1230" CH309="1230" CH312="1260" CH313="1260"
+                          CH316="1290" CH317="1290" CH320="1320" CH321="1320" CH324="1350"
+                          CH325="1350" CH328="1380" CH329="1380" CH332="1410" CH333="1410"
+                          CH240="1440" CH241="1440" CH244="1470" CH245="1470" CH248="1500"
+                          CH249="1500" CH252="1530" CH253="1530" CH256="1560" CH257="1560"
+                          CH260="1590" CH261="1590" CH264="1620" CH265="1620" CH268="1650"
+                          CH269="1650" CH272="1680" CH273="1680" CH276="1710" CH277="1710"
+                          CH280="1740" CH281="1740" CH284="1770" CH285="1770" CH336="1800"
+                          CH337="1800" CH340="1830" CH341="1830" CH344="1860" CH345="1860"
+                          CH348="1890" CH349="1890" CH352="1920" CH353="1920" CH356="1950"
+                          CH357="1950" CH360="1980" CH361="1980" CH364="2010" CH365="2010"
+                          CH368="2040" CH369="2040" CH372="2070" CH373="2070" CH376="2100"
+                          CH377="2100" CH380="2130" CH381="2130" CH48="2160" CH49="2160"
+                          CH52="2190" CH53="2190" CH56="2220" CH57="2220" CH60="2250" CH61="2250"
+                          CH64="2280" CH65="2280" CH68="2310" CH69="2310" CH72="2340" CH73="2340"
+                          CH76="2370" CH77="2370" CH80="2400" CH81="2400" CH84="2430" CH85="2430"
+                          CH88="2460" CH89="2460" CH92="2490" CH93="2490" CH144="2520"
+                          CH145="2520" CH148="2550" CH149="2550" CH152="2580" CH153="2580"
+                          CH156="2610" CH157="2610" CH160="2640" CH161="2640" CH164="2670"
+                          CH165="2670" CH168="2700" CH169="2700" CH172="2730" CH173="2730"
+                          CH176="2760" CH177="2760" CH180="2790" CH181="2790" CH184="2820"
+                          CH185="2820" CH188="2850" CH189="2850" CH0="2880" CH4="2910"
+                          CH8="2940" CH12="2970" CH16="3000" CH20="3030" CH24="3060" CH28="3090"
+                          CH32="3120" CH36="3150" CH40="3180" CH44="3210" CH96="3240" CH100="3270"
+                          CH104="3300" CH108="3330" CH112="3360" CH116="3390" CH120="3420"
+                          CH124="3450" CH128="3480" CH132="3510" CH136="3540" CH140="3570"
+                          CH192="3600" CH196="3630" CH200="3660" CH204="3690" CH208="3720"
+                          CH212="3750" CH216="3780" CH220="3810" CH225="3840" CH227="3855"
+                          CH229="3870" CH231="3885" CH233="3900" CH235="3915" CH237="3930"
+                          CH239="3945" CH289="3960" CH291="3975" CH293="3990" CH295="4005"
+                          CH297="4020" CH299="4035" CH301="4050" CH303="4065" CH307="4095"
+                          CH311="4125" CH315="4155" CH319="4185" CH323="4215" CH327="4245"
+                          CH331="4275" CH335="4305" CH243="4335" CH247="4365" CH251="4395"
+                          CH255="4425" CH259="4455" CH263="4485" CH267="4515" CH271="4545"
+                          CH275="4575" CH279="4605" CH283="4635" CH287="4665" CH339="4695"
+                          CH343="4725" CH347="4755" CH351="4785" CH355="4815" CH359="4845"
+                          CH363="4875" CH367="4905" CH371="4935" CH375="4965" CH379="4995"
+                          CH383="5025" CH51="5055" CH55="5085" CH59="5115" CH63="5145"
+                          CH67="5175" CH71="5205" CH75="5235" CH79="5265" CH83="5295" CH87="5325"
+                          CH91="5355" CH95="5385" CH147="5415" CH151="5445" CH155="5475"
+                          CH159="5505" CH163="5535" CH167="5565" CH171="5595" CH175="5625"
+                          CH179="5655" CH183="5685" CH187="5715" CH191="5745" CH3="5775"
+                          CH7="5805" CH11="5835" CH15="5865" CH19="5895" CH23="5925" CH27="5955"
+                          CH31="5985" CH35="6015" CH39="6045" CH43="6075" CH47="6105" CH99="6135"
+                          CH103="6165" CH107="6195" CH111="6225" CH115="6255" CH119="6285"
+                          CH123="6315" CH127="6345" CH131="6375" CH135="6405" CH139="6435"
+                          CH143="6465" CH195="6495" CH199="6525" CH203="6555" CH207="6585"
+                          CH211="6615" CH215="6645" CH219="6675" CH223="6705" CH226="6735"
+                          CH230="6765" CH234="6795" CH238="6825" CH290="6855" CH294="6885"
+                          CH298="6915" CH302="6945" CH306="6975" CH310="7005" CH314="7035"
+                          CH318="7065" CH322="7095" CH326="7125" CH330="7155" CH334="7185"
+                          CH242="7215" CH246="7245" CH250="7275" CH254="7305" CH258="7335"
+                          CH262="7365" CH266="7395" CH270="7425" CH274="7455" CH278="7485"
+                          CH282="7515" CH286="7545" CH338="7575" CH342="7605" CH346="7635"
+                          CH350="7665" CH354="7695" CH358="7725" CH362="7755" CH366="7785"
+                          CH370="7815" CH374="7845" CH378="7875" CH382="7905" CH50="7935"
+                          CH54="7965" CH58="7995" CH62="8025" CH66="8055" CH70="8085" CH74="8115"
+                          CH78="8145" CH82="8175" CH86="8205" CH90="8235" CH94="8265" CH146="8295"
+                          CH150="8325" CH154="8355" CH158="8385" CH162="8415" CH166="8445"
+                          CH170="8475" CH174="8505" CH178="8535" CH182="8565" CH186="8595"
+                          CH190="8625" CH2="8655" CH6="8685" CH10="8715" CH14="8745" CH18="8775"
+                          CH22="8805" CH26="8835" CH30="8865" CH34="8895" CH38="8925" CH42="8955"
+                          CH46="8985" CH98="9015" CH102="9045" CH106="9075" CH110="9105"
+                          CH114="9135" CH118="9165" CH122="9195" CH126="9225" CH130="9255"
+                          CH134="9285" CH138="9315" CH142="9345" CH194="9375" CH198="9405"
+                          CH202="9435" CH206="9465" CH210="9495" CH214="9525" CH218="9555"
+                          CH222="9585"/>
+          <IMRO_FILES>
+            <FILE PATH="G:\neuropixel maps\shank 1_entire shank_spikeglx_new.imro"/>
+          </IMRO_FILES>
+        </NP_PROBE>
+        <ADC_CHANNEL index="0" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="1"/>
+        <ADC_CHANNEL index="1" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="2" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="3" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="4" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="5" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="6" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="7" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="8" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="9" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="10" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <ADC_CHANNEL index="11" input_range="2" comparator_state="1" triggers_waveplayer="0"
+                     selected="0"/>
+        <WAVEPLAYER enabled="0"/>
+        <PATTERN id="1" name="PATTERN 1" analog_output_channel="0" trigger_channel="-2"
+                 gate_channel="-1" pulse_on_duration="100" pulse_off_duration="100"
+                 pulse_delay_duration="0" pulse_repeat_number="1" pulse_ramp_on_duration="0"
+                 pulse_ramp_off_duration="0" pulse_max_voltage="5.0" sine_frequency="5"
+                 sine_cycles="1" sine_delay_duration="0" sine_max_voltage="5.0"
+                 custom_value_string="0,0,0" pattern_type="0" is_current_pattern="1"/>
+      </EDITOR>
+    </PROCESSOR>
+    <PROCESSOR name="Record Node" insertionPoint="1" pluginName="Record Node"
+               type="0" index="3" libraryName="" libraryVersion="" processorType="8"
+               nodeId="101">
+      <GLOBAL_PARAMETERS/>
+      <STREAM name="ProbeA" description="description" sample_rate="30000.0"
+              channel_count="384" device_name="Neuropixels 2.0 - Multishank">
+        <PARAMETERS enable_stream="1"/>
+      </STREAM>
+      <STREAM name="OneBox-ADC" description="description" sample_rate="30300.5"
+              channel_count="12">
+        <PARAMETERS enable_stream="1"/>
+      </STREAM>
+      <CUSTOM_PARAMETERS path="E:\openephys recordings" engine="BINARY" recordEvents="1"
+                         recordSpikes="1" fifoMonitorsVisible="1">
+        <STREAM isMainStream="1" sync_line="0" name="ProbeA" source_node_id="100"
+                sample_rate="30000.0" channel_count="384" device_name="Neuropixels 2.0 - Multishank"
+                recording_state="ALL"/>
+        <STREAM isMainStream="0" sync_line="0" name="OneBox-ADC" source_node_id="100"
+                sample_rate="30300.5" channel_count="12" recording_state="ALL"/>
+      </CUSTOM_PARAMETERS>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Record Node" activeStream="0"/>
+    </PROCESSOR>
+    <PROCESSOR name="LFP Viewer" insertionPoint="1" pluginName="LFP Viewer"
+               type="1" index="6" libraryName="LFP viewer" libraryVersion="0.6.7"
+               processorType="3" nodeId="102">
+      <GLOBAL_PARAMETERS/>
+      <STREAM name="ProbeA" description="description" sample_rate="30000.0"
+              channel_count="384" device_name="Neuropixels 2.0 - Multishank">
+        <PARAMETERS enable_stream="1"/>
+      </STREAM>
+      <STREAM name="OneBox-ADC" description="description" sample_rate="30300.5"
+              channel_count="12">
+        <PARAMETERS enable_stream="1"/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="LFP Viewer" activeStream="0"
+              Type="LfpDisplayEditor">
+        <TAB Active="0" Index="-1"/>
+        <WINDOW Active="1" x="613" y="-1002" width="887" height="1864"/>
+        <VALUES SelectedLayout="1"/>
+        <LFPDISPLAY0 SubprocessorID="10001" Range="500,2000,10.0" Timebase="2.0" Spread="20"
+                     colourScheme="1" colorGrouping="1" spikeRaster="OFF" clipWarning="1"
+                     satWarning="1" reverseOrder="0" sortByDepth="0" channelSkip="1"
+                     showChannelNum="0" subtractOffset="0" isInverted="0" triggerSource="1"
+                     trialAvg="0" singleChannelView="-1" EventButtonState="255" ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                     ScrollX="0" ScrollY="0"/>
+        <LFPDISPLAY1 SubprocessorID="10001" Range="250,2000,10.0" Timebase="2.0" Spread="40"
+                     colourScheme="1" colorGrouping="1" spikeRaster="OFF" clipWarning="1"
+                     satWarning="1" reverseOrder="0" sortByDepth="0" channelSkip="1"
+                     showChannelNum="0" subtractOffset="0" isInverted="0" triggerSource="1"
+                     trialAvg="0" singleChannelView="-1" EventButtonState="255" ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                     ScrollX="0" ScrollY="0"/>
+        <LFPDISPLAY2 SubprocessorID="10001" Range="250,2000,10.0" Timebase="2.0" Spread="40"
+                     colourScheme="1" colorGrouping="1" spikeRaster="OFF" clipWarning="1"
+                     satWarning="1" reverseOrder="0" sortByDepth="0" channelSkip="1"
+                     showChannelNum="0" subtractOffset="0" isInverted="0" triggerSource="1"
+                     trialAvg="0" singleChannelView="-1" EventButtonState="255" ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                     ScrollX="0" ScrollY="0"/>
+        <CANVAS doubleVerticalSplitRatio="0.5" doubleHorizontalSplitRatio="0.5"
+                tripleHorizontalSplitRatio="0.33,0.66" tripleVerticalSplitRatio="0.33,0.66"
+                showAllOptions="0"/>
+      </EDITOR>
+    </PROCESSOR>
+  </SIGNALCHAIN>
+  <EDITORVIEWPORT scroll="0">
+    <ONEBOX ID="100"/>
+    <RECORD_NODE ID="101"/>
+    <LFP_VIEWER ID="102"/>
+  </EDITORVIEWPORT>
+  <DATAVIEWPORT selectedTab="2"/>
+  <AUDIO sampleRate="48000.0" bufferSize="1024" deviceType="Windows Audio"/>
+  <CONTROLPANEL isOpen="1" recordPath="E:\openephys recordings" recordEngine="BINARY"
+                clockMode="0"/>
+  <AUDIOEDITOR isMuted="0" volume="50.0" noiseGate="0.0"/>
+  <FILENAMECONFIG>
+    <PREPEND state="2" value="shank1_saline_tip"/>
+    <MAIN state="1" value="2025-06-06_14-42-51"/>
+    <APPEND state="0" value=""/>
+  </FILENAMECONFIG>
+  <PROCESSORLIST>
+    <COLOR ID="801" R="59" G="59" B="59"/>
+    <COLOR ID="804" R="241" G="90" B="41"/>
+    <COLOR ID="802" R="0" G="174" B="239"/>
+    <COLOR ID="803" R="0" G="166" B="81"/>
+    <COLOR ID="805" R="147" G="149" B="152"/>
+    <COLOR ID="806" R="255" G="0" B="0"/>
+    <COLOR ID="807" R="0" G="0" B="0"/>
+  </PROCESSORLIST>
+  <UICOMPONENT isProcessorListOpen="1" isEditorViewportOpen="1"/>
+</SETTINGS>
