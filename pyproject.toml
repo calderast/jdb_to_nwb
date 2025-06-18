@@ -36,6 +36,7 @@ dependencies = [
     "matplotlib",
     "imageio-ffmpeg",
     "ffmpeg-python",
+    "tables",  # used by pandas to read HDF5 files
     "opencv-python",
     "hex-maze-neuro",
 ]
