@@ -1,0 +1,15 @@
+indicators:
+  - name: dLight1.3b
+    construct_name: AAVDJ-CAG-dLight1.3b
+    description: AAV virus with dLight1.3b sensor that measures dopamine
+    manufacturer: Vigene
+  - name: dLight3.8
+    construct_name: AAV-DJ-CAG-dLight3.8
+    description: AAV virus with dLight3.8 sensor that measures dopamine
+    manufacturer: UNC
+  - name: rDA3m
+    construct_name: AAV9-hsyn-rDA3m
+    description: AAV virus with rDA3m sensor that measures dopamine
+    manufacturer: BrainVTA
+
+opsins:

@@ -16,7 +16,7 @@ from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
 
-from ndx_fiber_photometry import FiberPhotometryResponseSeries, ExcitationSource, OpticalFiber, Photodetector
+from ndx_fiber_photometry import (FiberPhotometryResponseSeries, Indicator, ExcitationSource, OpticalFiber, Photodetector, DichroicMirror, FiberPhotometryTable, FiberPhotometry)
 from .plotting.plot_photometry import (
     plot_signal_correlation,
     plot_photometry_signals,
@@ -31,6 +31,8 @@ if not RESOURCES_DIR.exists():
     RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
 
 DEVICES_PATH = RESOURCES_DIR / "photometry_devices.yaml"
+MAPPINGS_PATH = RESOURCES_DIR / "photometry_mappings.yaml"
+VIRUSES_PATH = RESOURCES_DIR / "viruses.yaml"
 
 
 def read_phot_data(phot_file_path):
@@ -52,7 +54,7 @@ def read_phot_data(phot_file_path):
         phot["date"] = fid.read(256).decode("utf-8").strip("\x00")
         phot["time"] = fid.read(256).decode("utf-8").strip("\x00")
 
-        # Loop through the four channels and extract the 
+        # Loop through the four channels and extract the
         # location, signal, frequency, max and min values in the same way
         phot["channels"] = []
 
@@ -199,7 +201,7 @@ def lockin_detection(input_signal, exc1, exc2, Fs, tau=10, filter_order=5, detre
 
 def run_lockin_detection(phot, start, logger):
     """Run lockin detection to extract the modulated photometry signals
-    
+
     Args:
     phot (dict): Dictionary of photometry data
     start (int): Number of samples to remove from the start of photometry signals
@@ -210,7 +212,7 @@ def run_lockin_detection(phot, start, logger):
     filter_order = 5
     detrend=False
     full=True
-    
+
     logger.info(f"Running lockin detection to extract modulated photometry signals with args: \n"
                 f"tau={tau}, filter_order={filter_order}, detrend={detrend}, full={full}")
 
@@ -250,17 +252,17 @@ def run_lockin_detection(phot, start, logger):
 
 def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger):
     """
-    Process the .phot and .box files from Labview into a "signals" dict, 
+    Process the .phot and .box files from Labview into a "signals" dict,
     replacing former MATLAB preprocessing code that created signals.mat
-    
-    Also adds the start time of the Labview recording as a datetime object 
+
+    Also adds the start time of the Labview recording as a datetime object
     to the returned signals dict
     """
 
     # Read .phot file from Labview into a dict
     logger.info("Reading LabVIEW .phot file into a dictionary...")
     phot_dict = read_phot_data(phot_file_path)
-    
+
     # Print .phot file values to debug file
     logger.debug(f"Data read from LabVIEW .phot file at {phot_file_path}:")
     for phot_key in phot_dict:
@@ -271,7 +273,7 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
     # Read .box file from Labview into a dict
     logger.info("Reading LabVIEW .box file into a dictionary...")
     box_dict = read_box_data(box_file_path)
-    
+
     # Print .box file values to debug file
     logger.debug(f"Data read from LabVIEW .box file at {box_file_path}:")
     for box_key in box_dict:
@@ -294,7 +296,7 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
     photometry_start = photometry_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"LabVIEW photometry start time: {photometry_start}")
     signals["photometry_start"] = photometry_start
-    
+
     # Return signals dict equivalent to signals.mat (with added photometry_start datetime object)
     return signals
 
@@ -312,7 +314,7 @@ def whittaker_smooth(data, binary_mask, lambda_):
 
     Args:
     data: 1D array representing the signal data
-    binary_mask: binary mask indicating which points are signals (peaks) and which are background 
+    binary_mask: binary mask indicating which points are signals (peaks) and which are background
     (0 = signal/peak, 1=background)
     lambda_: Smoothing parameter. A larger value results in a smoother baseline.
 
@@ -396,7 +398,7 @@ def import_ppd(ppd_file_path):
     Edited so that this function only returns the data dictionary without the filtered data.
     Raw data is then filtered by the process_ppd_photometry function.
 
-        Function to import pyPhotometry binary data files into Python. 
+        Function to import pyPhotometry binary data files into Python.
         Returns a dictionary with the following items:
             'filename'      - Data filename
             'subject_ID'    - Subject ID
@@ -441,7 +443,7 @@ def import_ppd(ppd_file_path):
     digital_1 = digital[::n_analog_signals]
     digital_2 = digital[1::n_analog_signals] if n_digital_signals == 2 else None
     time = np.arange(analog_1.shape[0]) * 1000 / sampling_rate  # Time relative to start of recording (ms).
-    
+
     # Extract rising edges for digital inputs.
     pulse_inds_1 = 1 + np.where(np.diff(digital_1) == 1)[0]
     pulse_inds_2 = 1 + np.where(np.diff(digital_2) == 1)[0] if n_digital_signals == 2 else None
@@ -473,25 +475,25 @@ def import_ppd(ppd_file_path):
 def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger, fig_dir=None):
     """
     Process pyPhotometry data from a .ppd file and add the processed signals to the NWB file.
-    
-    TODO: Update this function to have options for isosbestic vs ratiometric 
-    correction depending on the identities of analog_1, analog_2, etc. 
-    Wait until we know more about those use cases. 
-    
+
+    TODO: Update this function to have options for isosbestic vs ratiometric
+    correction depending on the identities of analog_1, analog_2, etc.
+    Wait until we know more about those use cases.
+
     For now, we assume the following (Jose's setup):
     analog_1: 470 nm (gACh)
     analog_2: 565 nm (rDA3m)
     analog_3: 405 nm (for ratiometric correction of gACh)
-    
-    Returns: 
+
+    Returns:
     dict with keys
     - sampling_rate: int (Hz)
     - port_visits: list of port visit times in seconds
     - photometry_start: datetime object marking the start time of photometry recording
     """
-    
+
     logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (gACh), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
-    ppd_data = import_ppd(ppd_file_path)  
+    ppd_data = import_ppd(ppd_file_path)
     raw_green = pd.Series(ppd_data['analog_1'])
     raw_red = pd.Series(ppd_data['analog_2'])
     raw_405 = pd.Series(ppd_data['analog_3'])
@@ -513,13 +515,13 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         logger.debug(f"{phot_key}: {ppd_data[phot_key]}")
 
     # Plot the raw pyPhotometry signals
-    plot_photometry_signals(visits=visits, 
+    plot_photometry_signals(visits=visits,
                             sampling_rate=sampling_rate,
-                            signals=[raw_green, raw_405, relative_raw_signal, raw_red], 
+                            signals=[raw_green, raw_405, relative_raw_signal, raw_red],
                             signal_labels=["Raw 470", "Raw 405", "Raw 470/405 ratio", "Raw 565"],
                             signal_colors=["blue", "purple", "grey", "red"],
                             title="Raw pyPhotometry signals",
-                            signal_units=["V", "V", "ratio", "V"], 
+                            signal_units=["V", "V", "ratio", "V"],
                             fig_dir=fig_dir)
 
     # Plot the correlation between the raw signals
@@ -550,7 +552,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     highpass_405 = filtfilt(b,a, denoised_405, padtype='even')
 
     # Plot the correlation between the filtered signals of interest (ACh and DA)
-    plot_signal_correlation(sig1=ratio_highpass, sig2=red_highpass, 
+    plot_signal_correlation(sig1=ratio_highpass, sig2=red_highpass,
                             label1='GACh3.8 470/405 ratio', label2='rDA3m', fig_dir=fig_dir)
 
     # Z-score each signal to normalize the data
@@ -562,18 +564,54 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     ratio_zscored = np.divide(np.subtract(ratio_highpass,ratio_highpass.mean()),ratio_highpass.std())
 
     # Plot the processed pyPhotometry signals
-    plot_photometry_signals(visits=visits, 
+    plot_photometry_signals(visits=visits,
                             sampling_rate=sampling_rate,
-                            signals=[green_zscored, zscored_405, ratio_zscored, red_zscored], 
+                            signals=[green_zscored, zscored_405, ratio_zscored, red_zscored],
                             signal_labels=["ACh3.8 470nm", "ACh3.8 405nm", "ACh3.8 470/405 ratio", "rDA3m 565nm"],
                             signal_colors=["blue", "purple", "grey", "red"],
                             title="Processed pyPhotometry signals",
-                            signal_units="Z-score", 
+                            signal_units="Z-score",
                             fig_dir=fig_dir)
 
     # Add photometry signals to the NWB
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
+
+    # Find the rows of the FiberPhotometryTable that correspond to the blue, purple, and green LEDs.
+    # This is necessary to create the FiberPhotometryTableRegion objects for the raw signals
+    # and to ensure that the signals are correctly associated with the excitation sources
+    # in the fiber photometry table.
+    # Since we are in this function, we are using PyPhotometry and in the new maze room, so we assume we are using
+    # the Doric Blue LED, the Doric Purple LED, and the Doric Green LED.
+    fiber_photometry_table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
+    blue_led_table_region = None
+    purple_led_table_region = None
+    green_led_table_region = None
+    for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_sources.data):
+        if excitation_source_obj.name == "Doric Blue LED":
+            blue_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
+                region=[row_index], description="Blue LED"
+            )
+        elif excitation_source_obj.name == "Doric Purple LED":
+            purple_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
+                region=[row_index], description="Purple LED"
+            )
+        elif excitation_source_obj.name == "Doric Green LED":
+            green_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
+                region=[row_index], description="Green LED"
+            )
+    if blue_led_table_region is None:
+        logger.error("Could not find Doric Blue LED in fiber photometry table. "
+                     "Please check the devices.yaml file.")
+        raise ValueError("Doric Blue LED not found in fiber photometry table.")
+    if purple_led_table_region is None:
+        logger.error("Could not find Doric Purple LED in fiber photometry table. "
+                     "Please check the devices.yaml file.")
+        raise ValueError("Doric Purple LED not found in fiber photometry table.")
+    if green_led_table_region is None:
+        logger.error("Could not find Doric Green LED in fiber photometry table. "
+                     "Please check the devices.yaml file.")
+        raise ValueError("Doric Green LED not found in fiber photometry table.")
 
     raw_470_response_series = FiberPhotometryResponseSeries(
         name="raw_470",
@@ -581,6 +619,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=raw_green.to_numpy(),
         unit="V",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=blue_led_table_region,
     )
 
     z_scored_470_response_series = FiberPhotometryResponseSeries(
@@ -589,6 +628,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=green_zscored,
         unit="z-score",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=blue_led_table_region,
     )
 
     raw_405_response_series = FiberPhotometryResponseSeries(
@@ -597,6 +637,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=raw_405.to_numpy(),
         unit="V",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=purple_led_table_region,
     )
 
     z_scored_405_response_series = FiberPhotometryResponseSeries(
@@ -605,6 +646,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=zscored_405,
         unit="z-score",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=purple_led_table_region,
     )
 
     raw_565_response_series = FiberPhotometryResponseSeries(
@@ -613,6 +655,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=raw_red.to_numpy(),
         unit="V",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=green_led_table_region,
     )
 
     z_scored_565_response_series = FiberPhotometryResponseSeries(
@@ -621,6 +664,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=red_zscored,
         unit="z-score",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=green_led_table_region,
     )
 
     raw_ratio_response_series = FiberPhotometryResponseSeries(
@@ -629,6 +673,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=relative_raw_signal.to_numpy(),
         unit="V",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=blue_led_table_region,
     )
 
     z_scored_ratio_response_series = FiberPhotometryResponseSeries(
@@ -637,13 +682,14 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
         data=ratio_zscored,
         unit="z-score",
         rate=float(sampling_rate),
+        fiber_photometry_table_region=blue_led_table_region,
     )
 
     # Add the FiberPhotometryResponseSeries objects to the NWB
     nwbfile.add_acquisition(raw_405_response_series)
     nwbfile.add_acquisition(raw_470_response_series)
     nwbfile.add_acquisition(raw_565_response_series)
-    nwbfile.add_acquisition(raw_ratio_response_series)    
+    nwbfile.add_acquisition(raw_ratio_response_series)
     nwbfile.add_acquisition(z_scored_405_response_series)
     nwbfile.add_acquisition(z_scored_470_response_series)
     nwbfile.add_acquisition(z_scored_565_response_series)
@@ -655,7 +701,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
     signals_to_plot = ["zscored_565", "zscored_470_405_ratio"]
-    return {'sampling_rate': sampling_rate, 'port_visits': visits_in_seconds, 
+    return {'sampling_rate': sampling_rate, 'port_visits': visits_in_seconds,
             'photometry_start': photometry_start, 'signals_to_plot': signals_to_plot}
 
 
@@ -666,8 +712,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     Assumes
     sig1: 470 nm (dLight)
     ref: 405 nm (isosbestic wavelength)
-    
-    Returns: 
+
+    Returns:
     dict with keys
     - sampling_rate: int (Hz)
     - port_visits: list of port visit times in seconds
@@ -688,17 +734,17 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
 
     # Plot the raw LabVIEW signals
-    plot_photometry_signals(visits=port_visits, 
+    plot_photometry_signals(visits=port_visits,
                             sampling_rate=Fs,
-                            signals=[raw_green, raw_reference], 
+                            signals=[raw_green, raw_reference],
                             signal_labels=["Raw 470nm signal", "Raw 405nm signal"],
                             signal_colors=["blue", "purple"],
                             title="Raw LabVIEW photometry signals",
-                            signal_units="a.u.", 
+                            signal_units="a.u.",
                             fig_dir=fig_dir)
 
     # Plot the correlation between the raw 405nm and 470nm signals
-    plot_signal_correlation(sig1=raw_green, sig2=raw_reference, 
+    plot_signal_correlation(sig1=raw_green, sig2=raw_reference,
                             label1="Raw 470", label2="Raw 405", fig_dir=fig_dir)
 
     # Smooth the signals using a rolling mean
@@ -759,37 +805,37 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
 
     # Plot the processing steps for 470nm wavelength
     signals_to_plot = [raw_green, signal_green, baseline_subtracted_green, z_scored_green]
-    signal_labels = ["Raw 470nm signal", "Smoothed 470nm signal", 
+    signal_labels = ["Raw 470nm signal", "Smoothed 470nm signal",
                      "Baseline-subtracted 470nm signal", "Z-scored 470nm signal"]
-    plot_photometry_signals(visits=port_visits, 
+    plot_photometry_signals(visits=port_visits,
                             sampling_rate=Fs,
-                            signals=signals_to_plot, 
+                            signals=signals_to_plot,
                             signal_labels=signal_labels,
                             title="470nm signal processing",
                             signal_units=["a.u.", "a.u.", "a.u.", "Z-score"],
                             overlay_signals=[(green_baseline, 1, "red", "airPLS baseline")],
                             fig_dir=fig_dir)
-    
+
     # Plot the processing steps for 405nm wavelength
     signals_to_plot = [raw_reference, reference, baseline_subtracted_ref, z_scored_reference]
-    signal_labels = ["Raw 405nm signal", "Smoothed 405nm signal", 
+    signal_labels = ["Raw 405nm signal", "Smoothed 405nm signal",
                      "Baseline-subtracted 405nm signal", "Z-scored 405nm signal"]
-    plot_photometry_signals(visits=port_visits, 
+    plot_photometry_signals(visits=port_visits,
                             sampling_rate=Fs,
-                            signals=signals_to_plot, 
+                            signals=signals_to_plot,
                             signal_labels=signal_labels,
                             title="405nm signal processing",
-                            signal_units=["a.u.", "a.u.", "a.u.", "Z-score"], 
+                            signal_units=["a.u.", "a.u.", "a.u.", "Z-score"],
                             overlay_signals=[(ref_baseline, 1, "red", "airPLS baseline")],
                             fig_dir=fig_dir)
-    
+
     # Plot steps of isosbestic correction
     signals_to_plot = [z_scored_green, z_scored_reference, z_scored_reference_fitted, z_scored_green_dFF]
-    signal_labels = ["Z-scored 470nm signal", "Z-scored 405nm signal", 
+    signal_labels = ["Z-scored 470nm signal", "Z-scored 405nm signal",
                      "Predicted 470nm signal from 405nm signal", "Z-scored dF/F (post isosbestic correction)"]
-    plot_photometry_signals(visits=port_visits, 
+    plot_photometry_signals(visits=port_visits,
                             sampling_rate=Fs,
-                            signals=signals_to_plot, 
+                            signals=signals_to_plot,
                             signal_labels=signal_labels,
                             signal_colors=["blue", "purple", "gray", "green"],
                             title="dLight isosbestic correction",
@@ -800,6 +846,33 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
 
+    # Find the rows of the FiberPhotometryTable that correspond to the blue and purple LEDs.
+    # This is necessary to create the FiberPhotometryTableRegion objects for the raw signals
+    # and to ensure that the signals are correctly associated with the excitation sources
+    # in the fiber photometry table.
+    # Since we are in this function, we are using LabView and in the old maze room, so we assume we are using
+    # the Thorlabs Blue LED and the Thorlabs Purple LED.
+    fiber_photometry_table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
+    blue_led_table_region = None
+    purple_led_table_region = None
+    for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_sources.data):
+        if excitation_source_obj.name == "Thorlabs Blue LED":
+            blue_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
+                region=[row_index], description="Blue LED"
+            )
+        elif excitation_source_obj.name == "Thorlabs Purple LED":
+            purple_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
+                region=[row_index], description="Purple LED"
+            )
+    if blue_led_table_region is None:
+        logger.error("Could not find Thorlabs Blue LED in fiber photometry table. "
+                     "Please check the devices.yaml file.")
+        raise ValueError("Thorlabs Blue LED not found in fiber photometry table.")
+    if purple_led_table_region is None:
+        logger.error("Could not find Thorlabs Purple LED in fiber photometry table. "
+                     "Please check the devices.yaml file.")
+        raise ValueError("Thorlabs Purple LED not found in fiber photometry table.")
+
     # Create NWB FiberPhotometryResponseSeries objects for the relevant photometry signals
     z_scored_green_dFF_response_series = FiberPhotometryResponseSeries(
         name="z_scored_green_dFF",
@@ -807,6 +880,9 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
         data=z_scored_green_dFF.T[0],
         unit="dF/F",
         rate=float(Fs),
+        fiber_photometry_table_region=blue_led_table_region,
+        # not a perfect mapping - it technically combines data from both 470 and 405, but
+        # valuable for accessing these linked metadata
     )
     z_scored_reference_fitted_response_series = FiberPhotometryResponseSeries(
         name="z_scored_reference_fitted",
@@ -814,6 +890,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
         data=z_scored_reference_fitted.T[0],
         unit="F",
         rate=float(Fs),
+        fiber_photometry_table_region=purple_led_table_region,
     )
     raw_green_response_series = FiberPhotometryResponseSeries(
         name="raw_green",
@@ -821,6 +898,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
         data=raw_green.to_numpy(),
         unit="F",
         rate=float(Fs),
+        fiber_photometry_table_region=blue_led_table_region,
     )
     raw_reference_response_series = FiberPhotometryResponseSeries(
         name="raw_reference",
@@ -828,6 +906,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
         data=raw_reference.to_numpy(),
         unit="F",
         rate=float(Fs),
+        fiber_photometry_table_region=purple_led_table_region,
     )
 
     # Add the FiberPhotometryResponseSeries objects to the NWB
@@ -842,13 +921,13 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     # Return photometry start time, sampling rate, and port visit times in seconds to use for alignment
     # Add 'signals_to_plot' indicating processed signals to plot aligned to port entry (after behavior is parsed)
     signals_to_plot = ['z_scored_green_dFF']
-    return {'sampling_rate': Fs, 'port_visits': visits_in_seconds, 
+    return {'sampling_rate': Fs, 'port_visits': visits_in_seconds,
             'photometry_start': signals.get('photometry_start'), 'signals_to_plot': signals_to_plot}
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     """Add photometry metadata to the NWB file.
-    
+
     The keys in the metadata YAML are assumed to be the same as the keyword arguments used for the corresponding
     classes in the ndx-fiber-photometry extension. See the extension for more details:
     https://github.com/catalystneuro/ndx-fiber-photometry/tree/main
@@ -857,9 +936,16 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     with open(DEVICES_PATH, "r") as f:
         devices = yaml.safe_load(f)
 
+    with open(MAPPINGS_PATH, "r") as f:
+        mappings = yaml.safe_load(f)
+
+    with open(VIRUSES_PATH, "r") as f:
+        viruses = yaml.safe_load(f)
+
     # For each type of device, overwrite any metadata from the resources/photometry_devices.yaml file
     # with the metadata from the metadata YAML file
 
+    added_excitation_sources = dict()
     if "excitation_sources" in metadata["photometry"]:
         excitation_source_names = metadata["photometry"]["excitation_sources"]
         for excitation_source_name in excitation_source_names:
@@ -877,13 +963,26 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 )
             excitation_source_obj = ExcitationSource(**excitation_source_metadata)
             nwbfile.add_device(excitation_source_obj)
+            added_excitation_sources[excitation_source_name] = excitation_source_obj
     else:
         logger.warning("No 'excitation_sources' found in photometry metadata.")
 
-    if "optic_fibers" in metadata["photometry"]:
-        fiber_names = metadata["photometry"]["optic_fibers"]
-        for fiber_name in fiber_names:
-            logger.info(f"Optic fiber '{fiber_name}' found in resources/photometry_devices.yaml")
+    if "optic_fiber_implant_sites" in metadata["photometry"]:
+        fiber_implant_sites = metadata["photometry"]["optic_fiber_implant_sites"]
+
+        # quality check that exactly one fiber implant site has recording: true
+        count_recording_sites = 0
+        for fiber_implant_site in fiber_implant_sites:
+            if fiber_implant_site.get("recording", False):
+                count_recording_sites += 1
+        if count_recording_sites != 1:
+            logger.error("There should be exactly one fiber implant site with 'recording: true'. "
+                         f"Found {count_recording_sites} sites with 'recording: true'.")
+            raise ValueError("There should be exactly one fiber implant site with 'recording: true'.")
+
+        for fiber_implant_site in fiber_implant_sites:
+            fiber_name = fiber_implant_site["optic_fiber"]
+
             # Find the matching device by name in the devices list
             for device in devices["optic_fibers"]:
                 if device["name"] == fiber_name:
@@ -894,57 +993,162 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 raise ValueError(
                     f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
                 )
+            logger.info(f"Optic fiber '{fiber_name}' found in resources/photometry_devices.yaml")
+
             fiber_obj = OpticalFiber(**fiber_metadata)
             nwbfile.add_device(fiber_obj)
+
+            if fiber_implant_site.get("recording", False):
+                recorded_fiber_obj = fiber_obj
+                # targeted_location: NAcc
+                # ap_in_mm: 1.7
+                # ml_in_mm: 1.7
+                # dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
+                recorded_fiber_target_location = fiber_implant_site["targeted_location"]
+                recorded_fiber_coordinates = (fiber_implant_site["ap_in_mm"],
+                                              fiber_implant_site["ml_in_mm"],
+                                              fiber_implant_site["dv_in_mm"])
     else:
         logger.warning("No 'optic_fibers' found in photometry metadata.")
 
-    # TODO: handle optic fiber implant sites
-    # TODO: handle viruses
-    # TODO: handle virus injections
+    if "photodetector" in metadata["photometry"]:
+        photodetector_name = metadata["photometry"]["photodetector"]
 
-    if "photodetectors" in metadata["photometry"]:
-        photodetector_names = metadata["photometry"]["photodetectors"]
-        for photodetector_name in photodetector_names:
-            logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
-            # Find the matching device by name in the devices list
-            for device in devices["photodetectors"]:
-                if device["name"] == photodetector_name:
-                    photodetector_metadata = device
-                    break
-            else:
-                logger.error(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
-                raise ValueError(
-                    f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
-                )
-            photodetector_obj = Photodetector(**photodetector_metadata)
-            nwbfile.add_device(photodetector_obj)
+        # Find the matching device by name in the devices list
+        for device in devices["photodetectors"]:
+            if device["name"] == photodetector_name:
+                photodetector_metadata = device
+                break
+        else:
+            logger.error(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
+            raise ValueError(
+                f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
+            )
+        logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
+
+        photodetector_obj = Photodetector(**photodetector_metadata)
+        dichroic_mirror_obj = DichroicMirror(
+            name=photodetector_obj.name,
+            description="Built-in dichroic mirror for photodetector",
+            manufacturer=photodetector_obj.manufacturer,
+        )
+        nwbfile.add_device(photodetector_obj)
+        nwbfile.add_device(dichroic_mirror_obj)
     else:
         logger.warning("No 'photodetectors' found in photometry metadata.")
 
+    added_indicators = dict()
+    if "virus_injections" in metadata["photometry"]:
+        virus_injections = metadata["photometry"]["virus_injections"]
+        for virus_injection in virus_injections:
+            virus_name = virus_injection["name"]
+
+            # Find the matching virus by name in the indicator list
+            for virus in viruses["indicators"]:
+                if virus["name"] == virus_name:
+                    indicator_metadata = virus
+                    logger.info(f"Virus '{virus_name}' found in indicators in resources/virus_info.yaml")
+                    break
+            else:
+                # Find the matching virus by name in the opsin list
+                for virus in viruses["opsins"]:
+                    if virus["name"] == virus_name:
+                        logger.warning(
+                            f"Virus '{virus_name}' found in opsins list in resources/virus_info.yaml. "
+                            "Optogenetics is not yet implemented so this virus will be ignored."
+                        )
+                        break
+                else:
+                    # If the virus was not found in either list, raise an error
+                    logger.error(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
+                    raise ValueError(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
+
+            if "titer_in_vg_per_mL" not in virus_injection:
+                logger.warning(f"Virus injection for '{virus_name}' does not have a 'titer_in_vg_per_mL' field in metadata.")
+            if "volume_in_uL" not in virus_injection:
+                logger.warning(f"Virus injection for '{virus_name}' does not have a 'volume_in_uL' field in metadata.")
+
+            # Add the indicator to the NWB file
+            indicator = Indicator(
+                    name=indicator_metadata["name"],
+                    description=(
+                        f"{indicator_metadata['description']}. "
+                        f"Titer in vg/mL: {virus_injection.get('titer_in_vg_per_mL', 'unknown')}. "
+                        f"Volume in uL: {virus_injection.get('volume_in_uL', 'unknown')}."
+                    ),
+                    label=indicator_metadata["construct_name"],
+                    manufacturer=indicator_metadata["manufacturer"],
+                    injection_location=virus_injection["targeted_location"],
+                    injection_coordinates_in_mm=(virus_injection["ap_in_mm"],
+                                                 virus_injection["ml_in_mm"],
+                                                 virus_injection["dv_in_mm"])
+                )
+            nwbfile.add_device(indicator)
+            added_indicators[indicator.name] = indicator
+
+    fiber_photometry_table = FiberPhotometryTable(
+        name="fiber_photometry_table",
+        description="fiber photometry table",
+    )
+
+    # Select a mapping based on the indicator used in the metadata
+    for indicator_obj in added_indicators.values():
+        if indicator_obj.name in mappings["indicators"]:
+            mapped_excitation_sources = mappings["indicators"][indicator_obj.name]
+            logger.info(f"Using mapping for indicator '{indicator_obj.name}'")
+
+            for excitation_source_name in mapped_excitation_sources:
+                if excitation_source_name in added_excitation_sources:
+                    logger.info(f"Using excitation source '{excitation_source_name}' for indicator '{indicator_obj.label}'")
+                    excitation_source_obj = added_excitation_sources[excitation_source_name]
+
+                    fiber_photometry_table.add_row(
+                        location=recorded_fiber_target_location,
+                        coordinates=recorded_fiber_coordinates,
+                        optical_fiber=recorded_fiber_obj,
+                        photodetector=photodetector_obj,
+                        dichroic_mirror=dichroic_mirror_obj,
+                        indicator=indicator_obj,  # <-- this changes in the loop
+                        excitation_source=excitation_source_obj,  # <-- this changes in the loop
+                    )
+            else:
+                logger.error(f"Excitation source '{excitation_source_name}' not found in added excitation sources "
+                             f"for indicator {indicator_obj.name}")
+                raise ValueError(f"Excitation source '{excitation_source_name}' not found in added excitation sources "
+                                 f"for indicator {indicator_obj.name}")
+        else:
+            logger.error(f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml")
+            raise ValueError(f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml")
+
+    fiber_photometry_lab_meta_data = FiberPhotometry(
+        name="fiber_photometry",
+        fiber_photometry_table=fiber_photometry_table,
+    )
+
+    nwbfile.add_lab_meta_data(fiber_photometry_lab_meta_data)
 
 def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """
-    Add photometry data to the NWB and return port visits 
+    Add photometry data to the NWB and return port visits
     in downsampled photometry time to use for alignment.
 
-    The processing differs based on what photometry data 
+    The processing differs based on what photometry data
     is available as specified by the metadata dictionary:
-    
+
     If "phot_file_path" and "box_file_path" exist in the metadata dict:
     - We are using LabVIEW and have not done any preprocessing to extract the
     modulated photometry signals
     - Read raw data from the LabVIEW files and run lockin detection to extract visits,
     raw green signal, and raw reference signal, then do signal processing and dF/F
-    
+
     If "signals_mat_file_path" exists in the metadata dict:
-    - We are using LabVIEW and the raw .phot and .box files have already 
+    - We are using LabVIEW and the raw .phot and .box files have already
     been processed in MATLAB to create signals.mat (this is true for older recordings)
-    - Load the "signals.mat" dictionary that contains raw green signal, raw reference 
+    - Load the "signals.mat" dictionary that contains raw green signal, raw reference
     signal, and port visit times and do the signal processing and dF/F
     - Note that if "signals_mat_file_path" and both "phot_file_path" and "box_file_path"
     have been specified, we default to processing the raw LabVIEW data and ignore signals.mat
-    
+
     If "ppd_file_path" exists in the metadata dict:
     - We are using pyPhotometry and do processing accordingly. This is currently
     only implemented for Jose's case (gACh, ratiometric instead of isosbestic correction)
