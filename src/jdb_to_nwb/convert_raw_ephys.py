@@ -44,6 +44,75 @@ ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrod
 ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
 DEVICES_PATH = RESOURCES_DIR / "ephys_devices.yaml"
 
+
+def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1):
+    """
+    Given the Open Ephys folder path, find the relevant settings.xml file and all associated continuous.dat files.
+
+    For custom Berke Lab probes, we expect a single probe folder with a single continuous.dat. For example:
+    open_ephys_folder_path/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat
+
+    For Neuropixels, we may have multiple "probe name" folders, each with a different continuous.dat file
+    This will be the case for the ADC, and also if we implant 2 probes bilatrerally. For example:
+    open_ephys_folder_path/Record Node 101/experiment2/recording1/continuous/OneBox-100.OneBox-ADC/continuous.dat
+    open_ephys_folder_path/Record Node 101/experiment2/recording1/continuous/OneBox-100.ProbeA/continuous.dat
+
+    For both cases, the settings.xml file lives at the same level as the experiment{number} folder.
+    The suffix for settings.xml matches the number of the experiment if >=2, or no suffix for experiment1
+    Example paths:
+    open_ephys_folder_path/settings.xml (Berke Lab probe)
+    open_ephys_folder_path/Record Node 101/settings_2.xml (Neuropixels)
+
+    Parameters:
+        open_ephys_folder_path: Path to the Open Ephys output folder (the auto-generated one with the
+            recording start time in the folder name)
+        experiment_number (int): Optional. If multiple recordings in the same output folder (which get
+            auto-named experiment1, experiment2, etc), which one to use. Defaults to 1
+
+    Returns:
+        dict:
+            "settings_file": path to settings.xml file
+            "recording_files": dict with probe_name: path to the continuous.dat for that probe
+    """
+    # Determine the suffix for settings.xml (empty for experiment1, "_2" for experiment2, etc.)
+    suffix = "" if experiment_number == 1 else f"_{experiment_number}"
+
+    # Look for the settings.xml file
+    settings_file_pattern = os.path.join(open_ephys_folder_path, f"**/settings{suffix}.xml")
+    settings_files = glob.glob(settings_file_pattern, recursive=True)
+
+    # Make sure there is a single settings.xml file
+    if not settings_files:
+        raise FileNotFoundError(f"No settings.xml found for experiment {experiment_number} in {open_ephys_folder_path}")
+    if len(settings_files) > 1:
+        raise ValueError(
+            f"Found {len(settings_files)} for experiment {experiment_number} in {open_ephys_folder_path},"
+            f"expected 1: {settings_files}"
+            )
+    settings_xml_file = settings_files[0]
+
+    # Look for the continuous.dat files
+    experiment_folder = f"experiment{experiment_number}"
+    continuous_base = os.path.join(open_ephys_folder_path, "**", experiment_folder, "recording*", "continuous")
+    probe_folders = glob.glob(os.path.join(continuous_base, "*"), recursive=True)
+
+    # Inside each "probe name" folder, there should be a single continuous.dat
+    continuous_dat_files = {}
+    for probe_folder in probe_folders:
+        if not os.path.isdir(probe_folder):
+            continue
+        probe_name = os.path.basename(probe_folder)
+        dat_files = glob.glob(os.path.join(probe_folder, "continuous.dat"))
+        if len(dat_files) == 0:
+            print(f"No continuous.dat found in {probe_folder}!")
+            continue
+        if len(dat_files) > 1:
+            raise ValueError(f"Multiple continuous.dat files found in {probe_folder}: {dat_files}")
+        continuous_dat_files[probe_name] = dat_files[0]
+
+    return {"settings_file": settings_xml_file, "recording_files": continuous_dat_files}
+
+
 def add_electrode_data(
     *,
     nwbfile: NWBFile,
@@ -565,7 +634,7 @@ def get_raw_ephys_data(
     )
 
 
-def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[int], list[int], str]:
+def get_raw_ephys_metadata(settings_xml_path: Path, logger) -> tuple[list[str], list[int], list[int], str]:
     """
     Get the raw ephys metadata from the OpenEphys binary recording.
 
@@ -585,9 +654,8 @@ def get_raw_ephys_metadata(folder_path: Path, logger) -> tuple[list[str], list[i
 
     Parameters
     ----------
-    folder_path : Path
-        Path to the folder containing the OpenEphys binary recording. The folder
-        should have the date in the name and contain a file called "settings.xml".
+    settings_xml_path : Path
+        Path to the OpenEphys settings.xml file
     logger : Logger
         Logger to track conversion progress
 
