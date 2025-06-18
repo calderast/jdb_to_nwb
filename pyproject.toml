@@ -36,9 +36,8 @@ dependencies = [
     "matplotlib",
     "imageio-ffmpeg",
     "ffmpeg-python",
-    "tables",
+    "tables",  # used by pandas to read HDF5 files
     "opencv-python",
-    "numcodecs==0.12.1",
     "hex-maze-neuro",
 ]
 dynamic = ["version"]
@@ -50,7 +49,6 @@ dev = [
     "black",
     "ruff",
     "codespell",
-    "tqdm",
 ]
 test = ["pytest", "pytest-cov"]
 
