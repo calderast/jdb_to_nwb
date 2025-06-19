@@ -1,0 +1,21 @@
+# dLight can be excited at 470 and 405 nm
+# The conversion code makes a lot of assumptions about the mapping and this is how it is specified.
+# Map indicator to list of possible excitation sources
+dLight1.3b:
+  # in the old maze room, dLight would be excited by the Thorlabs LEDs
+  - Thorlabs Blue LED  # 470 nm (signal wavelength)
+  - Thorlabs Purple LED  # 405 nm (isosbestic wavelength)
+  # in the new maze room, dLight would be excited by the Doric LEDs
+  - Doric Blue LED  # 470 nm (signal wavelength)
+  - Doric Purple LED  # 405 nm (isosbestic wavelength)
+
+dLight3.8:
+  # in the old maze room, dLight would be excited by the Thorlabs LEDs
+  - Thorlabs Blue LED  # 470 nm (signal wavelength)
+  - Thorlabs Purple LED  # 405 nm (isosbestic wavelength)
+  # in the new maze room, dLight would be excited by the Doric LEDs
+  - Doric Blue LED  # 470 nm (signal wavelength)
+  - Doric Purple LED  # 405 nm (isosbestic wavelength)
+
+rDA3m:
+  - Doric Green LED  # 565 nm (signal wavelength)
