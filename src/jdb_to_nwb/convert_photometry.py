@@ -41,7 +41,7 @@ if not RESOURCES_DIR.exists():
 
 DEVICES_PATH = RESOURCES_DIR / "photometry_devices.yaml"
 MAPPINGS_PATH = RESOURCES_DIR / "photometry_mappings.yaml"
-VIRUSES_PATH = RESOURCES_DIR / "viruses.yaml"
+VIRUSES_PATH = RESOURCES_DIR / "virus_info.yaml"
 
 
 def read_phot_data(phot_file_path):
