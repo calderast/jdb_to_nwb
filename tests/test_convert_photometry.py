@@ -18,9 +18,7 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
     metadata["photometry"]["optic_fibers"] = [
         "Doric 0.66mm Flat 40mm Optic Fiber",
     ]
-    metadata["photometry"]["photodetector"] = [
-        "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)",
-    ]
+    metadata["photometry"]["photodetector"] = "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"
     metadata["photometry"]["optic_fiber_implant_sites"] = [
         {
             "optic_fiber": "Doric 0.66mm Flat 40mm Optic Fiber",
