@@ -1041,7 +1041,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
 
         photodetector_obj = Photodetector(**photodetector_metadata)
         dichroic_mirror_obj = DichroicMirror(
-            name=photodetector_obj.name,
+            name=photodetector_obj.name + " Built-in Dichroic Mirror",
             description="Built-in dichroic mirror for photodetector",
             manufacturer=photodetector_obj.manufacturer,
         )
