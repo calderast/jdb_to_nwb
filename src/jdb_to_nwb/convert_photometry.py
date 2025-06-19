@@ -596,7 +596,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     blue_led_table_region = None
     purple_led_table_region = None
     green_led_table_region = None
-    for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_sources.data):
+    for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_source.data):
         if excitation_source_obj.name == "Doric Blue LED":
             blue_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Blue LED"
@@ -863,7 +863,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     fiber_photometry_table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
     blue_led_table_region = None
     purple_led_table_region = None
-    for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_sources.data):
+    for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_source.data):
         if excitation_source_obj.name == "Thorlabs Blue LED":
             blue_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Blue LED"
@@ -1000,13 +1000,13 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             for device in devices["optic_fibers"]:
                 if device["name"] == fiber_name:
                     fiber_metadata = device
+                    logger.info(f"Optic fiber '{fiber_name}' found in resources/photometry_devices.yaml")
                     break
             else:
                 logger.error(f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml")
                 raise ValueError(
                     f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
                 )
-            logger.info(f"Optic fiber '{fiber_name}' found in resources/photometry_devices.yaml")
 
             fiber_obj = OpticalFiber(**fiber_metadata)
             nwbfile.add_device(fiber_obj)
@@ -1033,11 +1033,11 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
         for device in devices["photodetectors"]:
             if device["name"] == photodetector_name:
                 photodetector_metadata = device
+                logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
                 break
         else:
             logger.error(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
             raise ValueError(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
-        logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
 
         photodetector_obj = Photodetector(**photodetector_metadata)
         dichroic_mirror_obj = DichroicMirror(
