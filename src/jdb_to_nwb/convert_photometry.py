@@ -610,16 +610,15 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
                 region=[row_index], description="Green LED"
             )
     if blue_led_table_region is None:
-        logger.error("Could not find Doric Blue LED in fiber photometry table. "
-                     "Please check the devices.yaml file.")
+        logger.error("Could not find Doric Blue LED in fiber photometry table. " "Please check the devices.yaml file.")
         raise ValueError("Doric Blue LED not found in fiber photometry table.")
     if purple_led_table_region is None:
-        logger.error("Could not find Doric Purple LED in fiber photometry table. "
-                     "Please check the devices.yaml file.")
+        logger.error(
+            "Could not find Doric Purple LED in fiber photometry table. " "Please check the devices.yaml file."
+        )
         raise ValueError("Doric Purple LED not found in fiber photometry table.")
     if green_led_table_region is None:
-        logger.error("Could not find Doric Green LED in fiber photometry table. "
-                     "Please check the devices.yaml file.")
+        logger.error("Could not find Doric Green LED in fiber photometry table. " "Please check the devices.yaml file.")
         raise ValueError("Doric Green LED not found in fiber photometry table.")
 
     raw_470_response_series = FiberPhotometryResponseSeries(
@@ -874,12 +873,14 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
                 region=[row_index], description="Purple LED"
             )
     if blue_led_table_region is None:
-        logger.error("Could not find Thorlabs Blue LED in fiber photometry table. "
-                     "Please check the devices.yaml file.")
+        logger.error(
+            "Could not find Thorlabs Blue LED in fiber photometry table. " "Please check the devices.yaml file."
+        )
         raise ValueError("Thorlabs Blue LED not found in fiber photometry table.")
     if purple_led_table_region is None:
-        logger.error("Could not find Thorlabs Purple LED in fiber photometry table. "
-                     "Please check the devices.yaml file.")
+        logger.error(
+            "Could not find Thorlabs Purple LED in fiber photometry table. " "Please check the devices.yaml file."
+        )
         raise ValueError("Thorlabs Purple LED not found in fiber photometry table.")
 
     # Create NWB FiberPhotometryResponseSeries objects for the relevant photometry signals
@@ -965,8 +966,9 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                     excitation_source_metadata = device
                     break
             else:
-                logger.error(f"Excitation source '{excitation_source_name}' not found "
-                             "in resources/photometry_devices.yaml")
+                logger.error(
+                    f"Excitation source '{excitation_source_name}' not found " "in resources/photometry_devices.yaml"
+                )
                 raise ValueError(
                     f"Excitation source '{excitation_source_name}' not found in resources/photometry_devices.yaml"
                 )
@@ -985,8 +987,10 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             if fiber_implant_site.get("recording", False):
                 count_recording_sites += 1
         if count_recording_sites != 1:
-            logger.error("There should be exactly one fiber implant site with 'recording: true'. "
-                         f"Found {count_recording_sites} sites with 'recording: true'.")
+            logger.error(
+                "There should be exactly one fiber implant site with 'recording: true'. "
+                f"Found {count_recording_sites} sites with 'recording: true'."
+            )
             raise ValueError("There should be exactly one fiber implant site with 'recording: true'.")
 
         for fiber_implant_site in fiber_implant_sites:
@@ -1014,9 +1018,11 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 # ml_in_mm: 1.7
                 # dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
                 recorded_fiber_target_location = fiber_implant_site["targeted_location"]
-                recorded_fiber_coordinates = (fiber_implant_site["ap_in_mm"],
-                                              fiber_implant_site["ml_in_mm"],
-                                              fiber_implant_site["dv_in_mm"])
+                recorded_fiber_coordinates = (
+                    fiber_implant_site["ap_in_mm"],
+                    fiber_implant_site["ml_in_mm"],
+                    fiber_implant_site["dv_in_mm"],
+                )
     else:
         logger.warning("No 'optic_fibers' found in photometry metadata.")
 
@@ -1030,9 +1036,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 break
         else:
             logger.error(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
-            raise ValueError(
-                f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml"
-            )
+            raise ValueError(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
         logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
 
         photodetector_obj = Photodetector(**photodetector_metadata)
@@ -1081,19 +1085,21 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
 
             # Add the indicator to the NWB file
             indicator = Indicator(
-                    name=indicator_metadata["name"],
-                    description=(
-                        f"{indicator_metadata['description']}. "
-                        f"Titer in vg/mL: {virus_injection.get('titer_in_vg_per_mL', 'unknown')}. "
-                        f"Volume in uL: {virus_injection.get('volume_in_uL', 'unknown')}."
-                    ),
-                    label=indicator_metadata["construct_name"],
-                    manufacturer=indicator_metadata["manufacturer"],
-                    injection_location=virus_injection["targeted_location"],
-                    injection_coordinates_in_mm=(virus_injection["ap_in_mm"],
-                                                 virus_injection["ml_in_mm"],
-                                                 virus_injection["dv_in_mm"])
-                )
+                name=indicator_metadata["name"],
+                description=(
+                    f"{indicator_metadata['description']}. "
+                    f"Titer in vg/mL: {virus_injection.get('titer_in_vg_per_mL', 'unknown')}. "
+                    f"Volume in uL: {virus_injection.get('volume_in_uL', 'unknown')}."
+                ),
+                label=indicator_metadata["construct_name"],
+                manufacturer=indicator_metadata["manufacturer"],
+                injection_location=virus_injection["targeted_location"],
+                injection_coordinates_in_mm=(
+                    virus_injection["ap_in_mm"],
+                    virus_injection["ml_in_mm"],
+                    virus_injection["dv_in_mm"],
+                ),
+            )
             nwbfile.add_device(indicator)
             added_indicators[indicator.name] = indicator
 
@@ -1125,10 +1131,14 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                         excitation_source=excitation_source_obj,  # <-- this changes in the loop
                     )
             else:
-                logger.error(f"Excitation source '{excitation_source_name}' not found in added excitation sources "
-                             f"for indicator {indicator_obj.name}")
-                raise ValueError(f"Excitation source '{excitation_source_name}' not found in added excitation sources "
-                                 f"for indicator {indicator_obj.name}")
+                logger.error(
+                    f"Excitation source '{excitation_source_name}' not found in added excitation sources "
+                    f"for indicator {indicator_obj.name}"
+                )
+                raise ValueError(
+                    f"Excitation source '{excitation_source_name}' not found in added excitation sources "
+                    f"for indicator {indicator_obj.name}"
+                )
         else:
             logger.error(
                 f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml"
@@ -1143,6 +1153,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     )
 
     nwbfile.add_lab_meta_data(fiber_photometry_lab_meta_data)
+
 
 def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """
