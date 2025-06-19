@@ -16,7 +16,16 @@ from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
 
-from ndx_fiber_photometry import (FiberPhotometryResponseSeries, Indicator, ExcitationSource, OpticalFiber, Photodetector, DichroicMirror, FiberPhotometryTable, FiberPhotometry)
+from ndx_fiber_photometry import (
+    FiberPhotometryResponseSeries,
+    Indicator,
+    ExcitationSource,
+    OpticalFiber,
+    Photodetector,
+    DichroicMirror,
+    FiberPhotometryTable,
+    FiberPhotometry,
+)
 from .plotting.plot_photometry import (
     plot_signal_correlation,
     plot_photometry_signals,
@@ -1064,7 +1073,9 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                     raise ValueError(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
 
             if "titer_in_vg_per_mL" not in virus_injection:
-                logger.warning(f"Virus injection for '{virus_name}' does not have a 'titer_in_vg_per_mL' field in metadata.")
+                logger.warning(
+                    f"Virus injection for '{virus_name}' does not have a 'titer_in_vg_per_mL' field in metadata."
+                )
             if "volume_in_uL" not in virus_injection:
                 logger.warning(f"Virus injection for '{virus_name}' does not have a 'volume_in_uL' field in metadata.")
 
@@ -1099,7 +1110,9 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
 
             for excitation_source_name in mapped_excitation_sources:
                 if excitation_source_name in added_excitation_sources:
-                    logger.info(f"Using excitation source '{excitation_source_name}' for indicator '{indicator_obj.label}'")
+                    logger.info(
+                        f"Using excitation source '{excitation_source_name}' for indicator '{indicator_obj.label}'"
+                    )
                     excitation_source_obj = added_excitation_sources[excitation_source_name]
 
                     fiber_photometry_table.add_row(
@@ -1117,8 +1130,12 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 raise ValueError(f"Excitation source '{excitation_source_name}' not found in added excitation sources "
                                  f"for indicator {indicator_obj.name}")
         else:
-            logger.error(f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml")
-            raise ValueError(f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml")
+            logger.error(
+                f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml"
+            )
+            raise ValueError(
+                f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml"
+            )
 
     fiber_photometry_lab_meta_data = FiberPhotometry(
         name="fiber_photometry",
