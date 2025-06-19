@@ -1054,7 +1054,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     if "virus_injections" in metadata["photometry"]:
         virus_injections = metadata["photometry"]["virus_injections"]
         for virus_injection in virus_injections:
-            virus_name = virus_injection["name"]
+            virus_name = virus_injection["virus_name"]
 
             # Find the matching virus by name in the indicator list
             for virus in viruses["indicators"]:
@@ -1110,14 +1110,15 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
 
     # Select a mapping based on the indicator used in the metadata
     for indicator_obj in added_indicators.values():
-        if indicator_obj.name in mappings["indicators"]:
-            mapped_excitation_sources = mappings["indicators"][indicator_obj.name]
+        if indicator_obj.name in mappings:
+            mapped_excitation_sources = mappings[indicator_obj.name]
             logger.info(f"Using mapping for indicator '{indicator_obj.name}'")
 
+            added_rows = 0
             for excitation_source_name in mapped_excitation_sources:
                 if excitation_source_name in added_excitation_sources:
                     logger.info(
-                        f"Using excitation source '{excitation_source_name}' for indicator '{indicator_obj.label}'"
+                        f"Mapping excitation source '{excitation_source_name}' for indicator '{indicator_obj.label}'"
                     )
                     excitation_source_obj = added_excitation_sources[excitation_source_name]
 
@@ -1130,14 +1131,15 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                         indicator=indicator_obj,  # <-- this changes in the loop
                         excitation_source=excitation_source_obj,  # <-- this changes in the loop
                     )
-            else:
+                    added_rows += 1
+            if added_rows == 0:
                 logger.error(
-                    f"Excitation source '{excitation_source_name}' not found in added excitation sources "
-                    f"for indicator {indicator_obj.name}"
+                    f"None of the mapped excitation sources for indicator '{indicator_obj.name}' were found in "
+                    f"the excitation sources added to the NWB file."
                 )
                 raise ValueError(
-                    f"Excitation source '{excitation_source_name}' not found in added excitation sources "
-                    f"for indicator {indicator_obj.name}"
+                    f"None of the mapped excitation sources for indicator '{indicator_obj.name}' were found in "
+                    f"the excitation sources added to the NWB file."
                 )
         else:
             logger.error(

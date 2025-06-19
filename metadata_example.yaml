@@ -80,7 +80,7 @@ photometry:
       ml_in_mm: 1.7
       dv_in_mm: -6.2  # 6.2 mm deep for males, 6.0 mm deep for females
       volume_in_uL: 1.0
-      titer_in_vg_per_ml: 2e12  # after dilution
+      titer_in_vg_per_mL: 2e12  # after dilution
 
 
 behavior:

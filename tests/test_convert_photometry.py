@@ -15,8 +15,10 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
     Add dummy values to the metadata dictionary so that the tests can run.
     test_add_photometry_metadata tests that the values are added correctly.
     """
-    metadata["photometry"]["optic_fibers"] = [
-        "Doric 0.66mm Flat 40mm Optic Fiber",
+    metadata["photometry"]["excitation_sources"] = [
+        "Doric Purple LED",
+        "Doric Blue LED",
+        "Doric Green LED",
     ]
     metadata["photometry"]["photodetector"] = "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"
     metadata["photometry"]["optic_fiber_implant_sites"] = [
@@ -37,7 +39,7 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_ml": 2e12,
+            "titer_in_vg_per_m:": 2e12,
         }
     ]
 
@@ -413,17 +415,23 @@ def test_add_photometry_metadata(dummy_logger):
             "missing photometry subfields in the metadata dict."
         )
 
-    assert "Thorlabs Purple LED" in nwbfile.devices
-    assert nwbfile.devices["Thorlabs Purple LED"].excitation_wavelength_in_nm == 405.0
-    assert nwbfile.devices["Thorlabs Purple LED"].illumination_type == "LED"
-    assert nwbfile.devices["Thorlabs Purple LED"].manufacturer == "Thorlabs"
-    assert nwbfile.devices["Thorlabs Purple LED"].model == "M405FP1"
+    assert "Doric Purple LED" in nwbfile.devices
+    assert nwbfile.devices["Doric Purple LED"].excitation_wavelength_in_nm == 405.0
+    assert nwbfile.devices["Doric Purple LED"].illumination_type == "LED"
+    assert nwbfile.devices["Doric Purple LED"].manufacturer == "Doric"
+    assert nwbfile.devices["Doric Purple LED"].model == "ilFMC7-G2"
 
-    assert "Thorlabs Blue LED" in nwbfile.devices
-    assert nwbfile.devices["Thorlabs Blue LED"].excitation_wavelength_in_nm == 470.0
-    assert nwbfile.devices["Thorlabs Blue LED"].illumination_type == "LED"
-    assert nwbfile.devices["Thorlabs Blue LED"].manufacturer == "Thorlabs"
-    assert nwbfile.devices["Thorlabs Blue LED"].model == "M470F3"
+    assert "Doric Blue LED" in nwbfile.devices
+    assert nwbfile.devices["Doric Blue LED"].excitation_wavelength_in_nm == 470.0
+    assert nwbfile.devices["Doric Blue LED"].illumination_type == "LED"
+    assert nwbfile.devices["Doric Blue LED"].manufacturer == "Doric"
+    assert nwbfile.devices["Doric Blue LED"].model == "ilFMC7-G2"
+
+    assert "Doric Green LED" in nwbfile.devices
+    assert nwbfile.devices["Doric Green LED"].excitation_wavelength_in_nm == 565.0
+    assert nwbfile.devices["Doric Green LED"].illumination_type == "LED"
+    assert nwbfile.devices["Doric Green LED"].manufacturer == "Doric"
+    assert nwbfile.devices["Doric Green LED"].model == "ilFMC7-G2"
 
     assert "Doric 0.66mm Flat 40mm Optic Fiber" in nwbfile.devices
     optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"]
