@@ -30,18 +30,3 @@ def plot_channel_map(probe_name, channel_geometry, fig_dir=None):
         save_path = os.path.join(fig_dir, "channel_coords.png")
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
-
-
-if __name__ == "__main__":
-    import os
-    import pandas as pd
-    import yaml
-
-    with open("resources/ephys_devices.yaml", "r") as f:
-        ephys_devices = yaml.safe_load(f)
-
-    for probe in ephys_devices["probes"]:
-        probe_name = probe["name"]
-        channel_geometry = pd.read_csv(f"resources/{probe['electrode_coords']}")
-        plot_channel_map(probe_name, channel_geometry, fig_dir="resources")
-        os.rename("resources/channel_coords.png", f"resources/{probe_name}_channel_coords.png")
