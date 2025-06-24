@@ -7,12 +7,73 @@ from pynwb import NWBFile
 import pytest
 import re
 
-from jdb_to_nwb.convert_raw_ephys import add_electrode_data, add_raw_ephys, get_raw_ephys_data, get_raw_ephys_metadata
+from jdb_to_nwb.convert_raw_ephys import (
+    add_raw_ephys, 
+    get_raw_ephys_data,
+    add_probe_info,
+    add_electrode_data_berke_probe,
+    get_raw_ephys_metadata_berke_probe,
+)
 
 
-def test_add_electrode_data(dummy_logger):
+def test_add_probe_info(dummy_logger):
     """
-    Test the add_electrode_data function.
+    Test the add_probe_info function.
+    """
+    # Create a test metadata dictionary
+    metadata = {}
+    metadata["ephys"] = {}
+    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # Add probe to the nwbfile
+    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    
+    # Test that the nwbfile has the expected probe info under 'devices'
+    assert "256-ch Silicon Probe, 3mm length, 66um pitch" in nwbfile.devices
+    probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 66um pitch"]
+    assert probe is not None
+    assert probe.probe_description.startswith("32 shanks, 8 electrodes per shank. Each shank is 3mm long.")
+    assert probe.manufacturer == "Daniel Egert, Berke Lab"
+    assert probe.contact_side_numbering
+    assert probe.contact_size == 15
+    assert probe.units == "um"
+    
+    # Test that probe_metadata includes the probe info
+    required_probe_keys = {
+        "name",
+        "description",
+        "manufacturer",
+        "contact_side_numbering",
+        "contact_size",
+        "units",
+        "shanks",
+    }
+    assert required_probe_keys.issubset(probe_metadata.keys()), (
+        f"Probe is missing required keys {required_probe_keys - probe_metadata.keys()}"
+    )
+    assert probe_metadata["name"] == "256-ch Silicon Probe, 3mm length, 66um pitch"
+    assert probe_metadata["description"].startswith("32 shanks, 8 electrodes per shank. Each shank is 3mm long.")
+    assert probe_metadata["manufacturer"] == "Daniel Egert, Berke Lab"
+    assert probe_metadata["contact_side_numbering"]
+    assert probe_metadata["contact_size"] == 15
+    assert probe_metadata["units"] == "um"
+    
+    # Test that the returned probe_obj is the probe from the nwb
+    probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 66um pitch"]
+    assert probe_obj == probe
+
+
+def test_add_electrode_data_berke_probe(dummy_logger):
+    """
+    Test the add_electrode_data_berke_probe function.
+    Note that this depends on add_probe_info
     """
     # Create a test metadata dictionary
     metadata = {}
@@ -56,14 +117,19 @@ def test_add_electrode_data(dummy_logger):
     # Create a test reference daq channel indices list
     reference_daq_channel_indices = list(range(256))
     reference_daq_channel_indices.reverse()
+    
+    # First add the probe to the nwbfile
+    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Add electrode data to the NWBFile
-    add_electrode_data(
+    add_electrode_data_berke_probe(
         nwbfile=nwbfile,
         filtering_list=filtering_list,
         headstage_channel_numbers=headstage_channel_numbers,
         reference_daq_channel_indices=reference_daq_channel_indices,
         metadata=metadata,
+        probe_metadata=probe_metadata,
+        probe_obj=probe_obj,
         logger=dummy_logger,
     )
 
@@ -152,17 +218,16 @@ def test_get_raw_ephys_data(dummy_logger):
     assert len(original_timestamps) == 3_000
 
 
-def test_get_raw_ephys_metadata(dummy_logger):
+def test_get_raw_ephys_metadata_berke_probe(dummy_logger):
     """
     Test that the get_raw_ephys_metadata function extracts the correct metadata from the settings.xml file.
     """
-    folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+    settings_file_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00/settings.xml"
     (
         filtering_list,
         headstage_channel_numbers,
         reference_daq_channel_indices,
-        raw_settings_xml,
-    ) = get_raw_ephys_metadata(folder_path, dummy_logger)
+    ) = get_raw_ephys_metadata_berke_probe(settings_file_path, dummy_logger)
     assert filtering_list == ["2nd-order Butterworth filter with highcut=6000 Hz and lowcut=1 Hz"] * 256
 
     # The headstage channel numbers are 1-indexed - see settings.xml file
@@ -181,11 +246,6 @@ def test_get_raw_ephys_metadata(dummy_logger):
     # fmt: on
     np.testing.assert_array_equal(headstage_channel_numbers, expected_headstage_channel_numbers)
     assert reference_daq_channel_indices == [-1] * 256
-
-    settings_file_path = Path(folder_path) / "settings.xml"
-    with open(settings_file_path, "r") as settings_file:
-        expected_raw_settings_xml = settings_file.read()
-    assert raw_settings_xml == expected_raw_settings_xml
 
 
 def test_add_raw_ephys(dummy_logger):
