@@ -1106,6 +1106,9 @@ def add_raw_ephys(
         channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path, 
                                                    logger=logger, 
                                                    fig_dir=fig_dir)
+
+        logger.debug("Neuropixels channel info:")
+        logger.debug(channel_info)
         # TODO: Use channel map to add electrode data to the nwbfile
         # Figure out impedance and filtering info - not sure where that lives
         # Work with Sam to figure out how to name the probe and create custom electrode groups
