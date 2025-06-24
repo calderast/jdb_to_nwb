@@ -1,21 +1,32 @@
-# dLight can be excited at 470 and 405 nm
-# The conversion code makes a lot of assumptions about the mapping and this is how it is specified.
-# Map indicator to list of possible excitation sources
+# Map each indicator to a list of possible excitation sources.
+# Each indicator should match a named virus in `virus_info.yaml`
+
 dLight1.3b:
-  # in the old maze room, dLight would be excited by the Thorlabs LEDs
-  - Thorlabs Blue LED  # 470 nm (signal wavelength)
-  - Thorlabs Purple LED  # 405 nm (isosbestic wavelength)
-  # in the new maze room, dLight would be excited by the Doric LEDs
-  - Doric Blue LED  # 470 nm (signal wavelength)
-  - Doric Purple LED  # 405 nm (isosbestic wavelength)
+  # Old maze room (Thorlabs LEDs)
+  - Thorlabs Blue LED               # 470 nm (signal wavelength)
+  - Thorlabs Purple LED             # 405 nm (isosbestic wavelength)
+  # New maze room (Doric LEDs)
+  - Doric Blue LED                  # 470 nm (signal wavelength)
+  - Doric Purple LED                # 405 nm (isosbestic wavelength)
 
 dLight3.8:
-  # in the old maze room, dLight would be excited by the Thorlabs LEDs
-  - Thorlabs Blue LED  # 470 nm (signal wavelength)
-  - Thorlabs Purple LED  # 405 nm (isosbestic wavelength)
-  # in the new maze room, dLight would be excited by the Doric LEDs
-  - Doric Blue LED  # 470 nm (signal wavelength)
-  - Doric Purple LED  # 405 nm (isosbestic wavelength)
+  # Old maze room (Thorlabs LEDs)
+  - Thorlabs Blue LED               # 470 nm (signal wavelength)
+  - Thorlabs Purple LED             # 405 nm (isosbestic wavelength)
+  # New maze room (Doric LEDs)
+  - Doric Blue LED                  # 470 nm (signal wavelength)
+  - Doric Purple LED                # 405 nm (isosbestic wavelength)
 
-rDA3m:
-  - Doric Green LED  # 565 nm (signal wavelength)
+rDA3m (AAV9):
+  - Doric Green LED                 # 565 nm (signal wavelength)
+
+rDA3m (rAAV):
+  - Doric Green LED                 # 565 nm (signal wavelength)
+
+ACh3.8:
+  # Old maze room (Thorlabs LEDs)
+  - Thorlabs Blue LED               # 470 nm (peak signal wavelength)
+  - Thorlabs Purple LED             # 405 nm (for ratiometric index)
+  # New maze room (Doric LEDs)
+  - Doric Blue LED                  # 470 nm (peak signal wavelength)
+  - Doric Purple LED                # 405 nm (for ratiometric index)
