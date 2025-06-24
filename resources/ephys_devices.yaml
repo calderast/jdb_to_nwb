@@ -1,6 +1,5 @@
 # A running list of devices used for extracellular electrophysiology. 
 # Reference individual devices by name in the metadata yaml file.
-# Berke Lab currently uses 2 possible probes for the hex maze task, specified below.
 
 probe:
   - name: "256-ch Silicon Probe, 3mm length, 66um pitch"
@@ -92,3 +91,23 @@ probe:
       - 29: [232, 233, 234, 235, 236, 237, 238, 239]
       - 30: [240, 241, 242, 243, 244, 245, 246, 247]
       - 31: [248, 249, 250, 251, 252, 253, 254, 255]
+
+  - name: "Neuropixels 2.0 (4-shank)"
+    description: >
+      4 shanks x 1280 electrodes per shank for 5120 total recording sites.
+      Allows simultaneous recording of 384 sites (electrodes) at a time.
+      Shanks are 250um apart. There are 2 electrodes per row on each shank.
+      There is 15 um vertically and 32 um horizontally between electrodes on each shank. 
+      Each shank is 10mm long with 70 um width and 24 um thickness.
+      Electrode contacts have size 12um x 12um.
+      See https://doi.org/10.1126/science.abf4588 
+      and https://www.neuropixels.org/_files/ugd/328966_2b39661f072d405b8d284c3c73588bc6.pdf
+    manufacturer: "IMEC"
+    contact_side_numbering: true
+    contact_size: 12  # 12um x 12um
+    units: um
+    shanks:  # shank index: [electrode range]
+      - 0: [0, ..., 1279]
+      - 1: [1280, ..., 2559]
+      - 2: [2560, ..., 3839]
+      - 3: [3840, ..., 5119]
