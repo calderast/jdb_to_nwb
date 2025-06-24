@@ -22,7 +22,7 @@ from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
 from .timestamps_alignment import align_via_interpolation
-from .plotting.plot_ephys import plot_channel_map
+from .plotting.plot_ephys import plot_channel_map, plot_neuropixels
 from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
 MICROVOLTS_PER_VOLT = 1e6
@@ -868,6 +868,131 @@ def add_electrode_data_berke_probe(
         )
 
 
+### Functions for Neuropixels
+
+def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dict:
+    """
+    Read the openephys settings.xml file for a Neuropixels 2.0 mulitshank probe
+    to get the mapping of channel number to channel name, electrode_xpos, and electrode_ypos.
+
+    Merge with data for all Neuropixels electrodes to get shank row, shank column, 
+    and electrode ID for each channel.
+
+    Parameters:
+        settings_file_path (Path):
+            Path to the OpenEphys settings.xml file
+        logger (Logger):
+            Logger to track conversion progress
+        fig_dir (Path):
+            Optional. The directory to save associated figures. If None, the figures will not be saved
+
+    Returns:
+        dict:
+            Dictionary of probe_id: dataframe of channel info
+    """
+    # Load electrode coordinates for all 5120 potential Neuropixels recording sites
+    all_neuropixels_electrodes_info = pd.read_csv(ELECTRODE_COORDS_PATH_NPX_MULTISHANK)
+
+    # Initialize dict to store channel info for each probe from the settings.xml
+    neuropixels_channel_data = {}
+
+    # Load the settings.xml
+    settings_tree = ET.parse(settings_file_path)
+    settings_root = settings_tree.getroot()
+
+    # Parse each PROBE
+    probes = settings_root.findall(".//NP_PROBE")
+    for i, probe in enumerate(probes):
+        # Make an id for each probe in case there are multiple (there will be 2 if we do bilateral recordings)
+        probe_id = f"probe_{i}"
+
+        # Get electrode config preset name
+        logger.debug(f"NP_PROBE {i}: electrodeConfigurationPreset = '{probe.get('electrodeConfigurationPreset')}'")
+
+        # Initialize channel map for this probe
+        channel_map = {}
+
+        # Parse CHANNELS
+        channels_element = probe.find("CHANNELS")
+        if channels_element is not None:
+            for channel_name, shank_info in channels_element.attrib.items():
+                if channel_name.startswith("CH"):
+                    channel_num = int(channel_name[2:])
+                    bank_str, shank_str = shank_info.split(":")
+                    channel_map[channel_num] = {
+                        "channel_name": channel_name, 
+                        "shank": int(shank_str), 
+                        "bank(?)": int(bank_str) # TODO: I don't actually know what this is
+                    }
+        else:
+            logger.error("Could not find CHANNELS in the settings.xml file.")
+            raise ValueError("Could not find CHANNELS in the settings.xml file.")
+
+        # Parse ELECTRODE_XPOS
+        xpos_element = probe.find("ELECTRODE_XPOS")
+        if xpos_element is not None:
+            for channel_name, xpos in xpos_element.attrib.items():
+                if channel_name.startswith("CH"):
+                    channel_num = int(channel_name[2:])
+                    channel_map[channel_num]["x_um"] = int(xpos)
+        else:
+            logger.error("Could not find ELECTRODE_XPOS in the settings.xml file.")
+            raise ValueError("Could not find ELECTRODE_XPOS in the settings.xml file.")
+
+        # Parse ELECTRODE_YPOS
+        ypos_element = probe.find("ELECTRODE_YPOS")
+        if ypos_element is not None:
+            for channel_name, ypos in ypos_element.attrib.items():
+                if channel_name.startswith("CH"):
+                    channel_num = int(channel_name[2:])
+                    channel_map[channel_num]["y_um"] = int(ypos)
+        else:
+            logger.error("Could not find ELECTRODE_YPOS in the settings.xml file.")
+            raise ValueError("Could not find ELECTRODE_YPOS in the settings.xml file.")
+
+        # Create dataframe of channel info from the settings.xml
+        channel_info_from_settings = pd.DataFrame.from_dict(channel_map, orient='index')
+        channel_info_from_settings['channel_num'] = channel_info_from_settings.index.astype(int)
+        channel_info_from_settings = channel_info_from_settings.sort_values(by='channel_num').reset_index(drop=True)
+        logger.debug(f"Channel info from settings.xml for Neuropixels probe {probe_id}:")
+        logger.debug(channel_info_from_settings)
+
+        # Merge this probe's channel info with all electrode coordinates
+        logger.debug(f"Validating electrode coordinates for Neuropixels {probe_id} "
+                    "by merging with data for all possible Neuropixels recording sites...")
+        full_channel_info_df = pd.merge(
+            channel_info_from_settings,
+            all_neuropixels_electrodes_info,
+            on=["x_um", "y_um", "shank"],
+            how="left",  # ensures we detect any unmatched rows
+            validate="one_to_one"
+        )
+
+        # Check for unmatched electrodes
+        if full_channel_info_df["electrode"].isnull().any():
+            missing = full_channel_info_df[full_channel_info_df["electrode"].isnull()]
+            logger.error(
+                f"Missing electrode match for {len(missing)} channels in {probe_id}:\n"
+                f"{missing[['channel_num', 'x_um', 'y_um', 'shank']]}"
+            )
+            raise ValueError(
+                f"Missing electrode match for {len(missing)} channels in {probe_id}:\n"
+                f"{missing[['channel_num', 'x_um', 'y_um', 'shank']]}"
+            )
+
+        # Check that we have info for 384 recording sites as expected
+        assert len(full_channel_info_df) == 384, f"Expected 384 channels, got {len(full_channel_info_df)}"
+        logger.info(f"Neuropixels {probe_id}: all 384 channels matched and merged successfully!")
+        neuropixels_channel_data[probe_id] = full_channel_info_df
+
+        # Plot electrode layour and channel info for this probe
+        plot_neuropixels(all_neuropixels_electrodes=all_neuropixels_electrodes_info,
+                         channel_info=channel_info_from_settings,
+                         probe_name=probe_id,
+                         fig_dir=fig_dir)
+    return neuropixels_channel_data
+
+
 def add_raw_ephys(
     *,
     nwbfile: NWBFile,
@@ -954,10 +1079,10 @@ def add_raw_ephys(
 
         # Read the settings.xml file to get electrode info
         (
-        filtering_list,
-        headstage_channel_numbers,
-        reference_daq_channel_indices,
-        ) = get_raw_ephys_metadata_berke_probe(settings_file_path, logger)
+            filtering_list,
+            headstage_channel_numbers,
+            reference_daq_channel_indices,
+        ) = get_raw_ephys_metadata_berke_probe(settings_file_path=settings_file_path, logger=logger)
         
         # Create electrode groups and add electrode data to the NWB file
         add_electrode_data_berke_probe(
@@ -974,8 +1099,17 @@ def add_raw_ephys(
 
     else:
         # For Neuropixels (NOTE these are fake placeholder values):
-        total_channels = 392 # No ideal acually. 384 "CH" + 8(??) "ADC" ?
+        total_channels = 392 # I actually have no idea. Guessing 384 "CH" + 8(??) "ADC" ?
         port_visits_channel_num = 384 # Also no idea. 
+        
+        # Read the settings.xml file to get channel map
+        channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path, 
+                                                   logger=logger, 
+                                                   fig_dir=fig_dir)
+        # TODO: Use channel map to add electrode data to the nwbfile
+        # Figure out impedance and filtering info - not sure where that lives
+        # Work with Sam to figure out how to name the probe and create custom electrode groups
+        # based on the geometry of each channel map
         raise NotImplementedError("Full processing for Neuropixels not yet implemented.")
 
     # Get raw ephys data
