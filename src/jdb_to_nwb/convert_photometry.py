@@ -3,6 +3,7 @@ import struct
 import pandas as pd
 import numpy as np
 import os
+import re
 import json
 import warnings
 import scipy.io
@@ -952,18 +953,19 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     with open(VIRUSES_PATH, "r") as f:
         viruses = yaml.safe_load(f)
 
-    # For each type of device, overwrite any metadata from the resources/photometry_devices.yaml file
-    # with the metadata from the metadata YAML file
-
+    # Add excitation sources to the nwb
     added_excitation_sources = dict()
     if "excitation_sources" in metadata["photometry"]:
         excitation_source_names = metadata["photometry"]["excitation_sources"]
         for excitation_source_name in excitation_source_names:
-            logger.info(f"Excitation source '{excitation_source_name}' found in resources/photometry_devices.yaml")
-            # Find the matching device by name in the devices list
+            # Find the matching device by name in the photometry devices list
             for device in devices["excitation_sources"]:
                 if device["name"] == excitation_source_name:
-                    excitation_source_metadata = device
+                    logger.info(f"Excitation source '{excitation_source_name}' found in resources/photometry_devices.yaml")
+                    # Create the ExcitationSource object and add it to the nwb
+                    excitation_source_obj = ExcitationSource(**device)
+                    nwbfile.add_device(excitation_source_obj)
+                    added_excitation_sources[excitation_source_name] = excitation_source_obj
                     break
             else:
                 logger.error(
@@ -972,35 +974,48 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 raise ValueError(
                     f"Excitation source '{excitation_source_name}' not found in resources/photometry_devices.yaml"
                 )
-            excitation_source_obj = ExcitationSource(**excitation_source_metadata)
-            nwbfile.add_device(excitation_source_obj)
-            added_excitation_sources[excitation_source_name] = excitation_source_obj
     else:
         logger.warning("No 'excitation_sources' found in photometry metadata.")
 
+    # Add optic fibers to the nwb
     if "optic_fiber_implant_sites" in metadata["photometry"]:
         fiber_implant_sites = metadata["photometry"]["optic_fiber_implant_sites"]
 
-        # quality check that exactly one fiber implant site has recording: true
+        # Our current pipeline assumes that we only record from one fiber at a time
+        # Quality check that exactly one fiber implant site has recording: true
         count_recording_sites = 0
         for fiber_implant_site in fiber_implant_sites:
             if fiber_implant_site.get("recording", False):
                 count_recording_sites += 1
         if count_recording_sites != 1:
             logger.error(
-                "There should be exactly one fiber implant site with 'recording: true'. "
+                "There should be exactly one optic fiber implant site with 'recording: true'. "
                 f"Found {count_recording_sites} sites with 'recording: true'."
             )
-            raise ValueError("There should be exactly one fiber implant site with 'recording: true'.")
+            raise ValueError(
+                "There should be exactly one optic fiber implant site with 'recording: true'. "
+                f"Found {count_recording_sites} sites with 'recording: true'."
+            )
 
         for fiber_implant_site in fiber_implant_sites:
             fiber_name = fiber_implant_site["optic_fiber"]
 
-            # Find the matching device by name in the devices list
+            # Find the matching device by name in the photometry devices list
             for device in devices["optic_fibers"]:
                 if device["name"] == fiber_name:
-                    fiber_metadata = device
                     logger.info(f"Optic fiber '{fiber_name}' found in resources/photometry_devices.yaml")
+                    # NWB does not allow duplicate device names, but we implant most fibers bilaterally.
+                    # We add the hemisphere based on the ML coordinate + targeted location in parenthesis 
+                    # after the name of the fiber to get around this, 
+                    # e.g. 'Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)'
+                    hemisphere = "left" if fiber_implant_site["ml_in_mm"] < 0 else "right"
+                    fiber_name = f"{fiber_name} ({hemisphere} {fiber_implant_site["targeted_location"]})"
+
+                    # Create the OpticalFiber object and add it to the nwb
+                    fiber_metadata = device.copy()
+                    fiber_metadata["name"] = fiber_name
+                    fiber_obj = OpticalFiber(**fiber_metadata)
+                    nwbfile.add_device(fiber_obj)
                     break
             else:
                 logger.error(f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml")
@@ -1008,15 +1023,10 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                     f"Optic fiber '{fiber_name}' not found in resources/photometry_devices.yaml"
                 )
 
-            fiber_obj = OpticalFiber(**fiber_metadata)
-            nwbfile.add_device(fiber_obj)
-
+            # Save the targeted location and coordinates of the recording fiber
+            # This will be used in the fiber photometry table
             if fiber_implant_site.get("recording", False):
                 recorded_fiber_obj = fiber_obj
-                # targeted_location: NAcc
-                # ap_in_mm: 1.7
-                # ml_in_mm: 1.7
-                # dv_in_mm: -6.0  # 6.0 mm deep for males, 5.8 mm deep for females
                 recorded_fiber_target_location = fiber_implant_site["targeted_location"]
                 recorded_fiber_coordinates = (
                     fiber_implant_site["ap_in_mm"],
@@ -1026,30 +1036,32 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     else:
         logger.warning("No 'optic_fibers' found in photometry metadata.")
 
+    # Add photodetector to the nwb
     if "photodetector" in metadata["photometry"]:
         photodetector_name = metadata["photometry"]["photodetector"]
 
-        # Find the matching device by name in the devices list
+        # Find the matching device by name in the photometry devices list
         for device in devices["photodetectors"]:
             if device["name"] == photodetector_name:
-                photodetector_metadata = device
                 logger.info(f"Photodetector '{photodetector_name}' found in resources/photometry_devices.yaml")
+                # Create the Photodetector object and add it to the nwb
+                # Also add a DichroicMirror object based on photodetector info
+                photodetector_obj = Photodetector(**device)
+                dichroic_mirror_obj = DichroicMirror(
+                    name=photodetector_obj.name + " Built-in Dichroic Mirror",
+                    description="Built-in dichroic mirror for photodetector",
+                    manufacturer=photodetector_obj.manufacturer,
+                )
+                nwbfile.add_device(photodetector_obj)
+                nwbfile.add_device(dichroic_mirror_obj)
                 break
         else:
             logger.error(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
             raise ValueError(f"Photodetector '{photodetector_name}' not found in resources/photometry_devices.yaml")
-
-        photodetector_obj = Photodetector(**photodetector_metadata)
-        dichroic_mirror_obj = DichroicMirror(
-            name=photodetector_obj.name + " Built-in Dichroic Mirror",
-            description="Built-in dichroic mirror for photodetector",
-            manufacturer=photodetector_obj.manufacturer,
-        )
-        nwbfile.add_device(photodetector_obj)
-        nwbfile.add_device(dichroic_mirror_obj)
     else:
         logger.warning("No 'photodetectors' found in photometry metadata.")
 
+    # Add indicators to the nwb
     added_indicators = dict()
     if "virus_injections" in metadata["photometry"]:
         virus_injections = metadata["photometry"]["virus_injections"]
@@ -1059,8 +1071,8 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             # Find the matching virus by name in the indicator list
             for virus in viruses["indicators"]:
                 if virus["name"] == virus_name:
-                    indicator_metadata = virus
                     logger.info(f"Virus '{virus_name}' found in indicators in resources/virus_info.yaml")
+                    indicator_metadata = virus
                     break
             else:
                 # Find the matching virus by name in the opsin list
@@ -1082,10 +1094,17 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 )
             if "volume_in_uL" not in virus_injection:
                 logger.warning(f"Virus injection for '{virus_name}' does not have a 'volume_in_uL' field in metadata.")
+            
+            # NWB does not allow duplicate device names, but we inject most indicators bilaterally.
+            # We add the hemisphere based on the ML coordinate + targeted location in parenthesis 
+            # after the name of the indicator to get around this (e.g. 'dLight1.3b (left NAcc)')
+            hemisphere = "left" if virus_injection["ml_in_mm"] < 0 else "right"
+            indicator_name = f"{indicator_metadata['name']} ({hemisphere} {virus_injection['targeted_location']})"
 
-            # Add the indicator to the NWB file
+            # Add the indicator to the nwb
+            # There is no standard way to store titer/volume, so we add it to the description
             indicator = Indicator(
-                name=indicator_metadata["name"],
+                name=indicator_name,
                 description=(
                     f"{indicator_metadata['description']}. "
                     f"Titer in vg/mL: {virus_injection.get('titer_in_vg_per_mL', 'unknown')}. "
@@ -1102,23 +1121,49 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             )
             nwbfile.add_device(indicator)
             added_indicators[indicator.name] = indicator
-
+    
+    # Set up fiber photometry table with one row for each recorded indicator + excitation source combination
+    # These mappings come from resources/photometry_mappings.yaml
     fiber_photometry_table = FiberPhotometryTable(
         name="fiber_photometry_table",
         description="fiber photometry table",
     )
 
-    # Select a mapping based on the indicator used in the metadata
     for indicator_obj in added_indicators.values():
-        if indicator_obj.name in mappings:
-            mapped_excitation_sources = mappings[indicator_obj.name]
-            logger.info(f"Using mapping for indicator '{indicator_obj.name}'")
+        # We have added all optical fibers and indicators to the nwbfile as devices
+        # However, we only record from a single optical fiber per session
+        # So only add the indicators that are actually recorded by that fiber to the fiber photometry table
+        # If the indicator injection coords are >0.5mm from the recorded fiber coordinates, don't add it
+        distance_threshold_mm = 0.5
+        injection_coords = np.array(indicator_obj.injection_coordinates_in_mm)
+        fiber_coords = np.array(recorded_fiber_coordinates)
+        distance = np.linalg.norm(injection_coords - fiber_coords)
+
+        if distance > distance_threshold_mm:
+            logger.info(
+                f"Indicator '{indicator_obj.name}' at '{injection_coords}' is too far from "
+                f"recording fiber '{recorded_fiber_obj.name}' at {fiber_coords} to have been recorded in this session. "
+                f"(Distance {distance:.2f}mm exceeds threshold of {distance_threshold_mm}mm)"
+            )
+            logger.info(f"Skipping adding '{indicator_obj.name}' to the fiber photometry table, as it "
+                        "was not recorded from in this session. It still exists in the nwbfile under 'Devices'.")
+            continue  # don't add to fiber_photometry_table
+        else:
+            logger.info(f"Adding indicator '{indicator_obj.name}' to the fiber photometry table")
+
+        # Remove the last parenthesis we added after the indicator name so we can find the correct mapping
+        logger.debug(f"Finding mapping for indicator '{indicator_obj.name}'")
+        indicator_name_for_mapping = re.sub(r'\s*\([^()]*\)\s*$', '', indicator_obj.name)
+
+        if indicator_name_for_mapping in mappings:
+            logger.debug(f"Found mapping for indicator '{indicator_name_for_mapping}'")
+            mapped_excitation_sources = mappings[indicator_name_for_mapping]
 
             added_rows = 0
             for excitation_source_name in mapped_excitation_sources:
                 if excitation_source_name in added_excitation_sources:
                     logger.info(
-                        f"Mapping excitation source '{excitation_source_name}' for indicator '{indicator_obj.label}'"
+                        f"Mapping excitation source '{excitation_source_name}' to indicator '{indicator_obj.name}'"
                     )
                     excitation_source_obj = added_excitation_sources[excitation_source_name]
 
@@ -1134,19 +1179,19 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                     added_rows += 1
             if added_rows == 0:
                 logger.error(
-                    f"None of the mapped excitation sources for indicator '{indicator_obj.name}' were found in "
-                    f"the excitation sources added to the NWB file."
+                    f"None of the mapped excitation sources for indicator '{indicator_name_for_mapping}' "
+                    f"were found in the excitation sources added to the NWB file."
                 )
                 raise ValueError(
-                    f"None of the mapped excitation sources for indicator '{indicator_obj.name}' were found in "
-                    f"the excitation sources added to the NWB file."
+                    f"None of the mapped excitation sources for indicator '{indicator_name_for_mapping}' "
+                    f"were found in the excitation sources added to the NWB file."
                 )
         else:
             logger.error(
-                f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml"
+                f"No mapping found for the indicator {indicator_name_for_mapping} in resources/photometry_mapping.yaml"
             )
             raise ValueError(
-                f"No mapping found for the indicator {indicator_obj.name} in resources/photometry_mapping.yaml"
+                f"No mapping found for the indicator {indicator_name_for_mapping} in resources/photometry_mapping.yaml"
             )
 
     fiber_photometry_lab_meta_data = FiberPhotometry(

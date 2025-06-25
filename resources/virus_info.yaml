@@ -19,9 +19,10 @@ indicators:
     description: Recombinant AAV expressing the dopamine sensor rDA3m under the hSyn promoter
     manufacturer: BrainVTA
 
-  - name: ACh3.8
+  - name: ACh4h
     construct_name: AAV-hSyn-ACh3.8
-    description: AAV virus expressing the acetylcholine sensor GRAB-ACh3.8 under the hSyn promoter
+    description: >
+      AAV virus expressing the acetylcholine sensor GRAB-ACh3.8 under the hSyn promoter. Unpublished, Yulong Li Lab
     manufacturer: BrainVTA
 
 opsins:
