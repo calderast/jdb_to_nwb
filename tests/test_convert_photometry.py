@@ -113,7 +113,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "titer_in_vg_per_m:": 1.15e13,
         },
         {
-            "virus_name": "rDA3m",
+            "virus_name": "rDA3m (rAAV)",
             "targeted_location": "NAcc",
             "ap_in_mm": 1.7,
             "ml_in_mm": 1.7,
@@ -122,7 +122,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "titer_in_vg_per_m:": 5.89e12,
         },
         {
-            "virus_name": "rDA3m",
+            "virus_name": "rDA3m (rAAV)",
             "targeted_location": "NAcc",
             "ap_in_mm": 1.7,
             "ml_in_mm": -1.7,
@@ -530,7 +530,7 @@ def test_add_photometry_metadata(dummy_logger):
     assert photodetector.detector_type == "Silicon photodiode"
     assert photodetector.detected_wavelength_in_nm == 960.0
 
-    # TODO add more checks
+    # TODO add more checks! And do the same for LabVIEW metadata
 
 
 def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):

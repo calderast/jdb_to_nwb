@@ -11,15 +11,15 @@ indicators:
 
   - name: rDA3m (AAV9)
     construct_name: AAV9-hsyn-rDA3m
-    description: AAV9 virus expressing the dopamine sensor rDA3m under the hSyn promoter
+    description: AAV9 virus expressing the red-shifted dopamine sensor GRAB rDA3m under the hSyn promoter
     manufacturer: BrainVTA
 
   - name: rDA3m (rAAV)
     construct_name: rAAV-hsyn-rDA3m
-    description: Recombinant AAV expressing the dopamine sensor rDA3m under the hSyn promoter
+    description: Recombinant AAV expressing the red-shifted dopamine sensor GRAB rDA3m under the hSyn promoter
     manufacturer: BrainVTA
 
-  - name: ACh4h
+  - name: GACh4h
     construct_name: AAV-hSyn-ACh3.8
     description: >
       AAV virus expressing the acetylcholine sensor GRAB-ACh3.8 under the hSyn promoter. Unpublished, Yulong Li Lab
