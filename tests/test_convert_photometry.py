@@ -16,14 +16,17 @@ from ndx_fiber_photometry import (
     FiberPhotometry,
 )
 
-from jdb_to_nwb.convert_photometry import add_photometry, process_raw_labview_photometry_signals
+from jdb_to_nwb.convert_photometry import (
+    add_photometry, 
+    add_photometry_metadata, 
+    process_raw_labview_photometry_signals,
+)
 
 
 def add_dummy_labview_metadata_to_metadata(metadata):
     """
-    Add dummy values to the metadata dictionary so that the tests can run.
+    Add values to the metadata dictionary so that the tests can run.
     Values assume recording in the old maze room with LabVIEW
-    test_add_photometry_metadata tests that the values are added correctly.
     """
     metadata["photometry"]["excitation_sources"] = [
         "Thorlabs Blue LED",
@@ -57,7 +60,7 @@ def add_dummy_labview_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_mL:": 2e12,
+            "titer_in_vg_per_mL": 2e12,
         },
         {
             "virus_name": "dLight1.3b",
@@ -66,14 +69,14 @@ def add_dummy_labview_metadata_to_metadata(metadata):
             "ml_in_mm": -1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_mL:": 2e12,
+            "titer_in_vg_per_mL": 2e12,
         }
     ]
 
 
 def add_dummy_pyphotometry_metadata_to_metadata(metadata):
     """
-    Add dummy values to the metadata dictionary so that the tests can run.
+    Add values to the metadata dictionary so that the tests can run.
     Values assume recording in the new maze room with pyPhotometry
     test_add_photometry_metadata tests that the values are added correctly.
     """
@@ -110,7 +113,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_mL:": 1.15e13,
+            "titer_in_vg_per_mL": 1.15e13,
         },
         {
             "virus_name": "GACh4h",
@@ -119,7 +122,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": -1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_mL:": 1.15e13,
+            "titer_in_vg_per_mL": 1.15e13,
         },
         {
             "virus_name": "rDA3m (rAAV)",
@@ -128,7 +131,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_mL:": 5.89e12,
+            "titer_in_vg_per_mL": 5.89e12,
         },
         {
             "virus_name": "rDA3m (rAAV)",
@@ -137,7 +140,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": -1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_mL:": 5.89e12,
+            "titer_in_vg_per_mL": 5.89e12,
         }
     ]
 
@@ -472,11 +475,10 @@ def test_add_photometry_from_pyphotometry(dummy_logger):
         )
 
 
-def test_add_photometry_metadata_pyphotometry(dummy_logger):
+def test_add_photometry_metadata(dummy_logger):
     """
     Test that the add_photometry_metadata function adds the expected metadata to the NWB file.
-    For this test, we use pyphotometry data and metadata. 
-    We do not check the processed values as this happens in test_add_photometry_from_pyphotometry
+    For this test, we use pyPhotometry metadata. 
     """
 
     # Create a test metadata dictionary with pyPhotometry data and metadata
@@ -485,7 +487,7 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
     metadata["photometry"] = {}
     metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
     add_dummy_pyphotometry_metadata_to_metadata(metadata)
-    
+
     # Create a test NWBFile
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -493,8 +495,8 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
         identifier="mock_session",
     )
 
-    # Add photometry data to the nwbfile
-    add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Add photometry metadata to the nwbfile
+    add_photometry_metadata(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
     # Check excitation sources
     assert "Doric Purple LED" in nwbfile.devices
@@ -543,20 +545,20 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
 
     # Check optical fibers
     assert "Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)" in nwbfile.devices
-    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)"]
-    assert isinstance(optic_fiber, OpticalFiber)
-    assert optic_fiber.numerical_aperture == 0.66
-    assert optic_fiber.core_diameter_in_um == 200.0
-    assert optic_fiber.manufacturer == "Doric"
-    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
+    optic_fiber_left = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)"]
+    assert isinstance(optic_fiber_left, OpticalFiber)
+    assert optic_fiber_left.numerical_aperture == 0.66
+    assert optic_fiber_left.core_diameter_in_um == 200.0
+    assert optic_fiber_left.manufacturer == "Doric"
+    assert optic_fiber_left.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
 
     assert "Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)" in nwbfile.devices
-    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
-    assert isinstance(optic_fiber, OpticalFiber)
-    assert optic_fiber.numerical_aperture == 0.66
-    assert optic_fiber.core_diameter_in_um == 200.0
-    assert optic_fiber.manufacturer == "Doric"
-    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
+    optic_fiber_right = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
+    assert isinstance(optic_fiber_right, OpticalFiber)
+    assert optic_fiber_right.numerical_aperture == 0.66
+    assert optic_fiber_right.core_diameter_in_um == 200.0
+    assert optic_fiber_right.manufacturer == "Doric"
+    assert optic_fiber_right.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
 
     # Check indicators
     # NOTE volume_in_uL and titer_in_vg_per_mL do not exist as Indicator fields so they
@@ -565,7 +567,7 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
     gach4h_left = nwbfile.devices["GACh4h (left NAcc)"]
     assert isinstance(gach4h_left, Indicator)
     assert gach4h_left.injection_coordinates_in_mm == (1.7, -1.7, -6.2)
-    assert gach4h_left.targeted_location == "NAcc"
+    assert gach4h_left.injection_location == "NAcc"
     assert gach4h_left.label == "AAV-hSyn-ACh3.8"
     assert gach4h_left.manufacturer == "BrainVTA"
     assert gach4h_left.description.startswith("AAV virus expressing the acetylcholine sensor GRAB-ACh3.8")
@@ -574,7 +576,7 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
     gach4h_right = nwbfile.devices["GACh4h (right NAcc)"]
     assert isinstance(gach4h_right, Indicator)
     assert gach4h_right.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
-    assert gach4h_right.targeted_location == "NAcc"
+    assert gach4h_right.injection_location == "NAcc"
     assert gach4h_right.label == "AAV-hSyn-ACh3.8"
     assert gach4h_right.manufacturer == "BrainVTA"
     assert gach4h_right.description.startswith("AAV virus expressing the acetylcholine sensor GRAB-ACh3.8")
@@ -583,7 +585,7 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
     rda3m_left = nwbfile.devices["rDA3m (rAAV) (left NAcc)"]
     assert isinstance(rda3m_left, Indicator)
     assert rda3m_left.injection_coordinates_in_mm == (1.7, -1.7, -6.2)
-    assert rda3m_left.targeted_location == "NAcc"
+    assert rda3m_left.injection_location == "NAcc"
     assert rda3m_left.label == "rAAV-hsyn-rDA3m"
     assert rda3m_left.manufacturer == "BrainVTA"
     assert rda3m_left.description.startswith("Recombinant AAV expressing the red-shifted dopamine sensor GRAB rDA3m")
@@ -592,12 +594,12 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
     rda3m_right = nwbfile.devices["rDA3m (rAAV) (right NAcc)"]
     assert isinstance(rda3m_right, Indicator)
     assert rda3m_right.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
-    assert rda3m_right.targeted_location == "NAcc"
+    assert rda3m_right.injection_location == "NAcc"
     assert rda3m_right.label == "rAAV-hsyn-rDA3m"
     assert rda3m_right.manufacturer == "BrainVTA"
     assert rda3m_right.description.startswith("Recombinant AAV expressing the red-shifted dopamine sensor GRAB rDA3m")
-    
-    # Check fiber photometry table (??)
+
+    # Check fiber photometry table
     assert "fiber_photometry" in nwbfile.lab_meta_data
     fiber_photometry_meta = nwbfile.lab_meta_data["fiber_photometry"]
     assert isinstance(fiber_photometry_meta, FiberPhotometry)
@@ -606,8 +608,37 @@ def test_add_photometry_metadata_pyphotometry(dummy_logger):
     table = fiber_photometry_meta.fiber_photometry_table
     assert table.name == "fiber_photometry_table"
     assert table.description == "fiber photometry table"
-    
-    # TODO check the correct rows in the table! Check the correct series mapped to the correct row!
+
+    # Only recorded indicators are added to the table. We recorded from the fiber in left NAcc.
+    # 1. GACh4h (left NAcc) + Doric Purple LED
+    # 2. GACh4h (left NAcc) + Doric Blue LED
+    # 3. rDA3m (rAAV) (left NAcc) + Doric Green LED
+    expected_combinations = {
+        (gach4h_left, purple_led),
+        (gach4h_left, blue_led),
+        (rda3m_left, green_led)
+    }
+    combinations_in_table = set()
+
+    # Our table should have 3 rows, one for each indicator + excitation source combination
+    assert len(table) == 3
+
+    for row in table:
+        # The recording fiber, photodetector, and dichroic mirror are the same for all rows
+        assert row["optical_fiber"].item() == optic_fiber_left
+        assert row["photodetector"].item() == photodetector
+        assert row["dichroic_mirror"].item() == dichroic_mirror
+
+        # Each of the indicator + excitation source combinations should appear once
+        combinations_in_table.add((row["indicator"].item(), row["excitation_source"].item()))
+
+    assert expected_combinations == combinations_in_table
+
+
+def test_photometry_series_mappings():
+    # TODO: Test that each photometry series 
+    # is mapped to the correct row in the fiber photometry table
+    pass
 
 
 def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
