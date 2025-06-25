@@ -11,7 +11,7 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
 
     This function can be used to plot any signals, but our current use case is:
     - LabVIEW has 470nm and 405nm (dLight) 
-    - pyPhotometry has 470nm, 405nm, and 470/405 ratio (ACh3.8), and 565nm (rDA3m)
+    - pyPhotometry has 470nm, 405nm, and 470/405 ratio (GACh4h), and 565nm (rDA3m)
 
     Parameters:
         visits (list or np.array): Port visits in photometry sample time

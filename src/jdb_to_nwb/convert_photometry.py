@@ -5,7 +5,6 @@ import numpy as np
 import os
 import re
 import json
-import warnings
 import scipy.io
 import yaml
 from datetime import datetime
@@ -350,7 +349,7 @@ def whittaker_smooth(data, binary_mask, lambda_):
     return np.array(smoothed_baseline)
 
 
-def airPLS(data, lambda_=1e8, max_iterations=50):
+def airPLS(data, lambda_=1e8, max_iterations=50, logger):
     """
     Adaptive iteratively reweighted Penalized Least Squares for baseline fitting (airPLS).
     DOI: 10.1039/b922045c
@@ -386,8 +385,9 @@ def airPLS(data, lambda_=1e8, max_iterations=50):
         # Convergence check: if sum_of_neg_deltas < 0.1% of the total data, or if max iterations is reached
         if sum_of_neg_deltas < 0.001 * (abs(data)).sum() or i == max_iterations:
             if i == max_iterations:
-                warnings.warn(
-                    f"Reached maximum iterations before convergence was achieved! "
+                logger.warning(
+                    f"When calculating adaptive photometry baseline with airPLS, we "
+                    f"reached maximum iterations ({max_iterations}) before convergence was achieved! "
                     f"Wanted sum_of_neg_deltas < {0.001 * (abs(data)).sum()}, "
                     f"got sum_of_neg_deltas = {sum_of_neg_deltas}"
                 )
@@ -491,9 +491,9 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     Wait until we know more about those use cases.
 
     For now, we assume the following (Jose's setup):
-    analog_1: 470 nm (gACh)
+    analog_1: 470 nm (GACh4h)
     analog_2: 565 nm (rDA3m)
-    analog_3: 405 nm (for ratiometric correction of gACh)
+    analog_3: 405 nm (for ratiometric correction of GACh4h)
 
     Returns:
     dict with keys
@@ -502,7 +502,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     - photometry_start: datetime object marking the start time of photometry recording
     """
 
-    logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (gACh), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
+    logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (GACh4h), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
     ppd_data = import_ppd(ppd_file_path)
     raw_green = pd.Series(ppd_data['analog_1'])
     raw_red = pd.Series(ppd_data['analog_2'])
@@ -563,7 +563,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     # Plot the correlation between the filtered signals of interest (ACh and DA)
     plot_signal_correlation(sig1=ratio_highpass, sig2=red_highpass,
-                            label1='GACh3.8 470/405 ratio', label2='rDA3m', fig_dir=fig_dir)
+                            label1='GACh4h 470/405 ratio', label2='rDA3m', fig_dir=fig_dir)
 
     # Z-score each signal to normalize the data
     print('Z-scoring photometry signals...')
@@ -577,7 +577,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     plot_photometry_signals(visits=visits,
                             sampling_rate=sampling_rate,
                             signals=[green_zscored, zscored_405, ratio_zscored, red_zscored],
-                            signal_labels=["ACh3.8 470nm", "ACh3.8 405nm", "ACh3.8 470/405 ratio", "rDA3m 565nm"],
+                            signal_labels=["GACh4h 470nm", "GACh4h 405nm", "GACh4h 470/405 ratio", "rDA3m 565nm"],
                             signal_colors=["blue", "purple", "grey", "red"],
                             title="Processed pyPhotometry signals",
                             signal_units="Z-score",
@@ -651,7 +651,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     z_scored_405_response_series = FiberPhotometryResponseSeries(
         name="zscored_405",
-        description="Z-scored 405nm. This is used to calculate the ratiometric index when using GRAB-ACh3.8",
+        description="Z-scored 405nm. This is used to calculate the ratiometric index when using GACh4h",
         data=zscored_405,
         unit="z-score",
         rate=float(sampling_rate),
@@ -775,8 +775,12 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     print("Calculating a smoothed baseline using airPLS...")
     logger.info("Calculating a smoothed baseline using airPLS with "
                 f"lambda={lam} and max_iterations={max_iter}...")
-    ref_baseline = airPLS(data=raw_reference.T, lambda_=lam, max_iterations=max_iter).reshape(len(raw_reference), 1)
-    green_baseline = airPLS(data=raw_green.T, lambda_=lam, max_iterations=max_iter).reshape(len(raw_green), 1)
+    ref_baseline = airPLS(data=raw_reference.T, lambda_=lam, max_iterations=max_iter, logger=logger).reshape(
+        len(raw_reference), 1
+    )
+    green_baseline = airPLS(data=raw_green.T, lambda_=lam, max_iterations=max_iter, logger=logger).reshape(
+        len(raw_green), 1
+    )
 
     # Subtract the respective airPLS baseline from the smoothed signal and reference
     print("Subtracting the smoothed baseline...")
@@ -1229,7 +1233,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
 
     If "ppd_file_path" exists in the metadata dict:
     - We are using pyPhotometry and do processing accordingly. This is currently
-    only implemented for Jose's case (gACh, ratiometric instead of isosbestic correction)
+    only implemented for Jose's case (GACh4h, ratiometric instead of isosbestic correction)
     """
 
     if "photometry" not in metadata:
