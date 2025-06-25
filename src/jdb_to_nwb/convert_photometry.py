@@ -587,40 +587,47 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
 
-    # Find the rows of the FiberPhotometryTable that correspond to the blue, purple, and green LEDs.
+    # Find the rows of the FiberPhotometryTable that correspond to the blue (470nm), purple (405nm), 
+    # and green (565 nm) LEDs. Our current setup uses PyPhotometry in the new maze room, so we assume 
+    # we are using the Doric Blue LED, the Doric Purple LED, and the Doric Green LED. 
+
     # This is necessary to create the FiberPhotometryTableRegion objects for the raw signals
-    # and to ensure that the signals are correctly associated with the excitation sources
-    # in the fiber photometry table.
-    # Since we are in this function, we are using PyPhotometry and in the new maze room, so we assume we are using
-    # the Doric Blue LED, the Doric Purple LED, and the Doric Green LED.
+    # and to ensure that each signal is correctly associated with an excitation source
+    # in the fiber photometry table. Note that for processed signals (e.g. 470/405 ratio),
+    # we choose the max "signal" wavelength (e.g. 470) as the LED to associate with the series,
+    # even though this series should technically be associated with both 470nm and 405nm LEDs.
     fiber_photometry_table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
+
     blue_led_table_region = None
     purple_led_table_region = None
     green_led_table_region = None
+
     for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_source.data):
-        if excitation_source_obj.name == "Doric Blue LED":
+        name_lower = excitation_source_obj.name.lower()
+        if "blue led" in name_lower:
             blue_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Blue LED"
             )
-        elif excitation_source_obj.name == "Doric Purple LED":
+        elif "purple led" in name_lower:
             purple_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Purple LED"
             )
-        elif excitation_source_obj.name == "Doric Green LED":
+        elif "green led" in name_lower:
             green_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Green LED"
             )
+
     if blue_led_table_region is None:
-        logger.error("Could not find Doric Blue LED in fiber photometry table. " "Please check the devices.yaml file.")
-        raise ValueError("Doric Blue LED not found in fiber photometry table.")
+        logger.error("Could not find a blue LED in fiber photometry table. Please check the devices.yaml file.")
+        raise ValueError("Blue LED not found in fiber photometry table.")
+
     if purple_led_table_region is None:
-        logger.error(
-            "Could not find Doric Purple LED in fiber photometry table. " "Please check the devices.yaml file."
-        )
-        raise ValueError("Doric Purple LED not found in fiber photometry table.")
+        logger.error("Could not find a purple LED in fiber photometry table. Please check the devices.yaml file.")
+        raise ValueError("Purple LED not found in fiber photometry table.")
+
     if green_led_table_region is None:
-        logger.error("Could not find Doric Green LED in fiber photometry table. " "Please check the devices.yaml file.")
-        raise ValueError("Doric Green LED not found in fiber photometry table.")
+        logger.error("Could not find a green LED in fiber photometry table. Please check the devices.yaml file.")
+        raise ValueError("Green LED not found in fiber photometry table.")
 
     raw_470_response_series = FiberPhotometryResponseSeries(
         name="raw_470",
@@ -719,8 +726,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     Process LabVIEW signals and add the processed signals to the NWB file.
 
     Assumes
-    sig1: 470 nm (dLight)
-    ref: 405 nm (isosbestic wavelength)
+    sig1: 470 nm (dLight signal wavelength)
+    ref: 405 nm (dLight isosbestic wavelength)
 
     Returns:
     dict with keys
@@ -859,34 +866,41 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     print("Adding photometry signals to NWB...")
     logger.info("Adding photometry signals to NWB...")
 
-    # Find the rows of the FiberPhotometryTable that correspond to the blue and purple LEDs.
+    # Find the rows of the FiberPhotometryTable that correspond to the blue (470nm) 
+    # and purple (405nm) LEDs. Our current setup uses LabVIEW in the old maze room, 
+    # so we assume we are using the Thorlabs Blue LED and Thorlabs Purple LED (no green LED).
+
     # This is necessary to create the FiberPhotometryTableRegion objects for the raw signals
-    # and to ensure that the signals are correctly associated with the excitation sources
-    # in the fiber photometry table.
-    # Since we are in this function, we are using LabView and in the old maze room, so we assume we are using
-    # the Thorlabs Blue LED and the Thorlabs Purple LED.
+    # and to ensure that each signal is correctly associated with an excitation source
+    # in the fiber photometry table. Note that for processed signals (e.g. dLight dF/F),
+    # we choose the max "signal" wavelength (e.g. 470) as the LED to associate with the series,
+    # even though this series should technically be associated with both 470nm and 405nm LEDs.
     fiber_photometry_table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
+
     blue_led_table_region = None
     purple_led_table_region = None
+
     for row_index, excitation_source_obj in enumerate(fiber_photometry_table.excitation_source.data):
-        if excitation_source_obj.name == "Thorlabs Blue LED":
+        name_lower = excitation_source_obj.name.lower()
+        if "blue led" in name_lower:
             blue_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Blue LED"
             )
-        elif excitation_source_obj.name == "Thorlabs Purple LED":
+        elif "purple led" in name_lower:
             purple_led_table_region = fiber_photometry_table.create_fiber_photometry_table_region(
                 region=[row_index], description="Purple LED"
             )
+        elif "green led" in name_lower:
+            logger.warning(f"Found green LED '{excitation_source_obj.name}' in fiber photometry table! "
+                           "This is not expected for recording with LabVIEW in our setup and will be ignored.")
+
     if blue_led_table_region is None:
-        logger.error(
-            "Could not find Thorlabs Blue LED in fiber photometry table. " "Please check the devices.yaml file."
-        )
-        raise ValueError("Thorlabs Blue LED not found in fiber photometry table.")
+        logger.error("Could not find a blue LED in fiber photometry table. Please check the devices.yaml file.")
+        raise ValueError("Blue LED not found in fiber photometry table.")
+
     if purple_led_table_region is None:
-        logger.error(
-            "Could not find Thorlabs Purple LED in fiber photometry table. " "Please check the devices.yaml file."
-        )
-        raise ValueError("Thorlabs Purple LED not found in fiber photometry table.")
+        logger.error("Could not find a purple LED in fiber photometry table. Please check the devices.yaml file.")
+        raise ValueError("Purple LED not found in fiber photometry table.")
 
     # Create NWB FiberPhotometryResponseSeries objects for the relevant photometry signals
     z_scored_green_dFF_response_series = FiberPhotometryResponseSeries(
@@ -896,8 +910,8 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
         unit="dF/F",
         rate=float(Fs),
         fiber_photometry_table_region=blue_led_table_region,
-        # not a perfect mapping - it technically combines data from both 470 and 405, but
-        # valuable for accessing these linked metadata
+        # Not a perfect mapping - this series combines data from both 470nm and 405nm,
+        # but valuable for accessing these linked metadata
     )
     z_scored_reference_fitted_response_series = FiberPhotometryResponseSeries(
         name="z_scored_reference_fitted",
