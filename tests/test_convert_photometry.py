@@ -571,7 +571,7 @@ def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
 
     # Create a test metadata dictionary with a photometry field and metadata but no photometry data
     metadata["photometry"] = {}
-    add_dummy_photometry_metadata_to_metadata(metadata)
+    add_dummy_pyphotometry_metadata_to_metadata(metadata)
 
     # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
     try:
