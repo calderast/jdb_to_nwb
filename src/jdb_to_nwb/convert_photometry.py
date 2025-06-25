@@ -349,7 +349,7 @@ def whittaker_smooth(data, binary_mask, lambda_):
     return np.array(smoothed_baseline)
 
 
-def airPLS(data, lambda_=1e8, max_iterations=50, logger):
+def airPLS(data, logger, lambda_=1e8, max_iterations=50):
     """
     Adaptive iteratively reweighted Penalized Least Squares for baseline fitting (airPLS).
     DOI: 10.1039/b922045c
@@ -775,10 +775,10 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     print("Calculating a smoothed baseline using airPLS...")
     logger.info("Calculating a smoothed baseline using airPLS with "
                 f"lambda={lam} and max_iterations={max_iter}...")
-    ref_baseline = airPLS(data=raw_reference.T, lambda_=lam, max_iterations=max_iter, logger=logger).reshape(
+    ref_baseline = airPLS(data=raw_reference.T, logger=logger, lambda_=lam, max_iterations=max_iter).reshape(
         len(raw_reference), 1
     )
-    green_baseline = airPLS(data=raw_green.T, lambda_=lam, max_iterations=max_iter, logger=logger).reshape(
+    green_baseline = airPLS(data=raw_green.T, logger=logger, lambda_=lam, max_iterations=max_iter).reshape(
         len(raw_green), 1
     )
 
