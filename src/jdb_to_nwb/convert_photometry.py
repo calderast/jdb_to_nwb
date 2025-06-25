@@ -961,7 +961,9 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
             # Find the matching device by name in the photometry devices list
             for device in devices["excitation_sources"]:
                 if device["name"] == excitation_source_name:
-                    logger.info(f"Excitation source '{excitation_source_name}' found in resources/photometry_devices.yaml")
+                    logger.info(
+                        f"Excitation source '{excitation_source_name}' found in resources/photometry_devices.yaml"
+                    )
                     # Create the ExcitationSource object and add it to the nwb
                     excitation_source_obj = ExcitationSource(**device)
                     nwbfile.add_device(excitation_source_obj)

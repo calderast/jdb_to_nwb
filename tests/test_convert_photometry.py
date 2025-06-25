@@ -10,17 +10,18 @@ from ndx_fiber_photometry import FiberPhotometryResponseSeries
 from jdb_to_nwb.convert_photometry import add_photometry, process_raw_labview_photometry_signals
 
 
-def add_dummy_photometry_metadata_to_metadata(metadata):
+def add_dummy_labview_metadata_to_metadata(metadata):
     """
     Add dummy values to the metadata dictionary so that the tests can run.
+    Values assume recording in the old maze room with LabVIEW
     test_add_photometry_metadata tests that the values are added correctly.
     """
     metadata["photometry"]["excitation_sources"] = [
-        "Doric Purple LED",
-        "Doric Blue LED",
-        "Doric Green LED",
+        "Thorlabs Blue LED",
+        "Thorlabs Purple LED",
     ]
     metadata["photometry"]["photodetector"] = "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"
+    # Bilateral fibers in NAcc, recording from right hemisphere
     metadata["photometry"]["optic_fiber_implant_sites"] = [
         {
             "optic_fiber": "Doric 0.66mm Flat 40mm Optic Fiber",
@@ -29,8 +30,16 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.0,
             "recording": True,
+        },
+        {
+            "optic_fiber": "Doric 0.66mm Flat 40mm Optic Fiber",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": -1.7,
+            "dv_in_mm": -6.0,
         }
     ]
+    # Bilateral dLight in NAcc
     metadata["photometry"]["virus_injections"] = [
         {
             "virus_name": "dLight1.3b",
@@ -40,6 +49,86 @@ def add_dummy_photometry_metadata_to_metadata(metadata):
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
             "titer_in_vg_per_m:": 2e12,
+        },
+        {
+            "virus_name": "dLight1.3b",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": -1.7,
+            "dv_in_mm": -6.2,
+            "volume_in_uL": 1.0,
+            "titer_in_vg_per_m:": 2e12,
+        }
+    ]
+
+
+def add_dummy_pyphotometry_metadata_to_metadata(metadata):
+    """
+    Add dummy values to the metadata dictionary so that the tests can run.
+    Values assume recording in the new maze room with pyPhotometry
+    test_add_photometry_metadata tests that the values are added correctly.
+    """
+    metadata["photometry"]["excitation_sources"] = [
+        "Doric Purple LED",
+        "Doric Blue LED",
+        "Doric Green LED",
+    ]
+    metadata["photometry"]["photodetector"] = "Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)"
+    # Bilateral fibers in NAcc, recording from left hemisphere
+    metadata["photometry"]["optic_fiber_implant_sites"] = [
+        {
+            "optic_fiber": "Doric 0.66mm Flat 40mm Optic Fiber",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": 1.7,
+            "dv_in_mm": -6.0,
+        },
+        {
+            "optic_fiber": "Doric 0.66mm Flat 40mm Optic Fiber",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": -1.7,
+            "dv_in_mm": -6.0,
+            "recording": True,
+        }
+    ]
+    # Bilateral cocktail injection of GACh4h and rDA3m NAcc
+    metadata["photometry"]["virus_injections"] = [
+        {
+            "virus_name": "GACh4h",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": 1.7,
+            "dv_in_mm": -6.2,
+            "volume_in_uL": 1.0,
+            "titer_in_vg_per_m:": 1.15e13,
+        },
+        {
+            "virus_name": "GACh4h",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": -1.7,
+            "dv_in_mm": -6.2,
+            "volume_in_uL": 1.0,
+            "titer_in_vg_per_m:": 1.15e13,
+        },
+        {
+            "virus_name": "rDA3m",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": 1.7,
+            "dv_in_mm": -6.2,
+            "volume_in_uL": 1.0,
+            "titer_in_vg_per_m:": 5.89e12,
+        },
+        {
+            "virus_name": "rDA3m",
+            "targeted_location": "NAcc",
+            "ap_in_mm": 1.7,
+            "ml_in_mm": -1.7,
+            "dv_in_mm": -6.2,
+            "volume_in_uL": 1.0,
+            "titer_in_vg_per_m:": 5.89e12,
         }
     ]
 
@@ -122,11 +211,7 @@ def test_add_photometry_from_signals_mat(dummy_logger):
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
-    metadata["photometry"]["excitation_sources"] = [
-        "Thorlabs Purple LED",
-        "Thorlabs Blue LED",
-    ]
-    add_dummy_photometry_metadata_to_metadata(metadata)
+    add_dummy_labview_metadata_to_metadata(metadata)
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
@@ -210,11 +295,7 @@ def test_add_photometry_from_raw_labview(dummy_logger):
     metadata["photometry"] = {}
     metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
     metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
-    metadata["photometry"]["excitation_sources"] = [
-        "Thorlabs Purple LED",
-        "Thorlabs Blue LED",
-    ]
-    add_dummy_photometry_metadata_to_metadata(metadata)
+    add_dummy_labview_metadata_to_metadata(metadata)
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
@@ -304,12 +385,7 @@ def test_add_photometry_from_pyphotometry(dummy_logger):
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
-    metadata["photometry"]["excitation_sources"] = [
-        "Doric Purple LED",
-        "Doric Blue LED",
-        "Doric Green LED",
-    ]
-    add_dummy_photometry_metadata_to_metadata(metadata)
+    add_dummy_pyphotometry_metadata_to_metadata(metadata)
 
     # Define paths to reference data
     reference_data_path = test_data_dir / "sampleframe.csv"
@@ -395,7 +471,7 @@ def test_add_photometry_metadata(dummy_logger):
     # Create a test metadata dictionary
     metadata = {}
     metadata["photometry"] = {}
-    add_dummy_photometry_metadata_to_metadata(metadata)
+    add_dummy_pyphotometry_metadata_to_metadata(metadata)
 
     # Create a test NWBFile
     nwbfile = NWBFile(
@@ -433,17 +509,24 @@ def test_add_photometry_metadata(dummy_logger):
     assert nwbfile.devices["Doric Green LED"].manufacturer == "Doric"
     assert nwbfile.devices["Doric Green LED"].model == "ilFMC7-G2"
 
-    assert "Doric 0.66mm Flat 40mm Optic Fiber" in nwbfile.devices
-    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber"]
+    assert "Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)" in nwbfile.devices
+    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)"]
+    assert optic_fiber.numerical_aperture == 0.66
+    assert optic_fiber.core_diameter_in_um == 200.0
+    assert optic_fiber.manufacturer == "Doric"
+    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
+    
+    assert "Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)" in nwbfile.devices
+    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
     assert optic_fiber.numerical_aperture == 0.66
     assert optic_fiber.core_diameter_in_um == 200.0
     assert optic_fiber.manufacturer == "Doric"
     assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
 
-    assert "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)" in nwbfile.devices
-    photodetector = nwbfile.devices["Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"]
+    assert "Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)" in nwbfile.devices
+    photodetector = nwbfile.devices["Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)"]
     assert photodetector.manufacturer == "Doric"
-    assert photodetector.model == "iFMC7-G2"
+    assert photodetector.model == "ilFMC7-G2"
     assert photodetector.detector_type == "Silicon photodiode"
     assert photodetector.detected_wavelength_in_nm == 960.0
 
