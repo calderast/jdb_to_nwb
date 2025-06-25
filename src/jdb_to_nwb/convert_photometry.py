@@ -1077,7 +1077,6 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                     indicator_metadata = virus
                     break
             else:
-                pass
                 # NOTE: Un-comment this once opsins list is non-empty. For now, iterating on None breaks!
                 # Find the matching virus by name in the opsin list
                 # for virus in viruses["opsins"]:
@@ -1087,10 +1086,10 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
                 #             "Optogenetics is not yet implemented so this virus will be ignored."
                 #         )
                 #         break
-                else:
-                    # If the virus was not found in either list, raise an error
-                    logger.error(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
-                    raise ValueError(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
+                # else:
+                # If the virus was not found in either list, raise an error
+                logger.error(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
+                raise ValueError(f"Virus '{virus_name}' not found in resources/virus_info.yaml")
 
             if "titer_in_vg_per_mL" not in virus_injection:
                 logger.warning(
