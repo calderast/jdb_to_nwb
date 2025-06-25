@@ -5,7 +5,16 @@ from pathlib import Path
 import scipy.io
 from dateutil import tz
 from pynwb import NWBFile
-from ndx_fiber_photometry import FiberPhotometryResponseSeries
+from ndx_fiber_photometry import (
+    FiberPhotometryResponseSeries,
+    Indicator,
+    ExcitationSource,
+    OpticalFiber,
+    Photodetector,
+    DichroicMirror,
+    FiberPhotometryTable,
+    FiberPhotometry,
+)
 
 from jdb_to_nwb.convert_photometry import add_photometry, process_raw_labview_photometry_signals
 
@@ -48,7 +57,7 @@ def add_dummy_labview_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_m:": 2e12,
+            "titer_in_vg_per_mL:": 2e12,
         },
         {
             "virus_name": "dLight1.3b",
@@ -57,7 +66,7 @@ def add_dummy_labview_metadata_to_metadata(metadata):
             "ml_in_mm": -1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_m:": 2e12,
+            "titer_in_vg_per_mL:": 2e12,
         }
     ]
 
@@ -101,7 +110,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_m:": 1.15e13,
+            "titer_in_vg_per_mL:": 1.15e13,
         },
         {
             "virus_name": "GACh4h",
@@ -110,7 +119,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": -1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_m:": 1.15e13,
+            "titer_in_vg_per_mL:": 1.15e13,
         },
         {
             "virus_name": "rDA3m (rAAV)",
@@ -119,7 +128,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": 1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_m:": 5.89e12,
+            "titer_in_vg_per_mL:": 5.89e12,
         },
         {
             "virus_name": "rDA3m (rAAV)",
@@ -128,7 +137,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "ml_in_mm": -1.7,
             "dv_in_mm": -6.2,
             "volume_in_uL": 1.0,
-            "titer_in_vg_per_m:": 5.89e12,
+            "titer_in_vg_per_mL:": 5.89e12,
         }
     ]
 
@@ -463,16 +472,20 @@ def test_add_photometry_from_pyphotometry(dummy_logger):
         )
 
 
-def test_add_photometry_metadata(dummy_logger):
+def test_add_photometry_metadata_pyphotometry(dummy_logger):
     """
     Test that the add_photometry_metadata function adds the expected metadata to the NWB file.
+    For this test, we use pyphotometry data and metadata. 
+    We do not check the processed values as this happens in test_add_photometry_from_pyphotometry
     """
 
-    # Create a test metadata dictionary
+    # Create a test metadata dictionary with pyPhotometry data and metadata
+    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
     metadata = {}
     metadata["photometry"] = {}
+    metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
     add_dummy_pyphotometry_metadata_to_metadata(metadata)
-
+    
     # Create a test NWBFile
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -480,57 +493,121 @@ def test_add_photometry_metadata(dummy_logger):
         identifier="mock_session",
     )
 
-    # We do not provide any photometry data to the add_photometry function, so it should raise a ValueError
-    try:
-        add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    except ValueError as e:
-        assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
-    else:
-        assert False, (
-            "Expected ValueError was not raised in response to "
-            "missing photometry subfields in the metadata dict."
-        )
+    # Add photometry data to the nwbfile
+    add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
+    # Check excitation sources
     assert "Doric Purple LED" in nwbfile.devices
-    assert nwbfile.devices["Doric Purple LED"].excitation_wavelength_in_nm == 405.0
-    assert nwbfile.devices["Doric Purple LED"].illumination_type == "LED"
-    assert nwbfile.devices["Doric Purple LED"].manufacturer == "Doric"
-    assert nwbfile.devices["Doric Purple LED"].model == "ilFMC7-G2"
+    purple_led = nwbfile.devices["Doric Purple LED"]
+    assert isinstance(purple_led, ExcitationSource)
+    assert purple_led.excitation_wavelength_in_nm == 405.0
+    assert purple_led.illumination_type == "LED"
+    assert purple_led.manufacturer == "Doric"
+    assert purple_led.model == "ilFMC7-G2"
 
     assert "Doric Blue LED" in nwbfile.devices
-    assert nwbfile.devices["Doric Blue LED"].excitation_wavelength_in_nm == 470.0
-    assert nwbfile.devices["Doric Blue LED"].illumination_type == "LED"
-    assert nwbfile.devices["Doric Blue LED"].manufacturer == "Doric"
-    assert nwbfile.devices["Doric Blue LED"].model == "ilFMC7-G2"
+    blue_led = nwbfile.devices["Doric Blue LED"]
+    assert isinstance(blue_led, ExcitationSource)
+    assert blue_led.excitation_wavelength_in_nm == 470.0
+    assert blue_led.illumination_type == "LED"
+    assert blue_led.manufacturer == "Doric"
+    assert blue_led.model == "ilFMC7-G2"
 
     assert "Doric Green LED" in nwbfile.devices
-    assert nwbfile.devices["Doric Green LED"].excitation_wavelength_in_nm == 565.0
-    assert nwbfile.devices["Doric Green LED"].illumination_type == "LED"
-    assert nwbfile.devices["Doric Green LED"].manufacturer == "Doric"
-    assert nwbfile.devices["Doric Green LED"].model == "ilFMC7-G2"
+    green_led = nwbfile.devices["Doric Green LED"]
+    assert isinstance(green_led, ExcitationSource)
+    assert green_led.excitation_wavelength_in_nm == 565.0
+    assert green_led.illumination_type == "LED"
+    assert green_led.manufacturer == "Doric"
+    assert green_led.model == "ilFMC7-G2"
 
-    assert "Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)" in nwbfile.devices
-    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)"]
-    assert optic_fiber.numerical_aperture == 0.66
-    assert optic_fiber.core_diameter_in_um == 200.0
-    assert optic_fiber.manufacturer == "Doric"
-    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
-    
-    assert "Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)" in nwbfile.devices
-    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
-    assert optic_fiber.numerical_aperture == 0.66
-    assert optic_fiber.core_diameter_in_um == 200.0
-    assert optic_fiber.manufacturer == "Doric"
-    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
-
+    # Check photodetector
     assert "Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)" in nwbfile.devices
     photodetector = nwbfile.devices["Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)"]
+    assert isinstance(photodetector, Photodetector)
     assert photodetector.manufacturer == "Doric"
     assert photodetector.model == "ilFMC7-G2"
     assert photodetector.detector_type == "Silicon photodiode"
     assert photodetector.detected_wavelength_in_nm == 960.0
 
-    # TODO add more checks! And do the same for LabVIEW metadata
+    # Check dichroic mirror
+    dichroic_mirror_name = (
+        "Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2) "
+        "Built-in Dichroic Mirror"
+    )
+    assert dichroic_mirror_name in nwbfile.devices
+    dichroic_mirror = nwbfile.devices[dichroic_mirror_name]
+    assert isinstance(dichroic_mirror, DichroicMirror)
+    assert dichroic_mirror.manufacturer == "Doric"
+    assert dichroic_mirror.description == "Built-in dichroic mirror for photodetector"
+
+    # Check optical fibers
+    assert "Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)" in nwbfile.devices
+    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (left NAcc)"]
+    assert isinstance(optic_fiber, OpticalFiber)
+    assert optic_fiber.numerical_aperture == 0.66
+    assert optic_fiber.core_diameter_in_um == 200.0
+    assert optic_fiber.manufacturer == "Doric"
+    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
+
+    assert "Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)" in nwbfile.devices
+    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
+    assert isinstance(optic_fiber, OpticalFiber)
+    assert optic_fiber.numerical_aperture == 0.66
+    assert optic_fiber.core_diameter_in_um == 200.0
+    assert optic_fiber.manufacturer == "Doric"
+    assert optic_fiber.model == "MFC_200/250-0.66_40mm_MF2.5_FLT"
+
+    # Check indicators
+    # NOTE volume_in_uL and titer_in_vg_per_mL do not exist as Indicator fields so they
+    # are stored as a part of the description. These values are not tested
+    assert "GACh4h (left NAcc)" in nwbfile.devices
+    gach4h_left = nwbfile.devices["GACh4h (left NAcc)"]
+    assert isinstance(gach4h_left, Indicator)
+    assert gach4h_left.injection_coordinates_in_mm == (1.7, -1.7, -6.2)
+    assert gach4h_left.targeted_location == "NAcc"
+    assert gach4h_left.label == "AAV-hSyn-ACh3.8"
+    assert gach4h_left.manufacturer == "BrainVTA"
+    assert gach4h_left.description.startswith("AAV virus expressing the acetylcholine sensor GRAB-ACh3.8")
+
+    assert "GACh4h (right NAcc)" in nwbfile.devices
+    gach4h_right = nwbfile.devices["GACh4h (right NAcc)"]
+    assert isinstance(gach4h_right, Indicator)
+    assert gach4h_right.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
+    assert gach4h_right.targeted_location == "NAcc"
+    assert gach4h_right.label == "AAV-hSyn-ACh3.8"
+    assert gach4h_right.manufacturer == "BrainVTA"
+    assert gach4h_right.description.startswith("AAV virus expressing the acetylcholine sensor GRAB-ACh3.8")
+
+    assert "rDA3m (rAAV) (left NAcc)" in nwbfile.devices
+    rda3m_left = nwbfile.devices["rDA3m (rAAV) (left NAcc)"]
+    assert isinstance(rda3m_left, Indicator)
+    assert rda3m_left.injection_coordinates_in_mm == (1.7, -1.7, -6.2)
+    assert rda3m_left.targeted_location == "NAcc"
+    assert rda3m_left.label == "rAAV-hsyn-rDA3m"
+    assert rda3m_left.manufacturer == "BrainVTA"
+    assert rda3m_left.description.startswith("Recombinant AAV expressing the red-shifted dopamine sensor GRAB rDA3m")
+
+    assert "rDA3m (rAAV) (right NAcc)" in nwbfile.devices
+    rda3m_right = nwbfile.devices["rDA3m (rAAV) (right NAcc)"]
+    assert isinstance(rda3m_right, Indicator)
+    assert rda3m_right.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
+    assert rda3m_right.targeted_location == "NAcc"
+    assert rda3m_right.label == "rAAV-hsyn-rDA3m"
+    assert rda3m_right.manufacturer == "BrainVTA"
+    assert rda3m_right.description.startswith("Recombinant AAV expressing the red-shifted dopamine sensor GRAB rDA3m")
+    
+    # Check fiber photometry table (??)
+    assert "fiber_photometry" in nwbfile.lab_meta_data
+    fiber_photometry_meta = nwbfile.lab_meta_data["fiber_photometry"]
+    assert isinstance(fiber_photometry_meta, FiberPhotometry)
+    assert isinstance(fiber_photometry_meta.fiber_photometry_table, FiberPhotometryTable)
+
+    table = fiber_photometry_meta.fiber_photometry_table
+    assert table.name == "fiber_photometry_table"
+    assert table.description == "fiber photometry table"
+    
+    # TODO check the correct rows in the table! Check the correct series mapped to the correct row!
 
 
 def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
