@@ -491,9 +491,9 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     Wait until we know more about those use cases.
 
     For now, we assume the following (Jose's setup):
-    analog_1: 470 nm (GACh4h)
+    analog_1: 470 nm (gACh4h)
     analog_2: 565 nm (rDA3m)
-    analog_3: 405 nm (for ratiometric correction of GACh4h)
+    analog_3: 405 nm (for ratiometric correction of gACh4h)
 
     Returns:
     dict with keys
@@ -502,7 +502,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     - photometry_start: datetime object marking the start time of photometry recording
     """
 
-    logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (GACh4h), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
+    logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (gACh4h), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
     ppd_data = import_ppd(ppd_file_path)
     raw_green = pd.Series(ppd_data['analog_1'])
     raw_red = pd.Series(ppd_data['analog_2'])
@@ -563,7 +563,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     # Plot the correlation between the filtered signals of interest (ACh and DA)
     plot_signal_correlation(sig1=ratio_highpass, sig2=red_highpass,
-                            label1='GACh4h 470/405 ratio', label2='rDA3m', fig_dir=fig_dir)
+                            label1='gACh4h 470/405 ratio', label2='rDA3m', fig_dir=fig_dir)
 
     # Z-score each signal to normalize the data
     print('Z-scoring photometry signals...')
@@ -577,7 +577,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
     plot_photometry_signals(visits=visits,
                             sampling_rate=sampling_rate,
                             signals=[green_zscored, zscored_405, ratio_zscored, red_zscored],
-                            signal_labels=["GACh4h 470nm", "GACh4h 405nm", "GACh4h 470/405 ratio", "rDA3m 565nm"],
+                            signal_labels=["gACh4h 470nm", "gACh4h 405nm", "gACh4h 470/405 ratio", "rDA3m 565nm"],
                             signal_colors=["blue", "purple", "grey", "red"],
                             title="Processed pyPhotometry signals",
                             signal_units="Z-score",
@@ -658,7 +658,7 @@ def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger,
 
     z_scored_405_response_series = FiberPhotometryResponseSeries(
         name="zscored_405",
-        description="Z-scored 405nm. This is used to calculate the ratiometric index when using GACh4h",
+        description="Z-scored 405nm. This is used to calculate the ratiometric index when using gACh4h",
         data=zscored_405,
         unit="z-score",
         rate=float(sampling_rate),
@@ -1247,7 +1247,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
 
     If "ppd_file_path" exists in the metadata dict:
     - We are using pyPhotometry and do processing accordingly. This is currently
-    only implemented for Jose's case (GACh4h, ratiometric instead of isosbestic correction)
+    only implemented for Jose's case (gACh4h, ratiometric instead of isosbestic correction)
     """
 
     if "photometry" not in metadata:

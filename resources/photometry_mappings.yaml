@@ -23,7 +23,7 @@ rDA3m (AAV9):
 rDA3m (rAAV):
   - Doric Green LED                 # 565 nm (signal wavelength)
 
-GACh4h:
+gACh4h:
   # Old maze room (Thorlabs LEDs)
   - Thorlabs Blue LED               # 470 nm (peak signal wavelength)
   - Thorlabs Purple LED             # 405 nm (for ratiometric index)

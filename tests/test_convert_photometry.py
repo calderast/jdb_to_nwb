@@ -104,10 +104,10 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "recording": True,
         }
     ]
-    # Bilateral cocktail injection of GACh4h and rDA3m NAcc
+    # Bilateral cocktail injection of gACh4h and rDA3m NAcc
     metadata["photometry"]["virus_injections"] = [
         {
-            "virus_name": "GACh4h",
+            "virus_name": "gACh4h",
             "targeted_location": "NAcc",
             "ap_in_mm": 1.7,
             "ml_in_mm": 1.7,
@@ -116,7 +116,7 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "titer_in_vg_per_mL": 1.15e13,
         },
         {
-            "virus_name": "GACh4h",
+            "virus_name": "gACh4h",
             "targeted_location": "NAcc",
             "ap_in_mm": 1.7,
             "ml_in_mm": -1.7,
@@ -563,8 +563,8 @@ def test_add_photometry_metadata(dummy_logger):
     # Check indicators
     # NOTE volume_in_uL and titer_in_vg_per_mL do not exist as Indicator fields so they
     # are stored as a part of the description. These values are not tested
-    assert "GACh4h (left NAcc)" in nwbfile.devices
-    gach4h_left = nwbfile.devices["GACh4h (left NAcc)"]
+    assert "gACh4h (left NAcc)" in nwbfile.devices
+    gach4h_left = nwbfile.devices["gACh4h (left NAcc)"]
     assert isinstance(gach4h_left, Indicator)
     assert gach4h_left.injection_coordinates_in_mm == (1.7, -1.7, -6.2)
     assert gach4h_left.injection_location == "NAcc"
@@ -572,8 +572,8 @@ def test_add_photometry_metadata(dummy_logger):
     assert gach4h_left.manufacturer == "BrainVTA"
     assert gach4h_left.description.startswith("AAV virus expressing the acetylcholine sensor GRAB-ACh3.8")
 
-    assert "GACh4h (right NAcc)" in nwbfile.devices
-    gach4h_right = nwbfile.devices["GACh4h (right NAcc)"]
+    assert "gACh4h (right NAcc)" in nwbfile.devices
+    gach4h_right = nwbfile.devices["gACh4h (right NAcc)"]
     assert isinstance(gach4h_right, Indicator)
     assert gach4h_right.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
     assert gach4h_right.injection_location == "NAcc"
@@ -610,8 +610,8 @@ def test_add_photometry_metadata(dummy_logger):
     assert table.description == "fiber photometry table"
 
     # Only recorded indicators are added to the table. We recorded from the fiber in left NAcc.
-    # 1. GACh4h (left NAcc) + Doric Purple LED
-    # 2. GACh4h (left NAcc) + Doric Blue LED
+    # 1. gACh4h (left NAcc) + Doric Purple LED
+    # 2. gACh4h (left NAcc) + Doric Blue LED
     # 3. rDA3m (rAAV) (left NAcc) + Doric Green LED
     expected_combinations = {
         (gach4h_left, purple_led),

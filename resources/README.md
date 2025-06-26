@@ -56,7 +56,7 @@ The `photometry_devices.yaml` file contains a running list of excitation sources
 `virus_info.yaml` contains a running list of all indicators used for fiber photometry, as well as any excitatory/inhibitory opsins used for experiments.
 
 `photometry_mappings.yaml` maps each indicator to a list of possible excitation sources.
-Our current photometry processing code makes a lot of assumptions about which channel is which signal based on known experimental choices (e.g. we always record dLight in the old maze room, and always do dual recordings of rDA3m and GACh4h in the new maze room). Currently the old maze room has blue (470 nm) and purple (405 nm) LEDs, and the new maze room has blue (470 nm), purple (405 nm), and green (565 nm) LEDs.
+Our current photometry processing code makes a lot of assumptions about which channel is which signal based on known experimental choices (e.g. we always record dLight in the old maze room, and always do dual recordings of rDA3m and gACh4h in the new maze room). Currently the old maze room has blue (470 nm) and purple (405 nm) LEDs, and the new maze room has blue (470 nm), purple (405 nm), and green (565 nm) LEDs.
 
 See Github issue #28 (https://github.com/calderast/jdb_to_nwb/issues/28) for a complete overview of the current setup and assumptions.
 
