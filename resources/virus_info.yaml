@@ -1,0 +1,28 @@
+indicators:
+  - name: dLight1.3b
+    construct_name: AAVDJ-CAG-dLight1.3b
+    description: AAV-DJ virus expressing the dopamine sensor dLight1.3b under the CAG promoter
+    manufacturer: Vigene
+
+  - name: dLight3.8
+    construct_name: AAV-DJ-CAG-dLight3.8
+    description: AAV-DJ virus expressing the dopamine sensor dLight3.8 under the CAG promoter
+    manufacturer: UNC
+
+  - name: rDA3m (AAV9)
+    construct_name: AAV9-hsyn-rDA3m
+    description: AAV9 virus expressing the red-shifted dopamine sensor GRAB rDA3m under the hSyn promoter
+    manufacturer: BrainVTA
+
+  - name: rDA3m (rAAV)
+    construct_name: rAAV-hsyn-rDA3m
+    description: Recombinant AAV expressing the red-shifted dopamine sensor GRAB rDA3m under the hSyn promoter
+    manufacturer: BrainVTA
+
+  - name: gACh4h
+    construct_name: AAV-hSyn-ACh3.8
+    description: >
+      AAV virus expressing the acetylcholine sensor GRAB-ACh3.8 under the hSyn promoter. Unpublished, Yulong Li Lab
+    manufacturer: BrainVTA
+
+opsins:

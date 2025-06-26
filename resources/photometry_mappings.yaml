@@ -1,0 +1,32 @@
+# Map each indicator to a list of possible excitation sources.
+# Each indicator should match a named virus in `virus_info.yaml`
+
+dLight1.3b:
+  # Old maze room (Thorlabs LEDs)
+  - Thorlabs Blue LED               # 470 nm (signal wavelength)
+  - Thorlabs Purple LED             # 405 nm (isosbestic wavelength)
+  # New maze room (Doric LEDs)
+  - Doric Blue LED                  # 470 nm (signal wavelength)
+  - Doric Purple LED                # 405 nm (isosbestic wavelength)
+
+dLight3.8:
+  # Old maze room (Thorlabs LEDs)
+  - Thorlabs Blue LED               # 470 nm (signal wavelength)
+  - Thorlabs Purple LED             # 405 nm (isosbestic wavelength)
+  # New maze room (Doric LEDs)
+  - Doric Blue LED                  # 470 nm (signal wavelength)
+  - Doric Purple LED                # 405 nm (isosbestic wavelength)
+
+rDA3m (AAV9):
+  - Doric Green LED                 # 565 nm (signal wavelength)
+
+rDA3m (rAAV):
+  - Doric Green LED                 # 565 nm (signal wavelength)
+
+gACh4h:
+  # Old maze room (Thorlabs LEDs)
+  - Thorlabs Blue LED               # 470 nm (peak signal wavelength)
+  - Thorlabs Purple LED             # 405 nm (for ratiometric index)
+  # New maze room (Doric LEDs)
+  - Doric Blue LED                  # 470 nm (peak signal wavelength)
+  - Doric Purple LED                # 405 nm (for ratiometric index)
