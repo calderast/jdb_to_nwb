@@ -29,7 +29,7 @@ dependencies = [
     "spikeinterface >= 0.101.0",
     "tqdm",
     "neuroconv",
-    "pynwb == 3.0,
+    "pynwb == 3.0",
     "ndx-fiber-photometry",
     "ndx-franklab-novela",
     "scikit-learn",
