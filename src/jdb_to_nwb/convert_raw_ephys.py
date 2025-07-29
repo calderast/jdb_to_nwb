@@ -43,8 +43,8 @@ if not RESOURCES_DIR.exists():
     RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
 
 BERKE_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR / "berke_probe_channel_map.csv"
-ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
-ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
+ELECTRODE_COORDS_PATH_256CH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
+ELECTRODE_COORDS_PATH_256CH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
 ELECTRODE_COORDS_PATH_NPX_MULTISHANK = RESOURCES_DIR / "neuropixels_2.0_multishank_electrode_coords.csv"
 DEVICES_PATH = RESOURCES_DIR / "ephys_devices.yaml"
 
@@ -195,7 +195,7 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Kept {len(pulse_starts)} pulses.")
     logger.debug(f"Pulse durations: {pulse_durations}")
 
-    # Align to first pulse (which marks photometry(?) start time) and convert to seconds
+    # Align to first pulse (which marks bonsai start time) and convert to seconds
     # NOTE: The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
     # should we add a check for this to ensure we have identified the correct "start" pulse?
     logger.info("Removing the first ephys pulse, as it marks start time and not a true port visit")
@@ -621,9 +621,9 @@ def add_electrode_data_berke_probe(
     # The first column is the relative x coordinate, and the second column is the relative y coordinate
     probe_name = probe_metadata["name"]
     if probe_name == "256-ch Silicon Probe, 3mm length, 66um pitch":
-        electrode_coords_path = ELECTRODE_COORDS_PATH_3MM_PROBE
+        electrode_coords_path = ELECTRODE_COORDS_PATH_256CH_3MM_PROBE
     elif probe_name == "256-ch Silicon Probe, 6mm length, 80um pitch":
-        electrode_coords_path = ELECTRODE_COORDS_PATH_6MM_PROBE
+        electrode_coords_path = ELECTRODE_COORDS_PATH_256CH_6MM_PROBE
     else:
         raise ValueError(f"Unknown probe '{probe_name}' has no associated electrode coordinates file.")
 
