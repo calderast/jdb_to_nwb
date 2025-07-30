@@ -36,15 +36,18 @@ BERKE_LAB_PROBES = {"256-ch Silicon Probe, 3mm length, 66um pitch", "256-ch Sili
 
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
-RESOURCES_DIR = __location_of_this_file / "resources"
+RESOURCES_DIR = __location_of_this_file / "resources" / "electrophysiology"
 
 # If the resources directory does not exist, we are probably running the code from the source directory
 if not RESOURCES_DIR.exists():
-    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
+    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources" / "electrophysiology"
 
-BERKE_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR / "berke_probe_channel_map.csv"
-ELECTRODE_COORDS_PATH_256CH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
-ELECTRODE_COORDS_PATH_256CH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
+BERKE_256CH_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR / "256ch_silicon_probe_channel_map.csv"
+BERKE_252CH_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR  / "252ch_silicon_probe_channel_map.csv"
+ELECTRODE_COORDS_PATH_256CH_3MM_PROBE = RESOURCES_DIR  / "256ch_probe_3mm_length_66um_pitch_coords.csv"
+ELECTRODE_COORDS_PATH_256CH_6MM_PROBE = RESOURCES_DIR / "256ch_probe_6mm_length_80um_pitch_coords.csv"
+ELECTRODE_COORDS_PATH_252CH_4MM_PROBE = RESOURCES_DIR / "252ch_probe_4mm_length_80um_pitch_coords.csv"
+ELECTRODE_COORDS_PATH_252CH_10MM_PROBE = RESOURCES_DIR / "252ch_probe_10mm_length_100um_pitch_coords.csv"
 ELECTRODE_COORDS_PATH_NPX_MULTISHANK = RESOURCES_DIR / "neuropixels_2.0_multishank_electrode_coords.csv"
 DEVICES_PATH = RESOURCES_DIR / "ephys_devices.yaml"
 
@@ -610,7 +613,7 @@ def add_electrode_data_berke_probe(
     plug_order = metadata["ephys"].get("plug_order", "chip_first")
     logger.info(f"Plug order is: {plug_order}")
 
-    channel_map_df = pd.read_csv(BERKE_PROBE_CHANNEL_MAP_PATH)
+    channel_map_df = pd.read_csv(BERKE_256CH_PROBE_CHANNEL_MAP_PATH)
     channel_map = np.array(channel_map_df[plug_order])
 
     # Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
