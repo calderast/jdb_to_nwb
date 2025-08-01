@@ -2,7 +2,8 @@ import pytest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from jdb_to_nwb.convert import check_required_metadata, set_default_metadata, to_datetime
+from jdb_to_nwb.utils import to_datetime
+from jdb_to_nwb.convert import check_required_metadata, set_default_metadata
 
 
 def test_check_required_metadata_with_all_required_metadata():

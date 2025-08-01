@@ -23,6 +23,7 @@ from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
+from .utils import get_logger_directory
 from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
 from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
@@ -470,7 +471,7 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> tuple[dict
     if editor is not None:
         lowcut = float(editor.attrib.get("LowCut"))
         highcut = float(editor.attrib.get("HighCut"))
-        filtering_info = f"2nd-order Butterworth filter with highcut={highcut} Hz and lowcut={lowcut} Hz"
+        filtering_info = f"Filter with highcut={highcut} Hz, lowcut={lowcut} Hz"
         logger.info(f"Filtering info from settings.xml: {filtering_info}")
     else:
         logger.warning("EDITOR tag not found in settings.xml, no filtering info for channels!")
@@ -615,6 +616,12 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
     # Plot channel impedances
     plot_channel_impedances(probe_name=probe_name, electrode_info=full_electrode_info_df, 
                             min_impedance=min_impedance, max_impedance=max_impedance, fig_dir=fig_dir)
+
+    # Save electrode info to the log directory
+    log_dir = get_logger_directory(logger)
+    save_path = os.path.join(log_dir, "electrode_info.csv")
+    full_electrode_info_df.to_csv(save_path, index=False)
+    logger.info(f"Saved electrode info to {save_path}")
 
     return full_electrode_info_df
 
@@ -770,7 +777,8 @@ def add_electrode_data_berke_probe(
     )
 
     # Make an ElectrodeGroup for unconnected Intan channels (potentially used for ECoG screws)
-    # This is only needed for the 252-channel probes
+    # This is only needed for the 252-channel probes. 
+    # We may re-evaluate this later (they should maybe have a separate Probe object? This is a hack for now.)
     extra_electrode_group = NwbElectrodeGroup(
         name="Other",
         description="Intan channels not connected to probe electrodes (may be fully unconnected or ECoG screws)",
@@ -786,7 +794,7 @@ def add_electrode_data_berke_probe(
 
     for i, row in electrode_info.iterrows():
         # Get the Shank and ElectrodeGroup for this electrode
-        shank_index = electrode_to_shank_map.get(i, 'N/A')
+        shank_index = electrode_to_shank_map.get(i, -1)
         electrode_group = electrode_groups_by_shank.get(shank_index, None)
 
         # If we have no electrode_group, this is one of the 4 extra channels on the 252-ch probes.
@@ -795,7 +803,7 @@ def add_electrode_data_berke_probe(
             if not added_extra_electrode_group:
                 nwbfile.add_electrode_group(extra_electrode_group)
                 added_extra_electrode_group = True
-                logger.info("Adding extra electrode group for unconnected Intan channels")
+                logger.debug("Adding extra electrode group for unconnected Intan channels")
             electrode_group = extra_electrode_group
 
         nwbfile.add_electrode(

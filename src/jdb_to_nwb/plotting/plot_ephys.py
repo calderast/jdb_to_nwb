@@ -52,8 +52,10 @@ def plot_channel_impedances(probe_name, electrode_info, min_impedance, max_imped
     """
 
     def get_color(imp):
-        if imp < min_impedance: return 'blue'
-        if imp > max_impedance: return 'black'
+        if imp < min_impedance: 
+            return 'blue'
+        if imp > max_impedance: 
+            return 'black'
         return 'green'
 
     # Get impedances and corresponding color
@@ -65,7 +67,8 @@ def plot_channel_impedances(probe_name, electrode_info, min_impedance, max_imped
     # Plot channel map colored by impedance
     axes[0].scatter(electrode_info["x_um"], electrode_info["y_um"], c=colors, s=200, marker='s', edgecolors='k')
     for _, row in electrode_info.iterrows():
-        axes[0].text(row["x_um"], row["y_um"], str(row["intan_channel"]), fontsize=8, ha='center', va='center', color='w')
+        axes[0].text(row["x_um"], row["y_um"], str(row["intan_channel"]), 
+                     fontsize=8, ha='center', va='center', color='w')
     axes[0].set_title(f'{probe_name} Channel Impedances')
     axes[0].set_xlabel('X Position (μm)')
     axes[0].set_ylabel('Y Position (μm)')
