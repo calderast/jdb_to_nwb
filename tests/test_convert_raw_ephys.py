@@ -223,9 +223,9 @@ def test_read_open_ephys_settings_xml(dummy_logger):
     # Check correct filtering info (single string for all electrodes)
     assert filtering_info == "Filter with highcut=7603.76512183337 Hz, lowcut=2.495988241877236 Hz"
 
-    # We expect CH1-CH256 mapping to channel numbers 0-255, then ADC1-ADC8 for channels 256-263
-    expected_channel_dict = {f"CH{i}": i - 1 for i in range(1, 257)}
-    expected_channel_dict.update({f"ADC{i}": 255 + i for i in range(1, 9)})
+    # We expect channel numbers 0-255 mapping to CH1-CH256, then channels 256-263 mapping to ADC1-ADC8
+    expected_channel_dict = {i-1:f"CH{i}" for i in range(1, 257)}
+    expected_channel_dict.update({i+255 : f"ADC{i}" for i in range(1, 9)})
     assert channel_number_to_channel_name == expected_channel_dict
 
 
