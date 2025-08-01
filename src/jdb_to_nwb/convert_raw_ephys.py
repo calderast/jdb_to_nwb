@@ -443,7 +443,7 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> tuple[dict
             logger.warning(f"Unexpected channel numbers: {sorted(unexpected_channel_numbers)}")
     else:
         logger.info("All expected channel numbers found in OpenEphys settings.xml")
-        logger.debug(f"Found channels: {channel_numbers_from_settings_xml}")
+        logger.debug(f"Found channels: {sorted(channel_numbers_from_settings_xml)}")
 
     # Check for missing or unexpected channel names
     missing_channel_names = expected_channel_names - channel_names_from_settings_xml
@@ -456,14 +456,14 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> tuple[dict
             logger.warning(f"Unexpected channel names: {sorted(unexpected_channel_names)}")
     else:
         logger.info("All expected channel names found in OpenEphys settings.xml")
-        logger.debug(f"Found channels: {channel_names_from_settings_xml}")
+        logger.debug(f"Found channels: {sorted(channel_names_from_settings_xml)}")
 
     # Check for duplicate channel names
     channel_name_counts = Counter(list(channel_number_to_channel_name.values()))
     duplicate_names = [name for name, count in channel_name_counts.items() if count > 1]
     if duplicate_names:
         logger.warning("Duplicate channel names found in settings.xml!!!!")
-        logger.warning(f"Duplicate channel names: {duplicate_names}")
+        logger.warning(f"Duplicate channel names: {sorted(duplicate_names)}")
 
     # Get the filtering info
     editor = rhfp_processor.find("EDITOR")
@@ -598,8 +598,8 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
 
     # Mark electrodes with impedances outside the allowed range as "bad channel"
     # The default impedance range is between >=0.1 MOhms or <=3.0 MOhms
-    min_impedance = metadata["ephys"].get("min_impedance_ohms", MIN_IMPEDANCE_OHMS)
-    max_impedance = metadata["ephys"].get("max_impedance_ohms", MAX_IMPEDANCE_OHMS)
+    min_impedance = float(metadata["ephys"].get("min_impedance_ohms", MIN_IMPEDANCE_OHMS))
+    max_impedance = float(metadata["ephys"].get("max_impedance_ohms", MAX_IMPEDANCE_OHMS))
 
     logger.info(f"Marking channels with impedance > {max_impedance} Ohms or < {min_impedance} Ohms as 'bad_channel'")
     full_electrode_info_df["bad_channel"] = (
@@ -769,10 +769,34 @@ def add_electrode_data_berke_probe(
         ),
     )
 
+    # Make an ElectrodeGroup for unconnected Intan channels (potentially used for ECoG screws)
+    # This is only needed for the 252-channel probes
+    extra_electrode_group = NwbElectrodeGroup(
+        name="Other",
+        description="Intan channels not connected to probe electrodes (may be fully unconnected or ECoG screws)",
+        location="unknown",
+        targeted_location="unknown",
+        targeted_x=0.0,
+        targeted_y=0.0,
+        targeted_z=0.0,
+        units="mm",
+        device=probe_obj,
+    )
+    added_extra_electrode_group = False
+
     for i, row in electrode_info.iterrows():
         # Get the Shank and ElectrodeGroup for this electrode
-        shank_index = electrode_to_shank_map[i]
-        electrode_group = electrode_groups_by_shank[shank_index]
+        shank_index = electrode_to_shank_map.get(i, 'N/A')
+        electrode_group = electrode_groups_by_shank.get(shank_index, None)
+
+        # If we have no electrode_group, this is one of the 4 extra channels on the 252-ch probes.
+        # So add the extra_electrode_group to the nwb if we haven't already and assign this electrode to it
+        if electrode_group is None:
+            if not added_extra_electrode_group:
+                nwbfile.add_electrode_group(extra_electrode_group)
+                added_extra_electrode_group = True
+                logger.info("Adding extra electrode group for unconnected Intan channels")
+            electrode_group = extra_electrode_group
 
         nwbfile.add_electrode(
             electrode_name=row["electrode_name"],
