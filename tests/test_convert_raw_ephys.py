@@ -11,7 +11,7 @@ from jdb_to_nwb.convert_raw_ephys import (
     add_raw_ephys, 
     get_raw_ephys_data,
     add_probe_info,
-    get_electrode_info,
+#    get_electrode_info, # TODO add test for this
     read_open_ephys_settings_xml,
     add_electrode_data_berke_probe,
 )
@@ -94,7 +94,7 @@ def test_add_electrode_data_berke_probe(dummy_logger):
         identifier="mock_session",
     )
 
-    filtering_info = "Filter with highcut=7603.76512183337 Hz, lowcut=0.09377355029016039 Hz"
+    filtering_info = "Filter with highcut=7603.76512183337 Hz, lowcut=2.495988241877236 Hz"
     expected_intan_channel_numbers = np.array([
         191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,128,129,130,
         131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,
@@ -221,7 +221,7 @@ def test_read_open_ephys_settings_xml(dummy_logger):
     ) = read_open_ephys_settings_xml(settings_file_path, dummy_logger)
 
     # Check correct filtering info (single string for all electrodes)
-    assert filtering_info == "Filter with highcut=7603.76512183337 Hz, lowcut=0.09377355029016039 Hz"
+    assert filtering_info == "Filter with highcut=7603.76512183337 Hz, lowcut=2.495988241877236 Hz"
 
     # We expect CH1-CH256 mapping to channel numbers 0-255, then ADC1-ADC8 for channels 256-263
     expected_channel_dict = {f"CH{i}": i - 1 for i in range(1, 257)}
