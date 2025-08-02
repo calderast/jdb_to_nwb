@@ -171,7 +171,7 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     assert electrode_names == expected_electrode_names
     assert nwbfile.electrodes.channel_name.data[:] == expected_channel_names
     assert nwbfile.electrodes.port.data[:] == expected_port_labels
-    assert nwbfile.electrodes.intan_channel_number.data[:] == expected_intan_channel_numbers
+    assert (nwbfile.electrodes.intan_channel_number.data[:] == expected_intan_channel_numbers).all()
 
     # Check first electrode data
     assert nwbfile.electrodes.impedance.data[0] == 2.24e06
