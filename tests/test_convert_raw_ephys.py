@@ -106,6 +106,13 @@ def test_add_electrode_data_berke_probe(dummy_logger):
         127,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,
         56,57,58,59,60,61,62,63,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
     ])
+    
+    # Set up expected channel names from the impedance file based on the ordering of Intan channel numbers
+    # Channels < 128 are B-###, channels >= 128 are C-###
+    expected_channel_names = [
+        f"{'B' if n < 128 else 'C'}-{n if n < 128 else n - 128:03d}" for n in expected_intan_channel_numbers
+    ]
+    expected_port_labels = ["Port B" if n < 128 else "Port C" for n in expected_channel_names]
 
     # First add the probe to the nwbfile
     probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
@@ -162,11 +169,8 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     # Strip any suffix like "/SCREW#" from actual electrode names
     electrode_names = [name.split('/')[0] for name in nwbfile.electrodes.electrode_name.data[:]]
     assert electrode_names == expected_electrode_names
-    expected_B_channels = [f"B-{i:03d}" for i in range(128)]
-    expected_C_channels = [f"C-{i:03d}" for i in range(128)]
-    expected_channels = expected_B_channels + expected_C_channels
-    assert nwbfile.electrodes.channel_name.data[:] == expected_channels
-    assert nwbfile.electrodes.port.data[:] == ["Port B"] * 128 + ["Port C"] * 128
+    assert nwbfile.electrodes.channel_name.data[:] == expected_channel_names
+    assert nwbfile.electrodes.port.data[:] == expected_port_labels
     assert nwbfile.electrodes.intan_channel_number.data[:] == expected_intan_channel_numbers
 
     # Check first electrode data
