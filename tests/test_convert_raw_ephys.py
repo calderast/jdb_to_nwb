@@ -112,7 +112,7 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     expected_channel_names = [
         f"{'B' if n < 128 else 'C'}-{n if n < 128 else n - 128:03d}" for n in expected_intan_channel_numbers
     ]
-    expected_port_labels = ["Port B" if n < 128 else "Port C" for n in expected_channel_names]
+    expected_port_labels = ["Port B" if n < 128 else "Port C" for n in expected_intan_channel_numbers]
 
     # First add the probe to the nwbfile
     probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
