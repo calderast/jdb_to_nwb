@@ -173,21 +173,21 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     assert nwbfile.electrodes.port.data[:] == expected_port_labels
     assert (nwbfile.electrodes.intan_channel_number.data[:] == expected_intan_channel_numbers).all()
 
-    # Check first electrode data
-    assert nwbfile.electrodes.impedance.data[0] == 2.24e06
-    assert nwbfile.electrodes.imp_phase.data[0] == -43
-    assert nwbfile.electrodes.series_resistance_in_ohms.data[0] == 1.63e06
-    assert nwbfile.electrodes.series_capacitance_in_farads.data[0] == 1.04e-10
-    assert not nwbfile.electrodes.bad_channel.data[0]
+    # Check first electrode data (S01E1)
+    assert nwbfile.electrodes.impedance.data[0] == 6.50e06
+    assert nwbfile.electrodes.imp_phase.data[0] == -68
+    assert nwbfile.electrodes.series_resistance_in_ohms.data[0] == 2.44e06
+    assert nwbfile.electrodes.series_capacitance_in_farads.data[0] == 2.64e-11
+    assert nwbfile.electrodes.bad_channel.data[0]
     assert nwbfile.electrodes.rel_x.data[0] == 66.0
     assert nwbfile.electrodes.rel_y.data[0] == 255.0
 
-    # Check last electrode data
-    assert nwbfile.electrodes.impedance.data[-1] == 6.45e06
-    assert nwbfile.electrodes.imp_phase.data[-1] == -69
-    assert nwbfile.electrodes.series_resistance_in_ohms.data[-1] == 2.31e06
-    assert nwbfile.electrodes.series_capacitance_in_farads.data[-1] == 2.64e-11
-    assert nwbfile.electrodes.bad_channel.data[-1]
+    # Check last electrode data (S32E8)
+    assert nwbfile.electrodes.impedance.data[-1] == 2.24e06
+    assert nwbfile.electrodes.imp_phase.data[-1] == -43
+    assert nwbfile.electrodes.series_resistance_in_ohms.data[-1] == 1.63e06
+    assert nwbfile.electrodes.series_capacitance_in_farads.data[-1] == 1.04e-10
+    assert not nwbfile.electrodes.bad_channel.data[-1]
     assert nwbfile.electrodes.rel_x.data[-1] == 2112.0
     assert nwbfile.electrodes.rel_y.data[-1] == 30.0
 
