@@ -206,7 +206,7 @@ def get_port_visits(continuous_dat_file_path: Path,
     pulse_starts = np.insert(pulse_above_threshold[breaks], 0, pulse_above_threshold[0])
     pulse_ends = np.append(pulse_above_threshold[breaks - 1], pulse_above_threshold[-1])
     pulse_durations = pulse_ends - pulse_starts + 1 
-    
+
     logger.debug(f"Found {len(pulse_starts)} visit pulses.")
 
     # Only keep pulses at least 5ms long just in case (typical port visit keeps the channel high for ~10ms)
@@ -228,7 +228,8 @@ def get_port_visits(continuous_dat_file_path: Path,
 
 def get_raw_ephys_data(
     folder_path: Path,
-    logger
+    logger,
+    exclude_channels: list[str] = []
 ) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
     """
     Get the raw ephys data from the OpenEphys binary recording.
@@ -239,6 +240,9 @@ def get_raw_ephys_data(
             should have the date in the name and contain a file called "settings.xml".
         logger (Logger):
             Logger to track conversion progress
+        exclude_channels (list[str]):
+            List of channel names to exclude, if any. 
+            Channel names are 1-based and should start with 'CH', e.g. 'CH64'
 
     Returns:
         traces_as_iterator (SpikeInterfaceRecordingDataChunkIterator):
@@ -265,7 +269,12 @@ def get_raw_ephys_data(
 
     # Ignore the "ADC" channels
     recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
-    channel_ids_to_convert = [ch for ch in recording.channel_ids if ch.startswith("CH")]
+    # Exclude extra channels
+    if exclude_channels:
+        logger.debug(f"Excluding {len(exclude_channels)} channels: {exclude_channels}")
+    channel_ids_to_convert = [
+        ch for ch in recording.channel_ids if ch.startswith("CH") and ch not in exclude_channels
+    ]
     recording_sliced = recording.select_channels(channel_ids=channel_ids_to_convert)
 
     # Confirm all channel names start with "CH"
@@ -538,6 +547,9 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
         logger.error(f"Unknown plug order: {plug_order}, expected 'chip_first' or 'cable_first'")
         raise ValueError(f"Unknown plug order: {plug_order}, expected 'chip_first' or 'cable_first'")
 
+    # Add another channel name column based on intan_channel to match Open Ephys 1-based 'CH##' channel names
+    channel_coords_df["open_ephys_channel_string"] = channel_coords_df["intan_channel"].apply(lambda i: f"CH{i + 1}")
+
     # Plot the channel coordinates
     plot_channel_map(probe_name=probe_name, channel_coords=channel_coords_df, fig_dir=fig_dir)
 
@@ -577,7 +589,7 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
     )
     logger.debug(f"Channel coordinates and impedance data have the same length ({len(channel_coords_df)})")
 
-    # Create a column 'intan_channel' in the impedance dataframe so we can merge with channel coords dataframe
+    # Create a column 'intan_channel' (zero-indexed) in the impedance df so we can merge with channel coords df
     impedance_data["intan_channel"] = range(len(impedance_data))
     full_electrode_info_df = channel_coords_df.merge(impedance_data, on="intan_channel", how="left")
     assert len(full_electrode_info_df) == len(channel_coords_df) == 256, (
@@ -635,7 +647,7 @@ def add_electrode_data_berke_probe(
     probe_obj,
     logger,
     fig_dir: Path = None,
-):
+) -> list[pd.Series]:
     """
     Add the electrode data from the impedance and channel geometry files.
     Specific to Berke Lab custom probes
@@ -655,14 +667,21 @@ def add_electrode_data_berke_probe(
             Logger to track conversion progress
         fig_dir (Path):
             Optional. The directory to save the figure. If None, the figure will not be saved.
+    Returns:
+        list[pd.Series]:
+            List of information about channels excluded from the electrode table, if any.
+            For now, we exclude the extra 4 channels that can be connected to ECoG screws in the 252-channel probes
     """
 
     # Get dataframe of electrode information (channel map, x/y coordinates, and impedance info)
     electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
 
     # Get general metadata for the Probe
-    electrodes_location = metadata["ephys"].get("electrodes_location")
-    logger.info(f"Electrodes location is {electrodes_location}")
+    electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
+    if electrodes_location == "unspecified":
+        logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
+    else:
+        logger.info(f"Electrodes location is '{electrodes_location}'")
     targeted_x = metadata["ephys"].get("targeted_x")
     targeted_y = metadata["ephys"].get("targeted_y")
     targeted_z = metadata["ephys"].get("targeted_z")
@@ -717,6 +736,10 @@ def add_electrode_data_berke_probe(
     nwbfile.add_electrode_column(
         name="intan_channel_number",
         description="The intan channel number (0-indexed) for the electrode",
+    )
+    nwbfile.add_electrode_column(
+        name="open_ephys_channel_str",
+        description="The Open Ephys channel name (1-based) for the electrode",
     )
     nwbfile.add_electrode_column(
         name="channel_name",
@@ -776,55 +799,74 @@ def add_electrode_data_berke_probe(
         ),
     )
 
-    # Make an ElectrodeGroup for unconnected Intan channels (potentially used for ECoG screws)
-    # This is only needed for the 252-channel probes. 
-    # We may re-evaluate this later (they should maybe have a separate Probe object? This is a hack for now.)
-    extra_electrode_group = NwbElectrodeGroup(
-        name="Other",
-        description="Intan channels not connected to probe electrodes (may be fully unconnected or ECoG screws)",
-        location="unknown",
-        targeted_location="unknown",
-        targeted_x=0.0,
-        targeted_y=0.0,
-        targeted_z=0.0,
-        units="mm",
-        device=probe_obj,
-    )
-    added_extra_electrode_group = False
+    # TODO: Figure out an elegant(ish) way to handle ECoG screws.
+    # For now I am excluding them entirely.
+
+    # # Make an ElectrodeGroup for unconnected Intan channels (potentially used for ECoG screws)
+    # # This is only needed for the 252-channel probes. 
+    # # We may re-evaluate this later (they should maybe have a separate Probe object? This is a hack for now.)
+    # extra_electrode_group = NwbElectrodeGroup(
+    #     name="Other",
+    #     description="Intan channels not connected to probe electrodes (may be fully unconnected or ECoG screws)",
+    #     location="unknown",
+    #     targeted_location="unknown",
+    #     targeted_x=0.0,
+    #     targeted_y=0.0,
+    #     targeted_z=0.0,
+    #     units="mm",
+    #     device=probe_obj,
+    # )
+    # added_extra_electrode_group = False
+
+    # Keep track of which channels we are excluding, if any.
+    # For now, we exclude channels that have no ElectrodeGroup (aka the extra 4 channels on our 252ch probes)
+    # Every row in the ElectricalSeries needs an associated electrode, 
+    # so we need to keep track of the channels we exclude to exclude those rows later as well.
+    excluded_channels = []
 
     for i, row in electrode_info.iterrows():
         # Get the Shank and ElectrodeGroup for this electrode
         shank_index = electrode_to_shank_map.get(i, -1)
         electrode_group = electrode_groups_by_shank.get(shank_index, None)
 
-        # If we have no electrode_group, this is one of the 4 extra channels on the 252-ch probes.
-        # So add the extra_electrode_group to the nwb if we haven't already and assign this electrode to it
-        if electrode_group is None:
-            if not added_extra_electrode_group:
-                nwbfile.add_electrode_group(extra_electrode_group)
-                added_extra_electrode_group = True
-                logger.debug("Adding extra electrode group for unconnected Intan channels")
-            electrode_group = extra_electrode_group
+        # TODO: See above note on ECoG screws. Keeping this here for now:
 
-        nwbfile.add_electrode(
-            electrode_name=row["electrode_name"],
-            intan_channel_number=row["intan_channel"],
-            channel_name=row["Channel Name"],
-            port=row["Port"],
-            impedance=row["Impedance Magnitude at 1000 Hz (ohms)"],
-            imp_phase=row["Impedance Phase at 1000 Hz (degrees)"],
-            series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
-            series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
-            bad_channel=row["bad_channel"],  # used by Spyglass
-            rel_x=float(row["x_um"]),
-            rel_y=float(row["y_um"]),
-            group=electrode_group,
-            location=electrodes_location, # same for all electrodes
-            filtering=filtering_info, # same for all electrodes
-            probe_electrode=i,  # used by Spyglass
-            probe_shank=shank_index,  # used by Spyglass
-            ref_elect_id=-1,  # used by Spyglass
-        )
+        # # If we have no electrode_group, this is one of the 4 extra channels on the 252-ch probes.
+        # # So add the extra_electrode_group to the nwb if we haven't already and assign this electrode to it
+        # if electrode_group is None:
+        #     if not added_extra_electrode_group:
+        #         nwbfile.add_electrode_group(extra_electrode_group)
+        #         added_extra_electrode_group = True
+        #         logger.debug("Adding extra electrode group for unconnected Intan channels")
+        #     electrode_group = extra_electrode_group
+
+        if electrode_group is not None:
+            nwbfile.add_electrode(
+                electrode_name=row["electrode_name"],
+                intan_channel_number=row["intan_channel"],
+                open_ephys_channel_str=row["open_ephys_channel_string"],
+                channel_name=row["Channel Name"],
+                port=row["Port"],
+                impedance=row["Impedance Magnitude at 1000 Hz (ohms)"],
+                imp_phase=row["Impedance Phase at 1000 Hz (degrees)"],
+                series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
+                series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
+                bad_channel=row["bad_channel"],  # used by Spyglass
+                rel_x=float(row["x_um"]),
+                rel_y=float(row["y_um"]),
+                group=electrode_group,
+                location=electrodes_location, # same for all electrodes
+                filtering=filtering_info, # same for all electrodes
+                probe_electrode=i,  # used by Spyglass
+                probe_shank=shank_index,  # used by Spyglass
+                ref_elect_id=-1,  # used by Spyglass
+            )
+        else:
+            logger.debug(f"Excluding '{row["electrode_name"]}' from electrode table:")
+            logger.debug(row)
+            excluded_channels.append(row)
+
+    return excluded_channels
 
 
 ### Functions for Neuropixels
@@ -978,7 +1020,7 @@ def add_raw_ephys(
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys
-    required_ephys_keys = {"openephys_folder_path", "probe"}
+    required_ephys_keys = {"openephys_folder_path", "probe", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
         print(
@@ -1042,27 +1084,35 @@ def add_raw_ephys(
             filtering_info
         ) = read_open_ephys_settings_xml(settings_file_path=settings_file_path, logger=logger)
 
-        # NOTE : We currently don't use channel_number_to_channel_name (except to complain when things don't match)
-        # For IM-1875, we do actually have some weird stuff going on there (missing CH1-8, duplicated ADC1-8)
-        # TODO for me is to confirm if we are really saving ADC1-8 twice and not recording CH1-8,
-        # or if that was just a weird display thing.
+        # NOTE: We currently don't use channel_number_to_channel_name (except to complain when things don't match).
+        # Ultimately this should be passed to add_electrode_data_berke_probe and used for validation.
+        # I have excluded this for now because for our current rats (IM-1875), we do actually have some weird 
+        # stuff going on there (missing CH1-CH8, which is replaced by a duplicated ADC1-ADC8).
+        # This is reflected in both the settings.xml and the structure.oebin files, and (rightfully) breaks
+        # a bunch of stuff. A current workaround is just to rename the offending channels in these files
+        # (which is bad practice!! but ok for now because they would be excluded by impedance criteria anyway)
+        # If you do this please note it and also save a copy of the original files. 
+        # But for now we must choose our battles and I'm skipping this one.
 
         # Create electrode groups and add electrode data to the NWB file
-        add_electrode_data_berke_probe(
-            nwbfile=nwbfile,
-            filtering_info=filtering_info,
-            metadata=metadata,
-            probe_metadata=probe_metadata,
-            probe_obj=probe_obj,
-            logger=logger,
-            fig_dir=fig_dir,
-        )
+        excluded_channels = add_electrode_data_berke_probe(
+                                    nwbfile=nwbfile,
+                                    filtering_info=filtering_info,
+                                    metadata=metadata,
+                                    probe_metadata=probe_metadata,
+                                    probe_obj=probe_obj,
+                                    logger=logger,
+                                    fig_dir=fig_dir,
+                                )
+
+        # Get Open Ephys names of channels to exclude for use by OpenEphysBinaryRecordingExtractor
+        exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
         # For Neuropixels (NOTE these are fake placeholder values):
         total_channels = 392 # I actually have no idea. Guessing 384 "CH" + 8(??) "ADC" ?
         port_visits_channel_num = 384 # Also no idea. 
-        
+
         # Read the settings.xml file to get channel map
         channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path, 
                                                    logger=logger, 
@@ -1081,7 +1131,7 @@ def add_raw_ephys(
         traces_as_iterator,
         channel_conversion_factor_v,
         original_timestamps,
-    ) = get_raw_ephys_data(openephys_folder_path, logger)
+    ) = get_raw_ephys_data(folder_path=openephys_folder_path, logger=logger, exclude_channels=exclude_channel_names)
     num_samples, num_channels = traces_as_iterator.maxshape
 
     # Get port visits recorded by Open Ephys for timestamp alignment
