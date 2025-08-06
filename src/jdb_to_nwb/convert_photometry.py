@@ -33,11 +33,11 @@ from .plotting.plot_photometry import (
 
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
-RESOURCES_DIR = __location_of_this_file / "resources"
+RESOURCES_DIR = __location_of_this_file / "resources" / "photometry"
 
 # If the resources directory does not exist, we are probably running the code from the source directory
 if not RESOURCES_DIR.exists():
-    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
+    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources" / "photometry"
 
 DEVICES_PATH = RESOURCES_DIR / "photometry_devices.yaml"
 MAPPINGS_PATH = RESOURCES_DIR / "photometry_mappings.yaml"

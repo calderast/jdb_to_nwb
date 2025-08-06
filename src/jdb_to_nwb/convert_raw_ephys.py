@@ -5,15 +5,17 @@
 import os
 import re
 import glob
+import yaml
+import numpy as np
+import pandas as pd
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from collections import Counter
 import xml.etree.ElementTree as ET
-from pathlib import Path
 from importlib.resources import files
-import pandas as pd
 from hdmf.backends.hdf5 import H5DataIO
-import numpy as np
-import yaml
+
 from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator import (
     SpikeInterfaceRecordingDataChunkIterator,
 )
@@ -21,8 +23,9 @@ from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
+from .utils import get_logger_directory
 from .timestamps_alignment import align_via_interpolation
-from .plotting.plot_ephys import plot_channel_map, plot_neuropixels
+from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
 from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
 MICROVOLTS_PER_VOLT = 1e6
@@ -31,23 +34,42 @@ VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
 
-# Names of custom Berke Lab probes
-BERKE_LAB_PROBES = {"256-ch Silicon Probe, 3mm length, 66um pitch", "256-ch Silicon Probe, 6mm length, 80um pitch"}
-
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
-RESOURCES_DIR = __location_of_this_file / "resources"
+RESOURCES_DIR = __location_of_this_file / "resources" / "electrophysiology"
 
 # If the resources directory does not exist, we are probably running the code from the source directory
 if not RESOURCES_DIR.exists():
-    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources"
+    RESOURCES_DIR = __location_of_this_file.parent.parent / "resources" / "electrophysiology"
 
-BERKE_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR / "berke_probe_channel_map.csv"
-ELECTRODE_COORDS_PATH_3MM_PROBE = RESOURCES_DIR / "3mm_probe_66um_pitch_electrode_coords.csv"
-ELECTRODE_COORDS_PATH_6MM_PROBE = RESOURCES_DIR / "6mm_probe_80um_pitch_electrode_coords.csv"
+BERKE_256CH_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR / "256ch_silicon_probe_channel_map.csv"
+BERKE_252CH_PROBE_CHANNEL_MAP_PATH = RESOURCES_DIR  / "252ch_silicon_probe_channel_map.csv"
+ELECTRODE_COORDS_PATH_256CH_3MM_PROBE = RESOURCES_DIR  / "256ch_probe_3mm_length_66um_pitch_coords.csv"
+ELECTRODE_COORDS_PATH_256CH_6MM_PROBE = RESOURCES_DIR / "256ch_probe_6mm_length_80um_pitch_coords.csv"
+ELECTRODE_COORDS_PATH_252CH_4MM_PROBE = RESOURCES_DIR / "252ch_probe_4mm_length_80um_pitch_coords.csv"
+ELECTRODE_COORDS_PATH_252CH_10MM_PROBE = RESOURCES_DIR / "252ch_probe_10mm_length_100um_pitch_coords.csv"
 ELECTRODE_COORDS_PATH_NPX_MULTISHANK = RESOURCES_DIR / "neuropixels_2.0_multishank_electrode_coords.csv"
 DEVICES_PATH = RESOURCES_DIR / "ephys_devices.yaml"
 
+# Names of custom Berke Lab probes
+BERKE_LAB_PROBES = {
+    "256-ch Silicon Probe, 3mm length, 66um pitch": {
+        "channel_map": BERKE_256CH_PROBE_CHANNEL_MAP_PATH,
+        "electrode_coords": ELECTRODE_COORDS_PATH_256CH_3MM_PROBE
+    },
+    "256-ch Silicon Probe, 6mm length, 80um pitch": {
+        "channel_map": BERKE_256CH_PROBE_CHANNEL_MAP_PATH,
+        "electrode_coords": ELECTRODE_COORDS_PATH_256CH_6MM_PROBE
+    },
+    "252-ch Silicon Probe, 4mm length, 80um pitch": {
+        "channel_map": BERKE_252CH_PROBE_CHANNEL_MAP_PATH,
+        "electrode_coords": ELECTRODE_COORDS_PATH_252CH_4MM_PROBE
+    },
+    "252-ch Silicon Probe, 10mm length, 100um pitch": {
+        "channel_map": BERKE_252CH_PROBE_CHANNEL_MAP_PATH,
+        "electrode_coords": ELECTRODE_COORDS_PATH_252CH_10MM_PROBE
+    },
+}
 
 def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     """
@@ -184,7 +206,7 @@ def get_port_visits(continuous_dat_file_path: Path,
     pulse_starts = np.insert(pulse_above_threshold[breaks], 0, pulse_above_threshold[0])
     pulse_ends = np.append(pulse_above_threshold[breaks - 1], pulse_above_threshold[-1])
     pulse_durations = pulse_ends - pulse_starts + 1 
-    
+
     logger.debug(f"Found {len(pulse_starts)} visit pulses.")
 
     # Only keep pulses at least 5ms long just in case (typical port visit keeps the channel high for ~10ms)
@@ -195,9 +217,9 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Kept {len(pulse_starts)} pulses.")
     logger.debug(f"Pulse durations: {pulse_durations}")
 
-    # Align to first pulse (which marks photometry(?) start time) and convert to seconds
+    # Align to first pulse (which marks bonsai start time) and convert to seconds
     # NOTE: The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
-    # should we add a check for this to ensure we have identified the correct "start" pulse?
+    # Should we add a check for this to ensure we have identified the correct "start" pulse?
     logger.info("Removing the first ephys pulse, as it marks start time and not a true port visit")
     port_visits = pulse_starts[1:] - pulse_starts[0]
     port_visits = [float(visit / downsampled_fs) for visit in port_visits]
@@ -206,7 +228,8 @@ def get_port_visits(continuous_dat_file_path: Path,
 
 def get_raw_ephys_data(
     folder_path: Path,
-    logger
+    logger,
+    exclude_channels: list[str] = []
 ) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
     """
     Get the raw ephys data from the OpenEphys binary recording.
@@ -217,6 +240,9 @@ def get_raw_ephys_data(
             should have the date in the name and contain a file called "settings.xml".
         logger (Logger):
             Logger to track conversion progress
+        exclude_channels (list[str]):
+            List of channel names to exclude, if any. 
+            Channel names are 1-based and should start with 'CH', e.g. 'CH64'
 
     Returns:
         traces_as_iterator (SpikeInterfaceRecordingDataChunkIterator):
@@ -243,7 +269,12 @@ def get_raw_ephys_data(
 
     # Ignore the "ADC" channels
     recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
-    channel_ids_to_convert = [ch for ch in recording.channel_ids if ch.startswith("CH")]
+    # Exclude extra channels
+    if exclude_channels:
+        logger.debug(f"Excluding {len(exclude_channels)} channels: {exclude_channels}")
+    channel_ids_to_convert = [
+        ch for ch in recording.channel_ids if ch.startswith("CH") and ch not in exclude_channels
+    ]
     recording_sliced = recording.select_channels(channel_ids=channel_ids_to_convert)
 
     # Confirm all channel names start with "CH"
@@ -359,11 +390,16 @@ def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
 
 ### Functions for Berke Lab custom probes
 
-def get_raw_ephys_metadata_berke_probe(settings_file_path: Path, logger) -> tuple[list[str], list[int], list[int]]:
+def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> tuple[dict, str]:
     """
     Get the raw ephys metadata from the OpenEphys binary recording.
 
-    Read the openephys settings.xml file to get the mapping of channel number to channel name.
+    Read the OpenEphys settings.xml file to get the mapping of channel number to channel name
+    and the filtering applied across all channels. 
+    
+    Note that only the information in the "Sources/Rhythm FPGA" is relevant - 
+    the other processors ("Filters/Channel Map", "Filters/Bandpass Filter", etc.) 
+    reflect OpenEphys display settings only 
 
     <PROCESSOR name="Sources/Rhythm FPGA" ...>
       <CHANNEL_INFO>
@@ -373,10 +409,6 @@ def get_raw_ephys_metadata_berke_probe(settings_file_path: Path, logger) -> tupl
       ...
     </PROCESSOR>
 
-    Read the settings.xml file to get the filtering applied to each channel.
-
-    Read the settings.xml file to get the channel map.
-
     Parameters:
         settings_file_path (Path):
             Path to the OpenEphys settings.xml file
@@ -384,12 +416,10 @@ def get_raw_ephys_metadata_berke_probe(settings_file_path: Path, logger) -> tupl
             Logger to track conversion progress
 
     Returns:
-        filtering_list (list[str]):
-            The filtering applied to each channel.
-        headstage_channel_numbers (list[int]):
-            The headstage channel numbers for each channel.
-        reference_daq_channel_indices (list[int]):
-            The reference DAQ channel indices for each channel (-1 if not set).
+        channel_number_to_channel_name (dict):
+            Dict mapping channel number (0-263) to channel name (e.g. 'CH1', 'CH2', etc.)
+        filtering_info (str):
+            Filtering applied to all channels
     """
     settings_tree = ET.parse(settings_file_path)
     settings_root = settings_tree.getroot()
@@ -402,185 +432,222 @@ def get_raw_ephys_metadata_berke_probe(settings_file_path: Path, logger) -> tupl
         logger.error("Could not find the CHANNEL_INFO node in the settings.xml file.")
         raise ValueError("Could not find the CHANNEL_INFO node in the settings.xml file.")
     channel_number_to_channel_name = {
-        channel.attrib["number"]: channel.attrib["name"] for channel in channel_info.findall("CHANNEL")
+        int(channel.attrib["number"]): channel.attrib["name"] for channel in channel_info.findall("CHANNEL")
     }
 
-    # Get the filtering info
-    filtering_list = get_filtering_info_berke_probe(settings_root, channel_number_to_channel_name, logger)
+    # Check that the channel numbers and channel names are what we expect
+    expected_channel_numbers = set(range(264))  # 0 to 263, for 256 channels + 8 ADC
+    expected_channel_names = {f"CH{i}" for i in range(1, 257)} | {f"ADC{i}" for i in range(1, 9)}
 
-    # Get the channel map info
-    headstage_channel_numbers, reference_daq_channel_indices = get_channel_map_info_berke_probe(
-        settings_root, channel_number_to_channel_name
-    )
+    channel_numbers_from_settings_xml = set(channel_number_to_channel_name.keys())
+    channel_names_from_settings_xml = set(channel_number_to_channel_name.values())
+
+    # Check for missing or unexpected channel numbers
+    missing_channel_numbers = expected_channel_numbers - channel_numbers_from_settings_xml
+    unexpected_channel_numbers = channel_numbers_from_settings_xml - expected_channel_numbers
+    if missing_channel_numbers or unexpected_channel_numbers:
+        logger.warning("Channel numbers in settings.xml do not match expectations!!!!")
+        if missing_channel_numbers:
+            logger.warning(f"Missing channel numbers: {sorted(missing_channel_numbers)}")
+        if unexpected_channel_numbers:
+            logger.warning(f"Unexpected channel numbers: {sorted(unexpected_channel_numbers)}")
+    else:
+        logger.info("All expected channel numbers found in OpenEphys settings.xml")
+        logger.debug(f"Found channels: {sorted(channel_numbers_from_settings_xml)}")
+
+    # Check for missing or unexpected channel names
+    missing_channel_names = expected_channel_names - channel_names_from_settings_xml
+    unexpected_channel_names = channel_names_from_settings_xml - expected_channel_names
+    if missing_channel_names or unexpected_channel_names:
+        logger.warning("Channel names in settings.xml do not match expectations!!!!")
+        if missing_channel_names:
+            logger.warning(f"Missing channel names: {sorted(missing_channel_names)}")
+        if unexpected_channel_names:
+            logger.warning(f"Unexpected channel names: {sorted(unexpected_channel_names)}")
+    else:
+        logger.info("All expected channel names found in OpenEphys settings.xml")
+        logger.debug(f"Found channels: {sorted(channel_names_from_settings_xml)}")
+
+    # Check for duplicate channel names
+    channel_name_counts = Counter(list(channel_number_to_channel_name.values()))
+    duplicate_names = [name for name, count in channel_name_counts.items() if count > 1]
+    if duplicate_names:
+        logger.warning("Duplicate channel names found in settings.xml!!!!")
+        logger.warning(f"Duplicate channel names: {sorted(duplicate_names)}")
+
+    # Get the filtering info
+    editor = rhfp_processor.find("EDITOR")
+    if editor is not None:
+        lowcut = float(editor.attrib.get("LowCut"))
+        highcut = float(editor.attrib.get("HighCut"))
+        filtering_info = f"Filter with highcut={highcut} Hz, lowcut={lowcut} Hz"
+        logger.info(f"Filtering info from settings.xml: {filtering_info}")
+    else:
+        logger.warning("EDITOR tag not found in settings.xml, no filtering info for channels!")
+        filtering_info = "Unknown"
 
     return (
-        filtering_list,
-        headstage_channel_numbers,
-        reference_daq_channel_indices,
+        channel_number_to_channel_name,
+        filtering_info,
     )
 
 
-def get_filtering_info_berke_probe(settings_root: ET.Element, 
-                                   channel_number_to_channel_name: dict[str, str], 
-                                   logger) -> list[str]:
+def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataFrame:
     """
-    Get the filtering applied to each channel from the settings.xml file.
-
-    Read the settings.xml file to get the filtering applied to each channel - map channel number to filter description
-
-    <PROCESSOR name="Filters/Bandpass Filter" ...>
-      <CHANNEL name="0" number="0">
-        <SELECTIONSTATE param="1" record="0" audio="0"/>
-        <PARAMETERS highcut="6000" lowcut="1" shouldFilter="1"/>
-      </CHANNEL>
-      ...
-    </PROCESSOR>
+    Create a DataFrame of complete electrode information for a Berke Lab silicon probe.
+    Combines channel map, electrode coordinates, and impedance data.
 
     Parameters:
-        settings_root (ET.Element):
-            The root of the settings.xml file.
-        channel_number_to_channel_name (dict[str, str]):
-            Mapping of channel number to channel name.
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml)
         logger (Logger):
             Logger to track conversion progress
+        fig_dir (Path):
+            Optional. The directory to save the figure. If None, the figure will not be saved.
 
     Returns:
-        filtering_list (list[str]):
-            The filtering applied to each channel.
+        pd.DataFrame:
+            DataFrame of electrode information including electrode name, shank, electrode number,
+            intan channel, relative x and y coordinates, impedance info, and 'bad channel' tag
     """
-    bandpass_filter = settings_root.find(".//PROCESSOR[@name='Filters/Bandpass Filter']")
-    filtering = {}
-    if bandpass_filter is not None:
-        for channel in bandpass_filter.findall("CHANNEL"):
-            # Ignore the ADC channels
-            if not channel_number_to_channel_name.get(channel.attrib["number"]).startswith("CH"):
-                continue
-            highcut = channel.find("PARAMETERS").attrib["highcut"]
-            lowcut = channel.find("PARAMETERS").attrib["lowcut"]
-            should_filter = channel.find("PARAMETERS").attrib["shouldFilter"]
-            if should_filter == "1":
-                filtering[channel.attrib["number"]] = (
-                    f"2nd-order Butterworth filter with highcut={highcut} Hz and lowcut={lowcut} Hz"
-                )
-            else:
-                filtering[channel.attrib["number"]] = "No filtering"
+
+    # Get info for this probe
+    probe_args = metadata["ephys"]["probe"]
+    assert len(probe_args) == 1, "Only one probe is supported at this time."
+    probe_name = probe_args[0]
+
+    try:
+        probe_info = BERKE_LAB_PROBES[probe_name]
+    except KeyError:
+        logger.error(f"Unknown probe '{probe_name}'. Valid probes are: {list(BERKE_LAB_PROBES)}")
+        raise ValueError(f"Unknown probe '{probe_name}'. Valid probes are: {list(BERKE_LAB_PROBES)}")
+
+    # Combine channel map and electrode coords into a single dataframe
+    channel_map_df = pd.read_csv(probe_info["channel_map"])
+    electrode_coords_df = pd.read_csv(probe_info["electrode_coords"])
+    channel_coords_df = pd.merge(channel_map_df, electrode_coords_df, on=["shank", "electrode"], how="outer")
+
+    # Make sure we have exactly 256 rows (one per Intan channel)
+    if len(channel_coords_df) != 256:
+        logger.error(f"Expected 256 rows in merged probe info, but got {len(channel_coords_df)}")
+        raise ValueError(f"Expected 256 rows in merged probe info, but got {len(channel_coords_df)}")
+
+    # Choose the correct channel map based on how the rat was plugged in (assume "chip_first" if none specified)
+    plug_order = metadata["ephys"].get("plug_order", "chip_first")
+    logger.info(f"Plug order is: {plug_order}")
+
+    # Rename the correct channel map column to 'intan_channel' and remove the unused channel map column
+    if plug_order == "chip_first":
+        channel_coords_df = channel_coords_df.drop(columns=["cable_first"])
+        channel_coords_df = channel_coords_df.rename(columns={"chip_first": "intan_channel"})
+    elif plug_order == "cable_first":
+        channel_coords_df = channel_coords_df.drop(columns=["chip_first"])
+        channel_coords_df = channel_coords_df.rename(columns={"cable_first": "intan_channel"})
     else:
-        logger.error("No bandpass filter found in the settings.xml file.")
-        raise ValueError("No bandpass filter found in the settings.xml file.")
+        logger.error(f"Unknown plug order: {plug_order}, expected 'chip_first' or 'cable_first'")
+        raise ValueError(f"Unknown plug order: {plug_order}, expected 'chip_first' or 'cable_first'")
 
-    # Check that the channel numbers in filtering go from "0" to "N-1"
-    # where N is the number of channels
-    assert all(
-        int(ch_num) == i for i, ch_num in enumerate(filtering.keys())
-    ), "Channel numbers in filtering do not go from 0 to N-1."
-    filtering_list = list(filtering.values())
+    # Add another channel name column based on intan_channel to match Open Ephys 1-based 'CH##' channel names
+    channel_coords_df["open_ephys_channel_string"] = channel_coords_df["intan_channel"].apply(lambda i: f"CH{i + 1}")
 
-    # Warn if the channel filtering is not the same for all channels
-    if not all(f == filtering_list[0] for f in filtering_list):
-        print(
-            "The channel filtering is not the same for all channels. "
-            "This is unexpected and may indicate a problem with the filtering settings."
-        )
-        logger.warning(
-            "The channel filtering is not the same for all channels. "
-            "This is unexpected and may indicate a problem with the filtering settings."
-        )
-    return filtering_list
+    # Plot the channel coordinates
+    plot_channel_map(probe_name=probe_name, channel_coords=channel_coords_df, fig_dir=fig_dir)
 
+    # Now load impedance data
+    impedance_file_path = metadata["ephys"]["impedance_file_path"]
+    impedance_data = pd.read_csv(impedance_file_path)
 
-def get_channel_map_info_berke_probe(
-    settings_root: ET.Element, 
-    channel_number_to_channel_name: dict[str, str]
-) -> tuple[list[int], list[int]]:
-    """
-    Get the channel map info from the settings.xml file.
+    # Check that the expected columns are present in order and no extra columns are present
+    expected_columns = [
+        "Channel Number",
+        "Channel Name",
+        "Port",
+        "Enabled",
+        "Impedance Magnitude at 1000 Hz (ohms)",
+        "Impedance Phase at 1000 Hz (degrees)",
+        "Series RC equivalent R (Ohms)",
+        "Series RC equivalent C (Farads)",
+    ]
 
-    Read the settings.xml file to get the mapping of daq / data channel index (0-indexed) to headstage channel
-    index (1-indexed) and get the reference channels for each channel
-    The GUI for this older version of the OpenEphys Channel Map filter is documented here:
-    https://open-ephys.atlassian.net/wiki/spaces/OEW/pages/950421/Channel+Map
+    assert impedance_data.columns.tolist() == expected_columns, (
+        f"Impedance file has columns {impedance_data.columns.tolist()}, "
+        f"does not match expected columns {expected_columns}"
+    )
+    logger.debug(f"Impedance file has expected columns {expected_columns}")
 
-    <PROCESSOR name="Filters/Channel Map" ...>
-      <CHANNEL name="0" number="0">
-        <SELECTIONSTATE param="0" record="0" audio="0"/>
-      </CHANNEL>
-      ...
-      <EDITOR isCollapsed="0" displayName="Channel Map" Type="ChannelMappingEditor">
-        <SETTING Type="visibleChannels" Value="6"/>
-        <CHANNEL Number="0" Mapping="1" Reference="-1" Enabled="1"/>
-        <CHANNEL Number="1" Mapping="2" Reference="-1" Enabled="1"/>
-        <CHANNEL Number="2" Mapping="3" Reference="-1" Enabled="1"/>
-        ...
-        <REFERENCE Number="0" Channel="2"/>
-        <REFERENCE Number="1" Channel="-1"/>
-        ...
-      </EDITOR>
-    </PROCESSOR>
+    # Drop the first column which should be the same as the second column
+    assert (impedance_data["Channel Number"] == impedance_data["Channel Name"]).all(), (
+        "First column is not the same as the second column."
+    )
+    impedance_data.drop(columns=["Channel Number"], inplace=True)
 
-    Parameters:
-        settings_root (ET.Element):
-            The root of the settings.xml file.
-        channel_number_to_channel_name (dict[str, str]):
-            Mapping of channel number to channel name.
+    # Make sure the channel coords dataframe and impedance dataframe have the same length (256)
+    assert len(channel_coords_df) == len(impedance_data), (
+        "Mismatch in lengths: "
+        f"channel coordinates ({len(channel_coords_df)}), "
+        f"impedance data ({len(impedance_data)})"
+    )
+    logger.debug(f"Channel coordinates and impedance data have the same length ({len(channel_coords_df)})")
 
-    Returns:
-        headstage_channel_numbers (list[int]):
-            The headstage channel numbers for each channel.
-        reference_daq_channel_indices (list[int]):
-            The reference DAQ channel indices for each channel (-1 if not set).
-    """
-    channel_map = settings_root.find(".//PROCESSOR[@name='Filters/Channel Map']")
-    if channel_map is None:
-        raise ValueError("Could not find the Channel Map processor in the settings.xml file.")
-    channel_map_editor = channel_map.find("EDITOR")
-    if channel_map_editor is None:
-        raise ValueError("Could not find the EDITOR node in the settings.xml file.")
+    # Create a column 'intan_channel' (zero-indexed) in the impedance df so we can merge with channel coords df
+    impedance_data["intan_channel"] = range(len(impedance_data))
+    full_electrode_info_df = channel_coords_df.merge(impedance_data, on="intan_channel", how="left")
+    assert len(full_electrode_info_df) == len(channel_coords_df) == 256, (
+        "Full electrode info dataframe does not have 256 rows"
+    )
 
-    # Get the reference channel if set
-    reference_channels = list()
-    for i, reference in enumerate(channel_map_editor.findall("REFERENCE")):
-        assert int(reference.attrib["Number"]) == i, "Reference number does not match index."
-        reference_channels.append(int(reference.attrib["Channel"]))
-        # Ryan believes the reference channel is the daq / data channel index and not the headstage channel index
+    # Sanity check that the channel numbers from the "Channel Name" column match the "intan_channel" column
+    # channel nums = the number for Port B channels (e.g. B-001 is 1) and number+128 for Port C channels (C-001 is 129)
+    expected_channel_nums = full_electrode_info_df["Channel Name"].apply(
+        lambda s: int(s.split("-")[1]) + (128 if s.startswith("C-") else 0)
+    )
 
-    # Get the channel map
-    headstage_channel_numbers = list()
-    reference_daq_channel_indices = list()
-    for i, channel in enumerate(channel_map_editor.findall("CHANNEL")):
-        # There should not be any disabled channels and this code was not tested with disabled channels.
-        # TODO Before removing this assertion, check that the code below works when a channel is disabled.
-        assert int(channel.attrib["Enabled"]) == 1, "Channel is not enabled."
-        assert int(channel.attrib["Number"]) == i, "Channel number does not match index."
+    mismatched_channel_nums = full_electrode_info_df["intan_channel"] != expected_channel_nums
+    if mismatched_channel_nums.any():
+        logger.warning(f"{mismatched_channel_nums.sum()} rows have mismatched intan_channel values")
+        logger.warning(full_electrode_info_df[mismatched_channel_nums])
+    else:
+        logger.debug("All intan channel numbers from coordinates file match channel names from the impedance file!")
 
-        # Ignore the ADC channels
-        if not channel_number_to_channel_name.get(channel.attrib["Number"]).startswith("CH"):
-            continue
+    # Mark electrodes with impedances outside the allowed range as "bad channel"
+    # The default impedance range is between >=0.1 MOhms or <=3.0 MOhms
+    min_impedance = float(metadata["ephys"].get("min_impedance_ohms", MIN_IMPEDANCE_OHMS))
+    max_impedance = float(metadata["ephys"].get("max_impedance_ohms", MAX_IMPEDANCE_OHMS))
 
-        # This code was not tested with reference channels.
-        # TODO Before removing this assertion, check that the code below works when a channel is a reference.
-        assert int(channel.attrib["Reference"]) == -1, "Channel is a reference."
-        if int(channel.attrib["Reference"]) != -1:
-            reference_daq_channel_indices.append(reference_channels[int(channel.attrib["Reference"])])
-        else:
-            reference_daq_channel_indices.append(-1)
+    logger.info(f"Marking channels with impedance > {max_impedance} Ohms or < {min_impedance} Ohms as 'bad_channel'")
+    full_electrode_info_df["bad_channel"] = (
+        full_electrode_info_df["Impedance Magnitude at 1000 Hz (ohms)"].lt(min_impedance) |
+        full_electrode_info_df["Impedance Magnitude at 1000 Hz (ohms)"].gt(max_impedance)
+    ).astype(int)
 
-        headstage_channel_numbers.append(int(channel.attrib["Mapping"]))
+    # Log the number of good and bad channels
+    bad_channel_count = full_electrode_info_df["bad_channel"].sum()
+    good_channel_count = len(full_electrode_info_df) - bad_channel_count
+    logger.info(f"There are {good_channel_count} good channels and {bad_channel_count} bad channels based on impedance")
 
-    return headstage_channel_numbers, reference_daq_channel_indices
+    # Plot channel impedances
+    plot_channel_impedances(probe_name=probe_name, electrode_info=full_electrode_info_df, 
+                            min_impedance=min_impedance, max_impedance=max_impedance, fig_dir=fig_dir)
+
+    # Save electrode info to the log directory
+    log_dir = get_logger_directory(logger)
+    save_path = os.path.join(log_dir, "electrode_info.csv")
+    full_electrode_info_df.to_csv(save_path, index=False)
+    logger.info(f"Saved electrode info to {save_path}")
+
+    return full_electrode_info_df
 
 
 def add_electrode_data_berke_probe(
     *,
     nwbfile: NWBFile,
-    filtering_list: list[str],
-    headstage_channel_numbers: list[int],
-    reference_daq_channel_indices: list[int],
+    filtering_info: str,
     metadata: dict,
     probe_metadata: dict,
     probe_obj,
     logger,
     fig_dir: Path = None,
-):
+) -> list[pd.Series]:
     """
     Add the electrode data from the impedance and channel geometry files.
     Specific to Berke Lab custom probes
@@ -588,12 +655,8 @@ def add_electrode_data_berke_probe(
     Parameters:
         nwbfile (NWBFile):
             The NWB file being assembled.
-        filtering_list (list[str]):
-            The filtering applied to each channel.
-        headstage_channel_numbers (list[int]):
-            The headstage channel numbers for each channel.
-        reference_daq_channel_indices (list[int]):
-            The reference DAQ channel indices for each channel.
+        filtering_info (str):
+            The filtering applied to all channels.
         metadata (dict):
             Full metadata dictionary (from user-specified yaml)
         probe_metadata (dict):
@@ -604,44 +667,21 @@ def add_electrode_data_berke_probe(
             Logger to track conversion progress
         fig_dir (Path):
             Optional. The directory to save the figure. If None, the figure will not be saved.
+    Returns:
+        list[pd.Series]:
+            List of information about channels excluded from the electrode table, if any.
+            For now, we exclude the extra 4 channels that can be connected to ECoG screws in the 252-channel probes
     """
 
-    # Get the channel map based on how the rat was plugged in (assume "chip_first" if none specified)
-    plug_order = metadata["ephys"].get("plug_order", "chip_first")
-    logger.info(f"Plug order is: {plug_order}")
-
-    channel_map_df = pd.read_csv(BERKE_PROBE_CHANNEL_MAP_PATH)
-    channel_map = np.array(channel_map_df[plug_order])
-
-    # Under the "chip_first" channel map, the first channel has index 191 (0-indexed). 
-    # The coordinates for this channel are at row index 191 in the channel_geometry dataframe 
-    # (electrode coords CSV).
-
-    # Get electrode coordinates as a (2, 256) array based on the probe name
-    # The first column is the relative x coordinate, and the second column is the relative y coordinate
-    probe_name = probe_metadata["name"]
-    if probe_name == "256-ch Silicon Probe, 3mm length, 66um pitch":
-        electrode_coords_path = ELECTRODE_COORDS_PATH_3MM_PROBE
-    elif probe_name == "256-ch Silicon Probe, 6mm length, 80um pitch":
-        electrode_coords_path = ELECTRODE_COORDS_PATH_6MM_PROBE
-    else:
-        raise ValueError(f"Unknown probe '{probe_name}' has no associated electrode coordinates file.")
-
-    logger.info(f"Using electrode coords specified in {electrode_coords_path}")
-    channel_geometry = pd.read_csv(electrode_coords_path)
-
-    assert len(channel_geometry) == len(channel_map), (
-        "Mismatch in lengths: "
-        f"channel_geometry ({len(channel_geometry)}), "
-        f"channel_map ({len(channel_map)}), "
-    )
-    logger.debug(f"Lengths of channel geometry and channel map match (length={len(channel_map)})!")
-
-    plot_channel_map(probe_name, channel_geometry, fig_dir=fig_dir)
+    # Get dataframe of electrode information (channel map, x/y coordinates, and impedance info)
+    electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
 
     # Get general metadata for the Probe
-    electrodes_location = metadata["ephys"].get("electrodes_location")
-    logger.info(f"Electrodes location is {electrodes_location}")
+    electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
+    if electrodes_location == "unspecified":
+        logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
+    else:
+        logger.info(f"Electrodes location is '{electrodes_location}'")
     targeted_x = metadata["ephys"].get("targeted_x")
     targeted_y = metadata["ephys"].get("targeted_y")
     targeted_z = metadata["ephys"].get("targeted_z")
@@ -680,100 +720,27 @@ def add_electrode_data_berke_probe(
                 shank.add_shanks_electrode(
                     ShanksElectrode(  
                         name=str(electrode_index),
-                        rel_x=float(channel_geometry["x"][channel_map[electrode_index]]),
-                        rel_y=float(channel_geometry["y"][channel_map[electrode_index]]),
+                        rel_x=float(electrode_info.iloc[electrode_index]['x_um']),
+                        rel_y=float(electrode_info.iloc[electrode_index]['y_um']),
                         rel_z=0.0,
                     )
                 )
                 electrode_to_shank_map[electrode_index] = shank_index
             probe_obj.add_shank(shank)
 
-    impedance_file_path = metadata["ephys"]["impedance_file_path"]
-    impedance_data = pd.read_csv(impedance_file_path)
-
-    # Check that the expected columns are present in order and no extra columns are present
-    expected_columns = [
-        "Channel Number",
-        "Channel Name",
-        "Port",
-        "Enabled",
-        "Impedance Magnitude at 1000 Hz (ohms)",
-        "Impedance Phase at 1000 Hz (degrees)",
-        "Series RC equivalent R (Ohms)",
-        "Series RC equivalent C (Farads)",
-    ]
-    assert impedance_data.columns.tolist() == expected_columns, (
-        f"Impedance file has columns {impedance_data.columns.tolist()}, "
-        f"does not match expected columns {expected_columns}"
-    )
-    logger.debug(f"Impedance file has expected columns {expected_columns}")
-
-    assert len(channel_map) == len(impedance_data), (
-        "Mismatch in lengths: "
-        f"channel_map ({len(channel_map)}), "
-        f"impedance_data ({len(impedance_data)})"
-    )
-    logger.debug(f"Channel map and impedance data have the same length ({len(channel_map)})")
-    
-    # Drop the first column which should be the same as the second column
-    assert (impedance_data["Channel Number"] == impedance_data["Channel Name"]).all(), (
-        "First column is not the same as the second column."
-    )
-    impedance_data.drop(columns=["Channel Number"], inplace=True)
-
-    # Check that the filtering list has the same length as the number of channels
-    assert len(filtering_list) == len(impedance_data), (
-        f"Filtering list does not have the same length ({len(filtering_list)}) "
-        f"as the number of channels ({len(impedance_data)})."
-    )
-    logger.debug(f"Filtering list has the same length ({len(filtering_list)}) as number of channels")
-
-    assert len(headstage_channel_numbers) == len(impedance_data), (
-        f"Headstage channel numbers do not have the same length ({len(headstage_channel_numbers)}) "
-        f"as the number of channels ({len(impedance_data)})."
-    )
-    logger.debug(
-        f"Headstage channel numbers have the same length ({len(headstage_channel_numbers)}) as number of channels"
-    )
-
-    assert len(reference_daq_channel_indices) == len(impedance_data), (
-        f"Reference DAQ channel indices do not have the same length ({len(reference_daq_channel_indices)}) "
-        f"as the number of channels ({len(impedance_data)})."
-    )
-    logger.debug(
-        f"Reference DAQ channel indices have the same length ({len(reference_daq_channel_indices)}) "
-        "as number of channels"
-    )
-
-    # Convert the headstage channel numbers to 0-indexed
-    headstage_channel_indices = np.array(headstage_channel_numbers) - 1
-
-    # Check that the headstage channel indices are equal to the channel map
-    # The channel map should have been encoded in the OpenEphys settings file during the recording
-    # and that should match the channel map from the resources directory.
-    if not np.all(headstage_channel_indices == channel_map):
-        logger.warning(
-            "Headstage channel indices are not equal to the channel map. "
-            "This is unexpected and may indicate a problem with the channel map."
-        )
-
-    # Apply the channel map to the reference DAQ channel indices to get the reference electrode ID (0-indexed)
-    ref_elect_id = []
-    for i in reference_daq_channel_indices:
-        if i != -1:
-            ref_elect_id.append(headstage_channel_indices[i])  # TODO test this
-        else:
-            ref_elect_id.append(-1)
-
-    # Mark electrodes with impedance that is less than 0.1 MOhms or more than 3.0 MOhms
-    # as bad electrodes
-    logger.info(f"Marking channels with impedance>{MAX_IMPEDANCE_OHMS} or <{MIN_IMPEDANCE_OHMS} as 'bad_channel'")
-    bad_channel_mask = (
-        impedance_data["Impedance Magnitude at 1000 Hz (ohms)"] < MIN_IMPEDANCE_OHMS) | (
-        impedance_data["Impedance Magnitude at 1000 Hz (ohms)"] > MAX_IMPEDANCE_OHMS
-    )
-
     # Add the electrode data to the NWB file, one column at a time
+    nwbfile.add_electrode_column(
+        name="electrode_name",
+        description="The name of the electrode, in 'S(shank number)E(electrode number)' format",
+    )
+    nwbfile.add_electrode_column(
+        name="intan_channel_number",
+        description="The intan channel number (0-indexed) for the electrode",
+    )
+    nwbfile.add_electrode_column(
+        name="open_ephys_channel_str",
+        description="The Open Ephys channel name (1-based) for the electrode",
+    )
     nwbfile.add_electrode_column(
         name="channel_name",
         description="The name of the channel from the impedance file",
@@ -783,11 +750,7 @@ def add_electrode_data_berke_probe(
         description="The port of the electrode from the impedance file",
     )
     nwbfile.add_electrode_column(
-        name="enabled",
-        description="Whether the channel is enabled from the impedance file",
-    )
-    nwbfile.add_electrode_column(
-        name="imp",
+        name="impedance",
         description="The impedance of the electrode (Impedance Magnitude at 1000 Hz (ohms))",
     )
     nwbfile.add_electrode_column(
@@ -808,25 +771,20 @@ def add_electrode_data_berke_probe(
     )
     nwbfile.add_electrode_column(
         name="rel_x",
-        description="The relative x coordinate of the electrode",
+        description="The relative x coordinate of the electrode (um)",
     )
     nwbfile.add_electrode_column(
         name="rel_y",
-        description="The relative y coordinate of the electrode",
+        description="The relative y coordinate of the electrode (um)",
     )
     nwbfile.add_electrode_column(
         name="filtering",
         description="The filtering applied to the electrode",
     )
     nwbfile.add_electrode_column(
-        name="headstage_channel_number",
-        description="The headstage channel number (1-indexed) for the electrode",
-    )
-    nwbfile.add_electrode_column(
         name="probe_electrode",
         description= (
-            "The index of the electrode on the probe. "
-            "There is only one probe, so this is equivalent to electrode index"
+            "The index of the electrode on the probe (0-indexed). Equivalent to electrode number-1"
         ),
     )
     nwbfile.add_electrode_column(
@@ -837,35 +795,78 @@ def add_electrode_data_berke_probe(
         name="ref_elect_id",
         description=(
             "The index of the reference electrode in this table. "
-            "-1 if not set. Also known as 'reference_daq_channel_index'"
+            "-1 if not set. Used by Spyglass."
         ),
     )
 
-    for i, row in impedance_data.iterrows():
-        # Get the Shank and ElectrodeGroup for this electrode
-        shank_index = electrode_to_shank_map[i]
-        electrode_group = electrode_groups_by_shank[shank_index]
-        channel_num = channel_map[i]
+    # TODO: Figure out an elegant(ish) way to handle ECoG screws.
+    # For now I am excluding them entirely.
 
-        nwbfile.add_electrode(
-            channel_name=row["Channel Name"],
-            port=row["Port"],
-            enabled=bool(row["Enabled"]),
-            imp=row["Impedance Magnitude at 1000 Hz (ohms)"],
-            imp_phase=row["Impedance Phase at 1000 Hz (degrees)"],
-            series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
-            series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
-            bad_channel=bad_channel_mask[i],  # used by Spyglass
-            rel_x=float(channel_geometry["x"][channel_num]),
-            rel_y=float(channel_geometry["y"][channel_num]),
-            group=electrode_group,
-            location=electrodes_location,
-            filtering=filtering_list[i],
-            headstage_channel_number=headstage_channel_numbers[i],
-            ref_elect_id=ref_elect_id[i],  # used by Spyglass
-            probe_electrode=i,  # used by Spyglass
-            probe_shank=shank_index,  # used by Spyglass
-        )
+    # # Make an ElectrodeGroup for unconnected Intan channels (potentially used for ECoG screws)
+    # # This is only needed for the 252-channel probes. 
+    # # We may re-evaluate this later (they should maybe have a separate Probe object? This is a hack for now.)
+    # extra_electrode_group = NwbElectrodeGroup(
+    #     name="Other",
+    #     description="Intan channels not connected to probe electrodes (may be fully unconnected or ECoG screws)",
+    #     location="unknown",
+    #     targeted_location="unknown",
+    #     targeted_x=0.0,
+    #     targeted_y=0.0,
+    #     targeted_z=0.0,
+    #     units="mm",
+    #     device=probe_obj,
+    # )
+    # added_extra_electrode_group = False
+
+    # Keep track of which channels we are excluding, if any.
+    # For now, we exclude channels that have no ElectrodeGroup (aka the extra 4 channels on our 252ch probes)
+    # Every row in the ElectricalSeries needs an associated electrode, 
+    # so we need to keep track of the channels we exclude to exclude those rows later as well.
+    excluded_channels = []
+
+    for i, row in electrode_info.iterrows():
+        # Get the Shank and ElectrodeGroup for this electrode
+        shank_index = electrode_to_shank_map.get(i, -1)
+        electrode_group = electrode_groups_by_shank.get(shank_index, None)
+
+        # TODO: See above note on ECoG screws. Keeping this here for now:
+
+        # # If we have no electrode_group, this is one of the 4 extra channels on the 252-ch probes.
+        # # So add the extra_electrode_group to the nwb if we haven't already and assign this electrode to it
+        # if electrode_group is None:
+        #     if not added_extra_electrode_group:
+        #         nwbfile.add_electrode_group(extra_electrode_group)
+        #         added_extra_electrode_group = True
+        #         logger.debug("Adding extra electrode group for unconnected Intan channels")
+        #     electrode_group = extra_electrode_group
+
+        if electrode_group is not None:
+            nwbfile.add_electrode(
+                electrode_name=row["electrode_name"],
+                intan_channel_number=row["intan_channel"],
+                open_ephys_channel_str=row["open_ephys_channel_string"],
+                channel_name=row["Channel Name"],
+                port=row["Port"],
+                impedance=row["Impedance Magnitude at 1000 Hz (ohms)"],
+                imp_phase=row["Impedance Phase at 1000 Hz (degrees)"],
+                series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
+                series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
+                bad_channel=row["bad_channel"],  # used by Spyglass
+                rel_x=float(row["x_um"]),
+                rel_y=float(row["y_um"]),
+                group=electrode_group,
+                location=electrodes_location, # same for all electrodes
+                filtering=filtering_info, # same for all electrodes
+                probe_electrode=i,  # used by Spyglass
+                probe_shank=shank_index,  # used by Spyglass
+                ref_elect_id=-1,  # used by Spyglass
+            )
+        else:
+            logger.debug(f"Excluding '{row["electrode_name"]}' from electrode table:")
+            logger.debug(row)
+            excluded_channels.append(row)
+
+    return excluded_channels
 
 
 ### Functions for Neuropixels
@@ -1019,7 +1020,7 @@ def add_raw_ephys(
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys
-    required_ephys_keys = {"openephys_folder_path", "probe"}
+    required_ephys_keys = {"openephys_folder_path", "probe", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
         print(
@@ -1079,29 +1080,39 @@ def add_raw_ephys(
 
         # Read the settings.xml file to get electrode info
         (
-            filtering_list,
-            headstage_channel_numbers,
-            reference_daq_channel_indices,
-        ) = get_raw_ephys_metadata_berke_probe(settings_file_path=settings_file_path, logger=logger)
-        
+            channel_number_to_channel_name,
+            filtering_info
+        ) = read_open_ephys_settings_xml(settings_file_path=settings_file_path, logger=logger)
+
+        # NOTE: We currently don't use channel_number_to_channel_name (except to complain when things don't match).
+        # Ultimately this should be passed to add_electrode_data_berke_probe and used for validation.
+        # I have excluded this for now because for our current rats (IM-1875), we do actually have some weird 
+        # stuff going on there (missing CH1-CH8, which is replaced by a duplicated ADC1-ADC8).
+        # This is reflected in both the settings.xml and the structure.oebin files, and (rightfully) breaks
+        # a bunch of stuff. A current workaround is just to rename the offending channels in these files
+        # (which is bad practice!! but ok for now because they would be excluded by impedance criteria anyway)
+        # If you do this please note it and also save a copy of the original files. 
+        # But for now we must choose our battles and I'm skipping this one.
+
         # Create electrode groups and add electrode data to the NWB file
-        add_electrode_data_berke_probe(
-            nwbfile=nwbfile,
-            filtering_list=filtering_list,
-            headstage_channel_numbers=headstage_channel_numbers,
-            reference_daq_channel_indices=reference_daq_channel_indices,
-            metadata=metadata,
-            probe_metadata=probe_metadata,
-            probe_obj=probe_obj,
-            logger=logger,
-            fig_dir=fig_dir,
-        )
+        excluded_channels = add_electrode_data_berke_probe(
+                                    nwbfile=nwbfile,
+                                    filtering_info=filtering_info,
+                                    metadata=metadata,
+                                    probe_metadata=probe_metadata,
+                                    probe_obj=probe_obj,
+                                    logger=logger,
+                                    fig_dir=fig_dir,
+                                )
+
+        # Get Open Ephys names of channels to exclude for use by OpenEphysBinaryRecordingExtractor
+        exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
         # For Neuropixels (NOTE these are fake placeholder values):
         total_channels = 392 # I actually have no idea. Guessing 384 "CH" + 8(??) "ADC" ?
         port_visits_channel_num = 384 # Also no idea. 
-        
+
         # Read the settings.xml file to get channel map
         channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path, 
                                                    logger=logger, 
@@ -1120,7 +1131,7 @@ def add_raw_ephys(
         traces_as_iterator,
         channel_conversion_factor_v,
         original_timestamps,
-    ) = get_raw_ephys_data(openephys_folder_path, logger)
+    ) = get_raw_ephys_data(folder_path=openephys_folder_path, logger=logger, exclude_channels=exclude_channel_names)
     num_samples, num_channels = traces_as_iterator.maxshape
 
     # Get port visits recorded by Open Ephys for timestamp alignment
