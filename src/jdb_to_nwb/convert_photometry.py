@@ -1301,10 +1301,10 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
             signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
             photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
-        # Or if LabVIEW photometry cut out during the recording, we specify a list of paths instead
+        # Or if LabVIEW photometry cut out and was restarted during the recording, we specify a list of paths instead
         elif isinstance(phot_file_path, list) and isinstance(box_file_path, list):
             assert len(phot_file_path) == len(box_file_path), "phot and box file path lists must be the same length!"
-            # TODO
+            raise NotImplementedError("I need to figure out how to stitch these together!")
         else:
             logger.error("phot_file_path and box_file_path must both be strings or both be lists of equal length!")
             raise TypeError("phot_file_path and box_file_path must both be strings or both be lists of equal length!")
