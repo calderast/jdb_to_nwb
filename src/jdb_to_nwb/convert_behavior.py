@@ -152,6 +152,44 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
 
             # If we are in the middle of a beam break, update the end times until we reach the end of the beam break
             if current_trial:
+
+                # If we are in the middle of a trial that ends at a different port, end that trial first!
+                # This only happens during ultra-short beam breaks, e.g. this arduino snippet below.
+                # See Github issue https://github.com/calderast/jdb_to_nwb/issues/163
+                # ...
+                # beam break at port A; 134084 trial 7 of 61
+                # beam break at port A; 134130 trial 7 of 61
+                # beam break at port C; 142826 trial 7 of 61 <-- BEAM BREAK
+                # no Reward port C; trial 7 of 61            <-- REWARD INFO FOR THIS TRIAL
+                # beam break at port B; 148678 trial 8 of 61 <-- NEXT BEAM BREAK IS ALREADY THE NEXT TRIAL! 
+                # rwd delivered at port B; 148731
+                # beam break at port B; 148732 trial 9 of 61
+                # beam break at port B; 148767 trial 9 of 61
+                # ...
+                if port != current_trial["end_port"]:
+                    trial_data.append(current_trial)
+                    logger.debug(f"Short beam break! Beam break is over. Adding trial {current_trial}")
+                    previous_trial = current_trial
+                    current_trial = {}
+                    trial_within_session += 1
+                    trial_within_block += 1
+
+                    # Start new trial at this port
+                    current_trial = {
+                        "start_time": float(previous_trial["end_time"]),
+                        "beam_break_start": float(arduino_timestamps[i]),
+                        "start_port": previous_trial.get("end_port", "None"),
+                        "end_port": port,
+                        "trial_within_block": trial_within_block,
+                        "trial_within_session": trial_within_session,
+                        "block": current_block.get("block"),
+                    }
+                    current_trial["reward"] = (
+                        1
+                        if re.search(rf"rwd delivered at port {port}", arduino_text[i + 1])
+                        else 0 if re.search(rf"no Reward port {port}", arduino_text[i + 1]) else None
+                    )
+
                 current_trial["beam_break_end"] = float(arduino_timestamps[i])
                 current_trial["end_time"] = float(arduino_timestamps[i])
 
@@ -326,6 +364,14 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
         f"Got block numbers {block_numbers}"
     )
     logger.debug(f"All block numbers are unique and match the range 1 to {len(block_data)}")
+    
+    # The end time of each trial must be the start time of the next trial
+    for t1, t2 in zip(trial_data, trial_data[1:]):
+        assert t1.get("end_time") == t2.get("start_time"), (
+            f"Trial {t1.get('trial_within_session')} end_time {t1.get('end_time')} "
+            f"does not match trial {t2.get('trial_within_session')} start_time {t2.get('start_time')}"
+        )
+    logger.debug("The end time of each trial matches the start time of the next trial")
 
     # There must be a legitimate reward value (1 or 0) for all trials (instead of default None)
     assert all(trial.get("reward") in {0, 1} for trial in trial_data), (
