@@ -92,6 +92,8 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
         plt.close()
 
+    return fig
+
 
 def plot_signal_correlation(sig1, sig2, label1, label2, fig_dir=None):
     """
@@ -106,22 +108,24 @@ def plot_signal_correlation(sig1, sig2, label1, label2, fig_dir=None):
     slope, intercept, r_value, _, _ = linregress(x=sig1, y=sig2)
 
     # Plot correlation between sig1 and sig2
-    plt.figure()
+    fig, ax = plt.subplots()
     plt.scatter(sig1[::5], sig2[::5], alpha=0.1, marker='.')
     x = np.array(plt.xlim())
-    plt.plot(x, intercept + slope * x, color='red')
-    plt.xlabel(label1)
-    plt.ylabel(label2)
-    plt.title(f'{label2} vs {label1} correlation')
+    ax.plot(x, intercept + slope * x, color='red')
+    ax.set_xlabel(label1)
+    ax.set_ylabel(label2)
+    ax.set_title(f'{label2} vs {label1} correlation')
 
     # Add slope and R squared to the plot
     textstr = f'Slope: {slope:.3f}\nR-squared: {r_value**2:.3f}'
-    plt.text(0.70, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10,
-             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+    ax.text(0.70, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
 
     if fig_dir:
-        save_file_name = f"{label1.lower().replace(' ', '_').replace('/', '_')}_vs_"
-        save_file_name += f"{label2.lower().replace(' ', '_').replace('/', '_')}_correlation.png"
+        save_file_name = f"{label1.lower().replace(' ', '_').replace('/', '_')}_vs_" \
+                         f"{label2.lower().replace(' ', '_').replace('/', '_')}_correlation.png"
         save_path = os.path.join(fig_dir, save_file_name)
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+    return fig

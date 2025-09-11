@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -87,6 +88,40 @@ def setup_logger(log_name, path_logfile_info, path_logfile_warn, path_logfile_de
     logger.addHandler(fileHandler_info)
     logger.addHandler(fileHandler_warn)
     logger.addHandler(fileHandler_debug)
+
+    return logger
+
+
+def setup_stdout_logger(log_name: str) -> logging.Logger:
+    """
+    Sets up a logger that outputs to stdout. 
+    Useful for running functions that expect a logger, 
+    but we don't actually care to create a logfile (e.g. when in a jupyter notebook)
+    
+    Parameters:
+        log_name: Name of the logfile (for logger identification)
+
+    Returns:
+        logging.Logger
+    """
+
+    # Create logger
+    logger = logging.getLogger(log_name)
+    logger.setLevel(logging.DEBUG)
+
+    # Remove any existing handlers 
+    # (needed if we accidentally create multiple loggers of same name to avoid duplicate prints)
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # Define format for log messages
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%d-%b-%y %H:%M:%S")
+
+    # Single handler for all levels to stdout
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
 
     return logger
 

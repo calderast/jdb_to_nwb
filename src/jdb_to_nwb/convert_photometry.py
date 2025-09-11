@@ -749,6 +749,32 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
     raw_green = pd.Series(np.squeeze(signals["sig1"])[:: int(SR / Fs)])
     port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
 
+    # Get raw signal length and desired crop length (if one was specified)
+    raw_signal_length_mins = len(raw_reference) / Fs / 60
+    phot_end_time_mins = signals.get("phot_end_time_mins", 0) # default is 0 if the user didn't set one
+
+    # We can't crop the photometry signal if the desired end time is after the signal ends! Warn if so
+    if phot_end_time_mins > raw_signal_length_mins:
+        logger.warning(f"Specified `phot_end_time_mins` ({phot_end_time_mins}) is longer than the raw signal length "
+                       f"({raw_signal_length_mins} mins). The photometry signal will not be cropped.")
+        phot_end_time_mins = raw_signal_length_mins
+    # Log at debug level if we aren't cropping
+    elif phot_end_time_mins == 0:
+        logger.debug("No `phot_end_time_mins` specified, so the photometry signal will not be cropped "
+                     "(this is the normal case).")
+        phot_end_time_mins = raw_signal_length_mins
+    # Log if we are cropping!
+    else:
+        logger.info(f"Cropping photometry signal from raw length ({raw_signal_length_mins} mins) "
+                    f"to {phot_end_time_mins} mins.")
+
+    # Convert end time into samples to crop
+    samples_to_keep = int(phot_end_time_mins * 60 * Fs)
+
+    # Crop raw photometry signals
+    raw_reference = raw_reference[:samples_to_keep]
+    raw_green = raw_green[:samples_to_keep]
+
     # Plot the raw LabVIEW signals
     plot_photometry_signals(visits=port_visits,
                             sampling_rate=Fs,
@@ -1269,6 +1295,8 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
         signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
+        # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
+        signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
         photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
@@ -1281,6 +1309,8 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         print("Processing signals.mat file of photometry signals from LabVIEW...")
         signals_mat_file_path = metadata["photometry"]["signals_mat_file_path"]
         signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
+        # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
+        signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
         photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
 
     # If we have a ppd file from pyPhotometry
