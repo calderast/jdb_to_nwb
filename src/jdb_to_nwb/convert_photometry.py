@@ -760,7 +760,7 @@ def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=No
         phot_end_time_mins = raw_signal_length_mins
     # Log at debug level if we aren't cropping
     elif phot_end_time_mins == 0:
-        logger.debug("No `phot_end_time_mins` specfied, so the photometry signal will not be cropped "
+        logger.debug("No `phot_end_time_mins` specified, so the photometry signal will not be cropped "
                      "(this is the normal case).")
         phot_end_time_mins = raw_signal_length_mins
     # Log if we are cropping!
