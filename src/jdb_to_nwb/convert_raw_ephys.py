@@ -1196,12 +1196,12 @@ def add_raw_ephys(
     # For now, we do not chunk or compress the timestamps, which are relatively small
     eseries = ElectricalSeries(
         name="ElectricalSeries",
-        description="Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts).",
+        description="Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V).",
         data=data_data_io,
         timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
-        conversion=1.0,
-        unit="microvolts",
+        conversion=1/1e6, # conversion from uV to V
+        unit="volts",
     )
 
     # Add the ElectricalSeries to the NWBFile
