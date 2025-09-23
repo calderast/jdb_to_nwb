@@ -1167,7 +1167,7 @@ def add_raw_ephys(
         traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
         buffer_size=1,  # number of chunks to keep in memory
         maxshape=(num_samples, num_channels),
-        dtype=np.float32,
+        dtype=np.dtype("float32"),
     )
 
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
