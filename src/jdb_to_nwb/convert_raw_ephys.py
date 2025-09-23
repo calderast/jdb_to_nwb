@@ -1208,7 +1208,6 @@ def add_raw_ephys(
         timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
         conversion=1/1e6, # conversion from uV to V
-        unit="volts",
     )
 
     # Add the ElectricalSeries to the NWBFile
