@@ -1160,11 +1160,13 @@ def add_raw_ephys(
     # Convert to uV without loading the whole thing at once
     def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv):
         for chunk in traces_as_iterator:
-            yield chunk.astype(np.float32) * conversion_factor_uv
+            arr = np.asarray(chunk)
+            arr = arr.reshape(-1, num_channels)  # force 2D
+            yield arr.astype(np.float32) * conversion_factor_uv
 
     # Wrap iterator in DataChunkIterator for H5DataIO
     data_iterator = DataChunkIterator(
-        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
+        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv, num_channels),
         buffer_size=1  # number of chunks to keep in memory
     )
 
