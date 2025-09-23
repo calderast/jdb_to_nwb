@@ -21,6 +21,7 @@ from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator imp
 )
 from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
+from hdmf.data_utils import DataChunkIterator
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
 from .utils import get_logger_directory
@@ -1155,11 +1156,17 @@ def add_raw_ephys(
         region=list(range(len(nwbfile.electrodes))),
         description="Electrodes used in raw ElectricalSeries recording",
     )
-    
+
     # Convert to uV without loading the whole thing at once
-    def traces_in_uV_iterator(traces_as_iterator, conversion_factor):
+    def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv):
         for chunk in traces_as_iterator:
-            yield chunk.astype(np.float32) * conversion_factor
+            yield chunk.astype(np.float32) * conversion_factor_uv
+
+    # Wrap iterator in DataChunkIterator for H5DataIO
+    data_iterator = DataChunkIterator(
+        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
+        buffer_size=1  # number of chunks to keep in memory
+    )
 
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
     # by the NWB team.
@@ -1167,7 +1174,7 @@ def add_raw_ephys(
     # they require the hdf5plugin library to be installed. gzip is available by default.
     # Use gzip for now, but consider zstd/blosc-zstd in the future.
     data_data_io = H5DataIO(
-        traces_in_uV_iterator(traces_as_iterator, channel_conversion_factor_uv),
+        data_iterator(traces_as_iterator, channel_conversion_factor_uv),
         chunks=(min(num_samples, 81920), min(num_channels, 64)),
         compression="gzip",
     )
