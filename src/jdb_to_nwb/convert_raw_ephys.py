@@ -1158,7 +1158,7 @@ def add_raw_ephys(
     )
 
     # Convert to uV without loading the whole thing at once
-    def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv):
+    def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv, num_channels):
         for chunk in traces_as_iterator:
             arr = np.asarray(chunk)
             arr = arr.reshape(-1, num_channels)  # force 2D
