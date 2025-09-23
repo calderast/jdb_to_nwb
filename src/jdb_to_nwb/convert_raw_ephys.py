@@ -1164,7 +1164,7 @@ def add_raw_ephys(
 
     # Wrap iterator in DataChunkIterator for H5DataIO
     data_iterator = DataChunkIterator(
-        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv, num_channels),
+        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
         buffer_size=1,  # number of chunks to keep in memory
         data_shape=(num_samples, num_channels),
         dtype=np.float32,
