@@ -1174,7 +1174,7 @@ def add_raw_ephys(
     # they require the hdf5plugin library to be installed. gzip is available by default.
     # Use gzip for now, but consider zstd/blosc-zstd in the future.
     data_data_io = H5DataIO(
-        data_iterator(traces_as_iterator, channel_conversion_factor_uv),
+        data_iterator,
         chunks=(min(num_samples, 81920), min(num_channels, 64)),
         compression="gzip",
     )
