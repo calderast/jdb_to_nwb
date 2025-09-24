@@ -266,7 +266,7 @@ def test_add_raw_ephys(dummy_logger):
         "Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V)."
     )
     assert es.data.maxshape == (3_000, 256)
-    # assert es.data.dtype == np.int16
+    assert es.data.dtype == np.float32
     assert es.electrodes.data == list(range(256))
     assert es.timestamps.shape == (3_000,)
     assert es.conversion == 1e-6
