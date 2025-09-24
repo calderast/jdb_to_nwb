@@ -269,7 +269,7 @@ def test_add_raw_ephys(dummy_logger):
     # assert es.data.dtype == np.int16
     assert es.electrodes.data == list(range(256))
     assert es.timestamps.shape == (3_000,)
-    assert es.conversion == 1/1e-6
+    assert es.conversion == 1e-6
 
     # Test that the nwbfile has the expected associated files
     assert "associated_files" in nwbfile.processing

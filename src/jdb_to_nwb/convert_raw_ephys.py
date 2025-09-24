@@ -1209,7 +1209,7 @@ def add_raw_ephys(
         data=data_data_io,
         timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
-        conversion=1/1e6, # conversion from uV to V
+        conversion=1e-6, # conversion from uV to V
     )
 
     # Add the ElectricalSeries to the NWBFile
