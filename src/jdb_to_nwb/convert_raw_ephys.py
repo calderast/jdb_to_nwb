@@ -742,7 +742,7 @@ def add_electrode_data_berke_probe(
         description="The Open Ephys channel name (1-based) for the electrode",
     )
     nwbfile.add_electrode_column(
-        name="channel_name",
+        name="imp_file_channel_name",
         description="The name of the channel from the impedance file",
     )
     nwbfile.add_electrode_column(
@@ -750,7 +750,7 @@ def add_electrode_data_berke_probe(
         description="The port of the electrode from the impedance file",
     )
     nwbfile.add_electrode_column(
-        name="impedance",
+        name="imp",
         description="The impedance of the electrode (Impedance Magnitude at 1000 Hz (ohms))",
     )
     nwbfile.add_electrode_column(
@@ -845,9 +845,9 @@ def add_electrode_data_berke_probe(
                 electrode_name=row["electrode_name"],
                 intan_channel_number=row["intan_channel"],
                 open_ephys_channel_str=row["open_ephys_channel_string"],
-                channel_name=row["Channel Name"],
+                imp_file_channel_name=row["Channel Name"],
                 port=row["Port"],
-                impedance=row["Impedance Magnitude at 1000 Hz (ohms)"],
+                imp=row["Impedance Magnitude at 1000 Hz (ohms)"],
                 imp_phase=row["Impedance Phase at 1000 Hz (degrees)"],
                 series_resistance_in_ohms=row["Series RC equivalent R (Ohms)"],
                 series_capacitance_in_farads=row["Series RC equivalent C (Farads)"],
