@@ -169,7 +169,7 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     # Strip any suffix like "/SCREW#" from actual electrode names
     electrode_names = [name.split('/')[0] for name in nwbfile.electrodes.electrode_name.data[:]]
     assert electrode_names == expected_electrode_names
-    assert nwbfile.electrodes.channel_name.data[:] == expected_channel_names
+    assert nwbfile.electrodes.imp_file_channel_name.data[:] == expected_channel_names
     assert nwbfile.electrodes.port.data[:] == expected_port_labels
     assert (nwbfile.electrodes.intan_channel_number.data[:] == expected_intan_channel_numbers).all()
 
