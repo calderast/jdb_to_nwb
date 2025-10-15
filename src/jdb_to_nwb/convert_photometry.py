@@ -310,7 +310,7 @@ def process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger
     return signals
 
 
-def process_labview(nwbfile: NWBFile, signals, logger, fig_dir=None):
+def process_and_add_labview_to_nwb(nwbfile: NWBFile, signals, logger, fig_dir=None):
     """
     Go from signals dict to downsampled (and cropped, if necessary) LabVIEW signals.
 
@@ -362,26 +362,21 @@ def process_labview(nwbfile: NWBFile, signals, logger, fig_dir=None):
         logger.info(f"Cropping photometry signal from raw length ({raw_signal_length_mins} mins) "
                     f"to {phot_end_time_mins} mins.")
 
-    # Convert end time into samples to crop
-    samples_to_keep = int(phot_end_time_mins * 60 * Fs)
-
     # Crop raw photometry signals
+    samples_to_keep = int(phot_end_time_mins * 60 * Fs)
     raw_reference = raw_reference[:samples_to_keep]
     raw_green = raw_green[:samples_to_keep]
 
     # Create new signals dict to unify labview and pyphotometry processing
-    labview_signals = {}
-    labview_signals["raw_green"] = raw_green
-    labview_signals["raw_reference"] = raw_reference
-    labview_signals["port_visits"] = port_visits
-    labview_signals["Fs"] = Fs
-    labview_signals["photometry_start"] = signals.get("photometry_start")
-    labview_signals["source"] = "LabVIEW"
-    photometry_data_dict = process_and_add_ys_photometry_to_nwb(nwbfile, 
-                                                                labview_signals, 
-                                                                logger, 
-                                                                fig_dir)
-    return photometry_data_dict
+    labview_signals = {
+        "raw_green": raw_green,
+        "raw_reference": raw_reference,
+        "port_visits": port_visits,
+        "Fs": Fs,
+        "photometry_start": signals.get("photometry_start"),
+        "source": "LabVIEW",
+    }
+    return process_and_add_ys_photometry_to_nwb(nwbfile, labview_signals, logger, fig_dir)
 
 
 def whittaker_smooth(data, binary_mask, lambda_):
@@ -556,7 +551,7 @@ def import_ppd(ppd_file_path):
     return data_dict
 
 
-def process_pyphotometry(nwbfile: NWBFile, ppd_file_path, logger, fig_dir=None):
+def process_and_add_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_file_path, logger, fig_dir=None):
     """
     Read pyPhotometry data from a .ppd file and choose the correct processing case
     based on the signals present.
@@ -578,8 +573,7 @@ def process_pyphotometry(nwbfile: NWBFile, ppd_file_path, logger, fig_dir=None):
     if ppd_data.get('analog_3') is not None:
         # If Jose's setup, we can route directly to the original pyPhotometry processing
         logger.info("Detected pyPhotometry for Jose's setup!")
-        photometry_data_dict = process_and_add_Jose_pyphotometry_to_nwb(nwbfile, ppd_data, logger, fig_dir)
-        return photometry_data_dict
+        return process_and_add_jose_pyphotometry_to_nwb(nwbfile, ppd_data, logger, fig_dir)
     else:
         # If YS/Steph setup, transform everything into the same format as LabVIEW signals
         # so we can use that processing function. Ugly? Yes. I know. But unblocks us for now.
@@ -603,21 +597,19 @@ def process_pyphotometry(nwbfile: NWBFile, ppd_file_path, logger, fig_dir=None):
         for phot_key in ppd_data:
             logger.debug(f"{phot_key}: {ppd_data[phot_key]}")
 
-        # Create new signals dict to unify labview and pyphotometry processing
-        pyphotometry_signals = {}
-        pyphotometry_signals["raw_green"] = raw_green
-        pyphotometry_signals["raw_reference"] = raw_405
-        pyphotometry_signals["port_visits"] = visits
-        pyphotometry_signals["Fs"] = sampling_rate
-        pyphotometry_signals["photometry_start"] = photometry_start
-        pyphotometry_signals["source"] = "pyPhotometry"
-        photometry_data_dict = process_and_add_ys_photometry_to_nwb(nwbfile, 
-                                                                    pyphotometry_signals, 
-                                                                    logger, 
-                                                                    fig_dir)
-        return photometry_data_dict
+        # Create unified signal dictionary for downstream processing
+        pyphotometry_signals = {
+            "raw_green": raw_green,
+            "raw_reference": raw_405,
+            "port_visits": visits,
+            "Fs": sampling_rate,
+            "photometry_start": photometry_start,
+            "source": "pyPhotometry",
+        }
+        return process_and_add_ys_photometry_to_nwb(nwbfile, pyphotometry_signals, logger, fig_dir)
 
-def process_and_add_Jose_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_data, logger, fig_dir=None):
+
+def process_and_add_jose_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_data, logger, fig_dir=None):
     """
     Process pyPhotometry data for Jose's case and add the processed signals to the NWB file.
 
@@ -633,8 +625,7 @@ def process_and_add_Jose_pyphotometry_to_nwb(nwbfile: NWBFile, ppd_data, logger,
     - photometry_start: datetime object marking the start time of photometry recording
     """
 
-    logger.info("Assuming pyPhotometry signals: "
-                "analog_1: 470 nm (gACh4h), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
+    logger.info("Assuming pyPhotometry signals: analog_1: 470 nm (gACh4h), analog_2: 565 nm (rDA3m), analog_3: 405 nm")
     raw_green = pd.Series(ppd_data['analog_1'])
     raw_red = pd.Series(ppd_data['analog_2'])
     raw_405 = pd.Series(ppd_data['analog_3'])
@@ -1408,7 +1399,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
         # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
         signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
-        photometry_data_dict = process_labview(nwbfile, signals, logger, fig_dir)
+        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
     elif "signals_mat_file_path" in metadata["photometry"]:
@@ -1422,7 +1413,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         signals = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
         # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
         signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
-        photometry_data_dict = process_labview(nwbfile, signals, logger, fig_dir)
+        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
 
     # If we have a ppd file from pyPhotometry
     elif "ppd_file_path" in metadata["photometry"]:
@@ -1431,7 +1422,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         logger.info("Processing ppd file from pyPhotometry...")
         print("Processing ppd file from pyPhotometry...")
         ppd_file_path = metadata["photometry"]["ppd_file_path"]
-        photometry_data_dict = process_pyphotometry(nwbfile, ppd_file_path, logger, fig_dir)
+        photometry_data_dict = process_and_add_pyphotometry_to_nwb(nwbfile, ppd_file_path, logger, fig_dir)
 
     else:
         logger.error("The required photometry subfields do not exist in the metadata dictionary.")
