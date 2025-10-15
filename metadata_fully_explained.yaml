@@ -1,0 +1,181 @@
+# Annotated metadata file for Berke lab nwb conversion using jdb_to_nwb
+# See the other provided examples (metadata_example_Jose and metadata_example_Tim) for a less overly annotated file. 
+
+# When making your own metadata file, it is not necessary to leave commented-out options that you are not using.
+# It is better to start from one of the other example files and include only what you need to preserve clarity.
+# For example, if you are using pyPhotometry, do not include commented-out photometry fields `phot_file_path`,
+# `box_file_path`, `signals_mat_file_path`, etc. as those do not apply to your case. Simply delete these.
+
+## General information about the experimenter.
+# If these are omitted, institution defaults to "University of California, San Francisco"
+# and lab defaults to "Berke lab"
+institution: University of California, San Francisco
+lab: Berke Lab
+# Experimenter(s) can be specified as Firstname Lastname or Lastname, Firstname
+experimenter:
+  - Stephanie Crater
+  - Jose Figueroa
+  - Yang-Sun Hwang
+  - Tim Krausz
+
+## General information about the subject and session.
+experiment_description: Hex maze task
+# The animal_name field is optional, and defaults to subject_id if not provided.
+# Animal name is used to name the nwb file (files are automatically named animalname_date.nwb) 
+# If you are testing multiple settings, setting a different name is also a useful way to distinguish between files.
+# For example, you may wish to provide an animal name like IM-1478_ephys_test, as generated nwbs are auto-named.)
+animal_name: IM-1478
+# Specify dates in eiher MMDDYYYY or YYYYMMDD format. 
+# Slashes and dashes are ok (e.g 07-25-2022, 07/25/2022, 2022-07-25, 2022/07/25, 07252022, 20220725 are all fine).
+date: 07/25/2022
+subject:
+  subject_id: IM-1478 # Used to set animal_name and name the nwbfile if animal_name is not provided.
+  species: Rattus norvegicus
+  genotype: Wildtype
+  sex: M # M or F
+  date_of_birth: 2022-03-25 # MMDDYYYY or YYYYMMDD format, slashes and dashes ok.
+  # age: 6mo # If no date_of_birth is known, remove date_of_birth field and specify animal age instead.
+  description: Long Evans Rat # Feel free to add more info here, like RFID etc.
+
+# If your experiment included electrophysiology, include field 'ephys' and the following subfields:
+ephys:
+  openephys_folder_path: "path/to/folder/like/2022-07-25_15-30-00"
+  impedance_file_path: "path/to/impedance.csv"
+  electrodes_location: "Hippocampus CA1"
+  targeted_x: 4.5  # AP in mm
+  targeted_y: 2.2  # ML in mm. Negative ML is the left hemisphere and positive ML is the right hemisphere
+  targeted_z: -2.0  # DV in mm
+
+  # OPTIONAL ephys fields for non-default processing:
+  plug_order: "chip_first" # "chip_first" or "cable_first". Defaults to "chip_first" if none specified
+  min_impedance_ohms: 1e5 # Defaults to 1e5. Channels below this impedance will be tagged as "bad channel"
+  max_impedance_ohms: 3e6 # Defaults to 3e6. Channels above this impedance will be tagged as "bad channel"
+
+  # If you have spike sorting data, specify the following ephys subfields:
+  mountain_sort_output_file_path: "path/to/firings.mda"
+  sampling_frequency: 30000
+
+  # Berke Lab currently uses 4 possible probes for the hex maze task, specified below.
+  # Un-comment the probe used for your experiment.
+  probe: # reference existing probes from resources/electrophysiology/ephys_devices.yaml
+    - "256-ch Silicon Probe, 3mm length, 66um pitch"
+    # - "256-ch Silicon Probe, 6mm length, 80um pitch"
+    # - "252-ch Silicon Probe, 4mm length, 80um pitch"
+    # - "252-ch Silicon Probe, 10mm length, 100um pitch"
+
+# If your experiment included photometry, include field 'photometry' and the following subfields:
+# BOTH "phot_file_path" and "box_file_path" for raw LabVIEW data,
+# OR "signals_mat_file_path" for preprocessed LabVIEW data (LEGACY ONLY, NOT PREFERRED),
+# OR "ppd_file_path" for pyPhotometry data
+photometry:
+  # Can specify path to .phot and .box file if using LabVIEW
+  phot_file_path: "path/to/file/like/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+  box_file_path: "path/to/file/like/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+  # OR path to signals.mat for legacy LabVIEW processing
+  signals_mat_file_path: "path/to/signals.mat"
+  # OR path to ppd file if using pyPhotometry
+  ppd_file_path: "path/to/file/like/Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+
+  # OPTIONAL - if you need to crop LabVIEW photometry signals, specify the desired end time
+  # See the crop_photometry notebook in resources/photometry to help find the correct end time
+  phot_end_time_mins: 77.5
+
+  # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
+  # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
+  # NOTE our current setup assumes that only one fiber was recorded in the session
+
+  # Must reference existing excitation sources from resources/photometry/photometry_devices.yaml
+  # Un-comment the excitation sources used for your experiment.
+  # We currently use the Thorlabs LEDs in the old maze room and the Doric LEDs in the new maze room.
+  excitation_sources:
+    - Thorlabs Purple LED   # Used in the old maze room
+    - Thorlabs Blue LED     # Used in the old maze room
+    # - Doric Purple LED    # Used in the new maze room
+    # - Doric Blue LED      # Used in the new maze room
+    # - Doric Green LED     # Used in the new maze room
+
+  # Must reference existing photodetector from resources/photometry_devices.yaml
+  photodetector: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)     # Used in old maze room
+  # photodetector: Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)  # Used in new maze room
+
+  # For bilateral implants, specify two separate entries with the same optic_fiber and change the ml_in_mm
+  # By our convention, a negative ML coordinate is the left hemisphere and a positive ML coordinate is right hemisphere
+  optic_fiber_implant_sites:
+    - optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # reference existing optic fibers from resources/photometry/photometry_devices.yaml
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: 1.7 # right hemisphere
+      dv_in_mm: -6.0
+    - optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber  # reference existing optic fibers from resources/photometry/photometry_devices.yaml
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: -1.7 # left hemisphere
+      dv_in_mm: -6.0
+      recording: true  # ONLY ONE optic fiber should have recording=true. In this session, we recorded from the left hemisphere
+
+  # For bilateral injections, specify two separate entries with the same virus_name and change the ml_in_mm
+  # By our convention, a negative ML coordinate is the left hemisphere and a positive ML coordinate is right hemisphere
+  virus_injections:
+    - virus_name: dLight1.3b  # reference existing indicator or opsin name in resources/photometry/virus_info.yaml
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: 1.7 # right hemisphere
+      dv_in_mm: -6.2
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 2e12  # Titer actually injected (after dilution)
+    - virus_name: dLight1.3b  # reference existing indicator or opsin name in resources/photometry/virus_info.yaml
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: -1.7 # left hemisphere
+      dv_in_mm: -6.2
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 2e12  # Titer actually injected (after dilution)
+
+# The field 'behavior' and the 3 subfields are required for all hex maze experiments.
+behavior:
+  # Arduino text and timestamps files are auto-generated while running the task
+  arduino_text_file_path: "path/to/arduinoraw0.txt"
+  arduino_timestamps_file_path: "path/to/ArduinoStamps0.csv"
+  # The user must create a barriers.txt file for each session. This file should include 1 line per block in that
+  # session, expressed as a list of hexes where barriers are placed. (e.g. 8, 9, 16, 18, 27, 23, 35, 42, 44)
+  # For probability change sessions, this can be a single line that will be used for all blocks.
+  # Any lines starting with `#` in the file will be ignored, so feel free to add comments as well.
+  maze_configuration_file_path: "path/to/barriers.txt"
+
+video:
+  # The video and video timestamps files are auto-generated while running the task
+  video_file_path: "path/to/Behav_Vid0.avi"
+  video_timestamps_file_path: "path/to/testvidtimes0.csv"
+  # We run DeepLabCut (DLC) for position tracking after the task, and provide a path to the DLC output here
+  dlc_path: "path/to/file/like/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
+  # The user must create a hex centroids file for each session (or may reuse the same file for multiple
+  # sessions of the maze does not move in between sessions)
+  # See resources/Get_Hex_centroids.ipynb for a tutorial on how to generate this file from the behavior video
+  hex_centroids_file_path: "path/to/file/like/hex_coordinates_IM-1478_07252022.csv"
+
+# The following fields are optional, but a useful way to transmit information to future lab members who may be
+# interested in your data.
+surgery:
+  Description of relevant surgical information as text.
+  For example - Specify surgery type (virus injection or probe implantation), date, and
+  any relevant probe/virus/optic fiber details not already found in the above fields.
+  It may be useful to note any relevant surgical complications.
+
+virus:
+  Description of relevant virus information as text.
+  For example - Specify injection date and any information not present in the 'virus_injections' field.
+
+notes:
+  General notes about this session, if any.
+  For example - Reward used was 15uL sucrose solution (10% sucrose, 0.1% NaCl) at each reward port. 
+  The rat was water deprived before the experiment. 
+  Animal weight was 478g before the session (89% of 537g baseline weight).
+
+keywords:
+  - photometry
+  - ephys
+  - behavior
+  - video
+  - hex maze
+  - dopamine
+  - reward

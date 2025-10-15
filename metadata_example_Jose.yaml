@@ -1,0 +1,116 @@
+# Example metadata file for one of Jose's experiments
+# Bilateral injection of gACh4h and rDA3m in NAcc
+# Recording using pyPhotometry in the new maze room
+
+institution: University of California, San Francisco
+lab: Berke Lab
+experimenter:
+  - Figueroa, Jose
+experiment_description: Hex maze task
+animal_name: IM-1891_jimmy
+date: "20250723"
+subject:
+  subject_id: IM-1891
+  species: Rattus norvegicus
+  genotype: Wildtype
+  sex: M
+  date_of_birth: 2024-10-17
+  description: Long Evans Rat
+
+photometry:
+  # Recording was done using pyPhotometry
+  ppd_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/RecordingDay17_ProbSwitch_Lhem_CKTL-2025-07-23-123503.ppd"
+
+  # Excitation sources for the new maze room
+  excitation_sources:
+    - Doric Purple LED
+    - Doric Blue LED
+    - Doric Green LED
+
+  # Photodetector for the new maze room
+  photodetector: Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
+
+  # Bilateral optic fibers in NAcc
+  optic_fiber_implant_sites:
+    - optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber
+      targeted_location: NAcc
+      ap_in_mm: 1.8
+      ml_in_mm: 1.8
+      dv_in_mm: -6.0 # 6.0 mm deep for males, 5.8 mm deep for females
+      recording: true # Recorded from the right hemisphere
+
+    - optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber
+      targeted_location: NAcc
+      ap_in_mm: 1.8
+      ml_in_mm: -1.8
+      dv_in_mm: -6.0 # 6.0 mm deep for males, 5.8 mm deep for females
+
+  # Bilateral injection of cocktail virus in NAcc
+  virus_injections:
+    # Right Hemisphere
+    - virus_name: gACh4h
+      targeted_location: NAcc
+      ap_in_mm: 1.8
+      ml_in_mm: 1.8
+      dv_in_mm: -6.2 # 6.2 mm deep for males, 6.0 mm deep for females
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 1.15e13
+
+    - virus_name: rDA3m (AAV9)
+      targeted_location: NAcc
+      ap_in_mm: 1.8
+      ml_in_mm: 1.8
+      dv_in_mm: -6.2 # 6.2 mm deep for males, 6.0 mm deep for females
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 5.89e12
+
+    # Left Hemisphere
+    - virus_name: gACh4h
+      targeted_location: NAcc
+      ap_in_mm: 1.8
+      ml_in_mm: -1.8
+      dv_in_mm: -6.2 # 6.2 mm deep for males, 6.0 mm deep for females
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 1.15e13
+
+    - virus_name: rDA3m (AAV9)
+      targeted_location: NAcc
+      ap_in_mm: 1.8
+      ml_in_mm: -1.8
+      dv_in_mm: -6.2 # 6.2 mm deep for males, 6.0 mm deep for females
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 5.89e12
+
+behavior:
+  arduino_text_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/arduinoraw0.txt"
+  arduino_timestamps_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/ArduinoStamps0.csv"
+  maze_configuration_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/barriers.txt"
+
+video:
+  video_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/Behav_Vid0.avi"
+  video_timestamps_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/testvidtimes0.csv"
+  dlc_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/Behav_Vid0DLC_resnet50_Triangle_Maze_PhotMar24shuffle1_800000.h5"
+  hex_centroids_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/IM-1891_jimmy_20250723_hex_coordinates.csv"
+
+surgery:
+  Surgery took place on 2025-05-03.
+  Rat was bilaterally injected in the nucleus accumbens core with both ACh3.8 and rDA3m AAV virus. 
+  Fibers were placed bilaterally, targeting the NAcc.
+  No Complications
+
+virus: 
+  ACh3.8 and rDA3m AAV virus were injected bilaterally into the nucleus accumbens core on 2024-05-03.
+  The titer for rDA3m was 5.89e12 vg/mL and ACh3.8 was 1.15e13 (BrainVTA). 
+  The injection was done in a cocktail at a volume was 1.0 uL per hemisphere.
+
+notes: 
+  Reward used was 30uL sucrose solution (10% sucrose, 0.1% NaCl) at each reward port. 
+  The rat was water deprived before the experiment. 
+  
+keywords:
+  - photometry
+  - behavior
+  - hex maze
+  - dopamine
+  - acetylcholine
+  - reward
