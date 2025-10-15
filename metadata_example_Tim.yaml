@@ -1,0 +1,104 @@
+# Example metadata file for one of Tim's experiments
+# Bilateral injection of dLight in NAcc + 256-ch silicon probe in Hippocampus CA1
+# Recording using LabVIEW in the old maze room
+
+institution: University of California, San Francisco
+lab: Berke Lab
+experimenter:
+  - Tim Krausz
+experiment_description: Hex maze task
+date: 07/19/2022
+subject:
+  subject_id: IM-1478
+  species: Rattus norvegicus
+  genotype: Wildtype
+  sex: M
+  age: 6mo # exact age unknown
+  description: Long Evans Rat
+
+ephys:
+  impedance_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/impedance.csv"
+  openephys_folder_path: "/Volumes/Tim/Ephys/IM-1478/07192022/2022-07-19_13-12-30"
+  electrodes_location: "Hippocampus CA1"
+  targeted_x: 4.5   # AP in mm
+  targeted_y: -2.2  # ML in mm
+  targeted_z: -2.0  # DV in mm
+
+  mountain_sort_output_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/mntsort_output/firings.mda"
+  sampling_frequency: 30000
+
+  probe:
+    - "256-ch Silicon Probe, 3mm length, 66um pitch"
+
+photometry:
+  # Recording was done using LabVIEW
+  phot_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/IM-1478_2022-07-19_13-07-06____Tim_Conditioning.phot"
+  box_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/IM-1478_2022-07-19_13-07-06____Tim_Conditioning.box"
+
+  # Excitation sources for the old maze room
+  excitation_sources:
+    - Thorlabs Purple LED
+    - Thorlabs Blue LED
+
+  # Photodetector for the old maze room
+  photodetector: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)
+
+  # Bilateral optic fibers in NAcc
+  optic_fiber_implant_sites: 
+    - optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: 1.7
+      dv_in_mm: -6.0
+    - optic_fiber: Doric 0.66mm Flat 40mm Optic Fiber
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: -1.7
+      dv_in_mm: -6.0
+      recording: true  # Recorded from left hemisphere
+
+  # Bilateral injection of dLight in NAcc
+  virus_injections:
+    - virus_name: dLight1.3b
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: 1.7
+      dv_in_mm: -6.2
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 2e12
+    - virus_name: dLight1.3b
+      targeted_location: NAcc
+      ap_in_mm: 1.7
+      ml_in_mm: -1.7
+      dv_in_mm: -6.2
+      volume_in_uL: 1.0
+      titer_in_vg_per_mL: 2e12
+
+behavior:
+  arduino_text_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/arduinoraw0.txt"
+  arduino_timestamps_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/ArduinoStamps0.csv"
+  maze_configuration_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/barriers.txt"
+
+video:
+  video_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/Behav_Vid0.avi"
+  video_timestamps_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/testvidtimes0.csv"
+  dlc_path: "/Volumes/Tim/Photometry/IM-1478/07192022/Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5"
+  hex_centroids_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/IM-1478_07192022_hex_coordinates.csv"
+
+surgery:
+  Bilateral dLight 1.3b and optic fibers. Fiber implant was .2 mm above injection site (DV -6.0).
+  Hippocampal implant was in the left hemisphere.
+virus:
+  AAVDJ-CAG-dLight1.3b (Vigene) at a titer of 2x10^12 at AP +1.7, ML +/-1.7, DV -6.2
+notes:
+  Reward used was 15uL sucrose solution (10% sucrose, 0.1% NaCl) at each reward port.
+  The rat was water deprived before the experiment.
+keywords:
+  - photometry
+  - ephys
+  - behavior
+  - video
+  - hex maze
+  - dopamine
+  - reward
+  - credit assignment
