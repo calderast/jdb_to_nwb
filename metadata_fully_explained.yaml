@@ -33,7 +33,7 @@ subject:
   species: Rattus norvegicus
   genotype: Wildtype
   sex: M # M or F
-  date_of_birth: 2022-03-25 # MMDDYYYY or YYYYMMDD format, shashes and dashes ok.
+  date_of_birth: 2022-03-25 # MMDDYYYY or YYYYMMDD format, slashes and dashes ok.
   # age: 6mo # If no date_of_birth is known, remove date_of_birth field and specify animal age instead.
   description: Long Evans Rat # Feel free to add more info here, like RFID etc.
 
