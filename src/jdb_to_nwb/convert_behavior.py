@@ -280,6 +280,11 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
     # If we have no ground truth visits to align to, keep trial and block data as-is
     if ground_truth_visit_times is None:
         logger.info("No photometry or ephys visits to align to, keeping trial and block timestamps as-is.")
+
+        # Arduino port visit times are now our ground truth visit times
+        # These are only used if we need to stitch multiple LabVIEW photometry recordings together
+        metadata["ground_truth_time_source"] = "arduino"
+        metadata["ground_truth_visit_times"] = [trial['beam_break_start'] for trial in trial_data]
         return trial_data, block_data
 
     logger.info("Aligning trial and block data to ground truth port visit times...")

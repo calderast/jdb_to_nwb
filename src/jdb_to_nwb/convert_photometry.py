@@ -1396,10 +1396,20 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         print("Processing raw .phot and .box files from LabVIEW...")
         phot_file_path = metadata["photometry"]["phot_file_path"]
         box_file_path = metadata["photometry"]["box_file_path"]
-        signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
-        # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
-        signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
-        photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
+
+        # Ideally we have a string for phot_file_path and box_file_path
+        if isinstance(phot_file_path, str) and isinstance(box_file_path, str):
+            signals = process_raw_labview_photometry_signals(phot_file_path, box_file_path, logger)
+            # Get the desired end time if we need to crop phot signals (default 0 is processed as no cropping)
+            signals["phot_end_time_mins"] = metadata["photometry"].get("phot_end_time_mins", 0)
+            photometry_data_dict = process_and_add_labview_to_nwb(nwbfile, signals, logger, fig_dir)
+        # Or if LabVIEW photometry cut out and was restarted during the recording, we specify a list of paths instead
+        elif isinstance(phot_file_path, list) and isinstance(box_file_path, list):
+            assert len(phot_file_path) == len(box_file_path), "phot and box file path lists must be the same length!"
+            raise NotImplementedError("I need to figure out how to stitch these together!")
+        else:
+            logger.error("phot_file_path and box_file_path must both be strings or both be lists of equal length!")
+            raise TypeError("phot_file_path and box_file_path must both be strings or both be lists of equal length!")
 
     # If we have already processed the LabVIEW .phot and .box files into signals.mat (true for older recordings)
     elif "signals_mat_file_path" in metadata["photometry"]:
