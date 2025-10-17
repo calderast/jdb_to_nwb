@@ -83,7 +83,7 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["targeted_x"] = 4.5  # AP in mm
     metadata["ephys"]["targeted_y"] = 2.2  # ML in mm
-    metadata["ephys"]["targeted_z"] = 2.0  # DV in mm
+    metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     metadata["ephys"]["plug_order"] = "chip_first"
 
@@ -146,7 +146,7 @@ def test_add_electrode_data_berke_probe(dummy_logger):
         assert egroup.location == "Hippocampus CA1"
         assert egroup.targeted_x == 4.5
         assert egroup.targeted_y == 2.2
-        assert egroup.targeted_z == 2.0
+        assert egroup.targeted_z == -2.0
         assert egroup.device is probe
 
         # Electrode group description should be "Electrodes on shank {shank_index}"
@@ -209,7 +209,7 @@ def test_get_raw_ephys_data(dummy_logger):
     folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     traces_as_iterator, channel_conversion_factor, original_timestamps = get_raw_ephys_data(folder_path, dummy_logger)
     assert traces_as_iterator.maxshape == (3_000, 256)
-    np.testing.assert_allclose(channel_conversion_factor, [0.19499999284744263 * 1e-6] * 256)
+    np.testing.assert_allclose(channel_conversion_factor, [0.19499999284744263] * 256)
     assert len(original_timestamps) == 3_000
 
 
@@ -252,7 +252,7 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["targeted_x"] = 4.5  # AP in mm
     metadata["ephys"]["targeted_y"] = 2.2  # ML in mm
-    metadata["ephys"]["targeted_z"] = 2.0  # DV in mm
+    metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
 
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
@@ -263,13 +263,13 @@ def test_add_raw_ephys(dummy_logger):
     assert "ElectricalSeries" in nwbfile.acquisition
     es = nwbfile.acquisition["ElectricalSeries"]
     assert es.description == (
-        "Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts)."
+        "Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V)."
     )
     assert es.data.maxshape == (3_000, 256)
-    assert es.data.dtype == np.int16
+    assert es.data.dtype == np.float32
     assert es.electrodes.data == list(range(256))
     assert es.timestamps.shape == (3_000,)
-    assert es.conversion == 0.19499999284744263 * 1e-6
+    assert es.conversion == 1e-6
 
     # Test that the nwbfile has the expected associated files
     assert "associated_files" in nwbfile.processing
@@ -356,9 +356,9 @@ def test_add_raw_ephys_complete_data():
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
     metadata["ephys"]["targeted_x"] = 4.5  # AP in mm
     metadata["ephys"]["targeted_y"] = 2.2  # ML in mm
-    metadata["ephys"]["targeted_z"] = 2.0  # DV in mm
+    metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
-    
+
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
     assert len(nwbfile.electrodes) == 256
