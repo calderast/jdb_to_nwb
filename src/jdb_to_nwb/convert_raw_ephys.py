@@ -1161,7 +1161,7 @@ def add_raw_ephys(
 
     # Create the electrode table region encompassing all electrodes
     electrode_table_region = nwbfile.create_electrode_table_region(
-        region=raw_data_row_to_electrode_table_row,
+        region=list(raw_data_row_to_electrode_table_row),
         description="Electrodes used in raw ElectricalSeries recording",
     )
 
