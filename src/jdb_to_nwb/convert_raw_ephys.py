@@ -29,6 +29,8 @@ from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
 from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
+VOLTS_PER_MICROVOLT = 1e-6
+
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
 
@@ -1174,7 +1176,7 @@ def add_raw_ephys(
         traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
         buffer_size=1,  # number of chunks to keep in memory
         maxshape=(num_samples, num_channels),
-        dtype=np.int16,
+        dtype=np.dtype("int16"),
     )
 
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
@@ -1216,7 +1218,7 @@ def add_raw_ephys(
         data=data_data_io,
         timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
-        conversion=1e-6, # conversion from uV to V
+        conversion=VOLTS_PER_MICROVOLT, # conversion from uV to V
     )
 
     # Add the ElectricalSeries to the NWBFile
