@@ -1151,9 +1151,16 @@ def add_raw_ephys(
     logger.debug(f"There are {len(nwbfile.electrodes)} electrodes in the nwbfile "
                  "(same as number of channels in traces_as_iterator)")
 
+    # Get electrodes table (added to nwb in `add_electrode_data_berke_probe`)
+    electrodes = nwbfile.electrodes
+    # Get the mapping of electrode to channel number (0-indexed)
+    electrode_table_row_to_raw_data_row = electrodes['intan_channel_number'].data[:]
+    # Get the reverse mapping of row in the raw ElectricalSeries to row in the electrode table
+    raw_data_row_to_electrode_table_row = np.argsort(electrode_table_row_to_raw_data_row)
+
     # Create the electrode table region encompassing all electrodes
     electrode_table_region = nwbfile.create_electrode_table_region(
-        region=list(range(len(nwbfile.electrodes))),
+        region=list(raw_data_row_to_electrode_table_row),
         description="Electrodes used in raw ElectricalSeries recording",
     )
 
