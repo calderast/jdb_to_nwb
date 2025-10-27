@@ -21,6 +21,7 @@ from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator imp
 )
 from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
+from hdmf.data_utils import DataChunkIterator
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
 from .utils import get_logger_directory
@@ -28,8 +29,7 @@ from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
 from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
-MICROVOLTS_PER_VOLT = 1e6
-VOLTS_PER_MICROVOLT = 1 / MICROVOLTS_PER_VOLT
+VOLTS_PER_MICROVOLT = 1e-6
 
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
@@ -248,7 +248,7 @@ def get_raw_ephys_data(
         traces_as_iterator (SpikeInterfaceRecordingDataChunkIterator):
             To be used as the data argument in pynwb.ecephys.ElectricalSeries.
         channel_conversion_factor (float):
-            The conversion factor from the raw data to volts.
+            The conversion factor from the raw data to uV.
         original_timestamps (np.ndarray):
             Array that could be used as the timestamps argument in pynwb.ecephys.ElectricalSeries
             or may need to be time aligned with the other data streams in the NWB file.
@@ -298,8 +298,9 @@ def get_raw_ephys_data(
             "The channel conversion factors are not the same for all channels. "
             "This is unexpected and may indicate a problem with the conversion factors."
         )
-    channel_conversion_factor_v = channel_conversion_factors_uv[0] * VOLTS_PER_MICROVOLT
-    logger.debug(f"Channel conversion factor in V: {channel_conversion_factor_v}")
+    # Just grab the first one, because it should be the same for all channels
+    channel_conversion_factor_uv = channel_conversion_factors_uv[0]
+    logger.debug(f"Channel conversion factor in uV: {channel_conversion_factor_uv}")
 
     # NOTE channel offsets should be 0 for all channels in openephys data
     channel_conversion_offsets = recording_sliced.get_channel_offsets()
@@ -317,7 +318,7 @@ def get_raw_ephys_data(
 
     return (
         traces_as_iterator,
-        channel_conversion_factor_v,
+        channel_conversion_factor_uv,
         original_timestamps,
     )
 
@@ -1129,7 +1130,7 @@ def add_raw_ephys(
     # Get raw ephys data
     (
         traces_as_iterator,
-        channel_conversion_factor_v,
+        channel_conversion_factor_uv,
         original_timestamps,
     ) = get_raw_ephys_data(folder_path=openephys_folder_path, logger=logger, exclude_channels=exclude_channel_names)
     num_samples, num_channels = traces_as_iterator.maxshape
@@ -1165,13 +1166,26 @@ def add_raw_ephys(
         description="Electrodes used in raw ElectricalSeries recording",
     )
 
+    # Convert to uV without loading the whole thing at once
+    def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv):
+        for chunk in traces_as_iterator:
+            yield (chunk * conversion_factor_uv).astype("int16")
+
+    # Wrap iterator in DataChunkIterator for H5DataIO
+    data_iterator = DataChunkIterator(
+        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
+        buffer_size=1,  # number of chunks to keep in memory
+        maxshape=(num_samples, num_channels),
+        dtype=np.dtype("int16"),
+    )
+
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
     # by the NWB team.
     # We could also add compression here. zstd/blosc-zstd are recommended by the NWB team, but
     # they require the hdf5plugin library to be installed. gzip is available by default.
     # Use gzip for now, but consider zstd/blosc-zstd in the future.
     data_data_io = H5DataIO(
-        traces_as_iterator,
+        data_iterator,
         chunks=(min(num_samples, 81920), min(num_channels, 64)),
         compression="gzip",
     )
@@ -1200,11 +1214,11 @@ def add_raw_ephys(
     # For now, we do not chunk or compress the timestamps, which are relatively small
     eseries = ElectricalSeries(
         name="ElectricalSeries",
-        description="Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts).",
+        description="Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V).",
         data=data_data_io,
         timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
-        conversion=channel_conversion_factor_v,
+        conversion=VOLTS_PER_MICROVOLT, # conversion from uV to V
     )
 
     # Add the ElectricalSeries to the NWBFile
