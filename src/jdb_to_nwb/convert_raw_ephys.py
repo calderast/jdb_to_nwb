@@ -1167,14 +1167,14 @@ def add_raw_ephys(
     # Convert to uV without loading the whole thing at once
     def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv):
         for chunk in traces_as_iterator:
-            yield chunk.astype(np.float32) * conversion_factor_uv
+            yield (chunk * conversion_factor_uv).astype("int16")
 
     # Wrap iterator in DataChunkIterator for H5DataIO
     data_iterator = DataChunkIterator(
         traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
         buffer_size=1,  # number of chunks to keep in memory
         maxshape=(num_samples, num_channels),
-        dtype=np.dtype("float32"),
+        dtype=np.int16,
     )
 
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size

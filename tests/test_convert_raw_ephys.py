@@ -255,7 +255,7 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     
-    # Mapping from probe electrode to channel number
+    # Mapping from probe electrode to channel number for 256-ch silicon probe
     intan_channel_numbers = np.array([
         191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,128,129,130,
         131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,
@@ -373,6 +373,21 @@ def test_add_raw_ephys_complete_data():
     metadata["ephys"]["targeted_y"] = 2.2   # ML in mm
     metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
+    
+    # Mapping from probe electrode to channel number for 256-ch silicon probe
+    intan_channel_numbers = np.array([
+        191,190,189,188,187,186,185,184,183,182,181,180,179,178,177,176,175,174,173,172,171,170,169,128,129,130,
+        131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,
+        157,158,159,160,161,162,163,164,165,166,167,168,192,193,194,195,196,197,198,199,200,201,202,203,204,205,
+        206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,
+        232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,64,65,66,
+        67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,
+        101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,
+        127,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,
+        56,57,58,59,60,61,62,63,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
+    ])
+    # Reverse mapping from channel (aka row in ElectricalSeries) to row in electrode table
+    expected_electrode_data_mapping = list(np.argsort(intan_channel_numbers))
 
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata)
 
@@ -382,13 +397,13 @@ def test_add_raw_ephys_complete_data():
     assert "ElectricalSeries" in nwbfile.acquisition
     es = nwbfile.acquisition["ElectricalSeries"]
     assert es.description == (
-        "Raw ephys data from OpenEphys recording (multiply by conversion factor to get data in volts)."
+        "Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V)."
     )
     assert es.data.maxshape == (157_733_308, 256)
     assert es.data.dtype == np.int16
-    assert es.electrodes.data == list(range(256))
+    assert es.electrodes.data == expected_electrode_data_mapping
     assert es.timestamps.shape == (157_733_308,)
-    assert es.conversion == 0.19499999284744263 * 1e-6
+    assert es.conversion == 1e-6
 
     # Test that the nwbfile has the expected associated files
     assert "associated_files" in nwbfile.processing
