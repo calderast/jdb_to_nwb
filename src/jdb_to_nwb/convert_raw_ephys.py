@@ -21,7 +21,6 @@ from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator imp
 )
 from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
-from hdmf.data_utils import DataChunkIterator
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
 from .utils import get_logger_directory
