@@ -71,6 +71,26 @@ BERKE_LAB_PROBES = {
     },
 }
 
+class MicrovoltsSpikeInterfaceRecordingDataChunkIterator(SpikeInterfaceRecordingDataChunkIterator):
+    def __init__(self, iterator: SpikeInterfaceRecordingDataChunkIterator, conversion_factor_uv):
+        self.iterator = iterator
+        self.conversion_factor_uv = conversion_factor_uv
+        super().__init__(recording=iterator.recording)
+
+    def _get_default_chunk_shape(self, chunk_mb: float = 10.0) -> tuple[int, int]:
+        return self.iterator._get_default_chunk_shape(chunk_mb)
+
+    def _get_data(self, selection: tuple[slice]):
+        data = self.iterator._get_data(selection)
+        return (data * self.conversion_factor_uv).astype("int16")
+
+    def _get_dtype(self):
+        return np.dtype("int16")
+
+    def _get_maxshape(self):
+        return self.iterator._get_maxshape()
+
+
 def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     """
     Given the Open Ephys folder path, find the relevant settings.xml file and all associated continuous.dat files.
@@ -1167,17 +1187,8 @@ def add_raw_ephys(
     )
 
     # Convert to uV without loading the whole thing at once
-    def traces_in_microvolts_iterator(traces_as_iterator, conversion_factor_uv):
-        for chunk in traces_as_iterator:
-            yield (chunk * conversion_factor_uv).astype("int16")
-
-    # Wrap iterator in DataChunkIterator for H5DataIO
-    data_iterator = DataChunkIterator(
-        traces_in_microvolts_iterator(traces_as_iterator, channel_conversion_factor_uv),
-        buffer_size=1,  # number of chunks to keep in memory
-        maxshape=(num_samples, num_channels),
-        dtype=np.dtype("int16"),
-    )
+    uv_traces_as_iterator = MicrovoltsSpikeInterfaceRecordingDataChunkIterator(traces_as_iterator, 
+                                                                               channel_conversion_factor_uv)
 
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
     # by the NWB team.
@@ -1185,7 +1196,7 @@ def add_raw_ephys(
     # they require the hdf5plugin library to be installed. gzip is available by default.
     # Use gzip for now, but consider zstd/blosc-zstd in the future.
     data_data_io = H5DataIO(
-        data_iterator,
+        data=uv_traces_as_iterator,
         chunks=(min(num_samples, 81920), min(num_channels, 64)),
         compression="gzip",
     )
