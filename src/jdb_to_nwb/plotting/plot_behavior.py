@@ -170,20 +170,24 @@ def plot_probability_matching(trial_data, block_data, fig_dir=None):
             xmid = int(np.mean([first_trial_idx, last_trial_idx]))
             
             # Draw vertical line at block boundary (after last trial)
-            if block_num < len(block_data):  # Don't draw line after last block
+            if i < len(block_data) - 1:  # Don't draw line after last block
                 xstart = last_trial_idx + 1
                 if i == 0:
                     ax4.axvline(x=xstart, color='r', linestyle='--', label='Block Change')
                 else:
                     ax4.axvline(x=xstart, color='r', linestyle='--')
             
-            # Add probability text labels
-            plt.text(xmid - 12, 8, str(int(block['pA'])) + ': ', 
-                    fontsize='xx-large', fontweight='bold', color='b', transform=ax4.transData)
-            plt.text(xmid, 8, str(int(block['pB'])) + ': ',
-                    fontsize='xx-large', fontweight='bold', color='orange', transform=ax4.transData)
-            plt.text(xmid + 12, 8, str(int(block['pC'])),
-                    fontsize='xx-large', fontweight='bold', color='g', transform=ax4.transData)
+            # Add probability text labels using axes coordinates for y position
+            # Place text at 90% of the y-axis height
+            plt.text(xmid - 12, 0.9, str(int(block['pA'])) + ': ', 
+                    fontsize='xx-large', fontweight='bold', color='b', 
+                    transform=ax4.get_xaxis_transform())
+            plt.text(xmid, 0.9, str(int(block['pB'])) + ': ',
+                    fontsize='xx-large', fontweight='bold', color='orange',
+                    transform=ax4.get_xaxis_transform())
+            plt.text(xmid + 12, 0.9, str(int(block['pC'])),
+                    fontsize='xx-large', fontweight='bold', color='g',
+                    transform=ax4.get_xaxis_transform())
     
     ax4.legend()
     
@@ -204,6 +208,5 @@ def plot_probability_matching(trial_data, block_data, fig_dir=None):
     
     if fig_dir:
         plt.savefig(os.path.join(fig_dir, "probability_matching.png"), dpi=300, bbox_inches="tight")
-        plt.close(fig)
     
     return fig
