@@ -3,8 +3,11 @@ from dateutil import tz
 from pynwb import NWBFile
 from pynwb.file import ProcessingModule
 from hdmf.common.table import DynamicTable, VectorData
+import os
+import tempfile
 
-from jdb_to_nwb.convert_behavior import add_behavior
+from jdb_to_nwb.convert_behavior import add_behavior, parse_arduino_text, adjust_arduino_timestamps
+from jdb_to_nwb.plotting.plot_behavior import plot_probability_matching
 
 
 def test_convert_behavior(dummy_logger):
@@ -100,3 +103,50 @@ def test_convert_behavior(dummy_logger):
         f"did not match expected columns {expected_trial_columns}"
     )
     assert len(nwbfile.trials.start_time) == 188 # there are 188 trials in this session
+
+
+def test_plot_probability_matching(dummy_logger):
+    """Test the plot_probability_matching function with real trial and block data."""
+    import csv
+    import itertools
+    
+    # Load the test data
+    arduino_text_file_path = "tests/test_data/behavior/arduinoraw0.txt"
+    arduino_timestamps_file_path = "tests/test_data/behavior/ArduinoStamps0.csv"
+    
+    # Read arduino text file
+    with open(arduino_text_file_path, "r") as arduino_text_file:
+        arduino_text = arduino_text_file.read().splitlines()
+    
+    # Read arduino timestamps
+    with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
+        arduino_timestamps = list(map(float, itertools.chain.from_iterable(csv.reader(arduino_timestamps_file))))
+    
+    # Adjust timestamps
+    arduino_timestamps, _ = adjust_arduino_timestamps(arduino_timestamps, dummy_logger)
+    
+    # Parse the arduino text to get trial and block data
+    trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps, dummy_logger)
+    
+    # Verify we have the expected data
+    assert len(trial_data) == 188, f"Expected 188 trials, got {len(trial_data)}"
+    assert len(block_data) == 3, f"Expected 3 blocks, got {len(block_data)}"
+    
+    # Test the plot function with a temporary directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Call the plot function
+        fig = plot_probability_matching(trial_data, block_data, fig_dir=tmpdir)
+        
+        # Verify the figure was created
+        assert fig is not None, "Figure should be created"
+        
+        # Verify the file was saved
+        plot_path = os.path.join(tmpdir, "probability_matching.png")
+        assert os.path.exists(plot_path), f"Plot file should be saved at {plot_path}"
+        
+        # Verify file is not empty
+        assert os.path.getsize(plot_path) > 0, "Plot file should not be empty"
+    
+    # Test the plot function without saving (fig_dir=None)
+    fig = plot_probability_matching(trial_data, block_data, fig_dir=None)
+    assert fig is not None, "Figure should be created even without fig_dir"
