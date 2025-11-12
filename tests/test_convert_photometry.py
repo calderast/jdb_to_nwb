@@ -635,10 +635,46 @@ def test_add_photometry_metadata(dummy_logger):
     assert expected_combinations == combinations_in_table
 
 
-def test_photometry_series_mappings():
-    # TODO: Test that each photometry series 
-    # is mapped to the correct row in the fiber photometry table
-    pass
+def test_photometry_series_mappings_pyphotometry(dummy_logger):
+    """
+    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries,
+    and that they are mapped to the correct excitation sources
+
+    This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
+    """
+
+    # Create a test metadata dictionary with pyPhotometry data
+    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
+    metadata = {}
+    metadata["photometry"] = {}
+    metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+    add_dummy_pyphotometry_metadata_to_metadata(metadata)
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # Add photometry data to the nwbfile
+    add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
+    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
+    expected_photometry_series = {"raw_470", "z_scored_470", "raw_405", "zscored_405", "raw_565",
+                                  "zscored_565", "raw_470_405_ratio", "zscored_470_405_ratio"}
+    actual_photometry_series = set(nwbfile.acquisition.keys())
+    missing_photometry_series = expected_photometry_series - actual_photometry_series
+    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
+
+    # Check the basic attributes of each series
+    for series_name in expected_photometry_series:
+        # Assert that all series are of type FiberPhotometryResponseSeries
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
+ 
+        # TODO check that each series is mapped to the correct table row with excitation source etc.
 
 
 def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
