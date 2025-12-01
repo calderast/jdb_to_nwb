@@ -237,8 +237,10 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Pulse durations: {pulse_durations}")
 
     # Align to first pulse (which marks bonsai start time) and convert to seconds
-    # NOTE: The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
-    # Should we add a check for this to ensure we have identified the correct "start" pulse?
+    # The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
+    if pulse_durations[0] < 300:
+        logger.warning("Expected the first pulse marking the start time to have duration >= 300! "
+                       f"Got pulse duration {pulse_durations[0]} - this may indicate a problem with the start pulse!")
     logger.info("Removing the first ephys pulse, as it marks start time and not a true port visit")
     port_visits = pulse_starts[1:] - pulse_starts[0]
     port_visits = [float(visit / downsampled_fs) for visit in port_visits]
@@ -1203,7 +1205,6 @@ def add_raw_ephys(
     # If we have ground truth port visit times (photometry), align timestamps to that
     ground_truth_time_source = metadata.get("ground_truth_time_source")
     if ground_truth_time_source is not None:
-
         logger.info(f"Aligning ephys visit times to ground truth ({ground_truth_time_source})")
         ground_truth_visit_times = metadata.get("ground_truth_visit_times")
         ephys_timestamps = align_via_interpolation(unaligned_timestamps=original_timestamps,
