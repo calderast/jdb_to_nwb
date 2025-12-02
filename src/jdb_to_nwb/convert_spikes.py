@@ -1,5 +1,6 @@
-from .mdasortinginterface import MdaSortingInterface
 from pynwb import NWBFile
+from spikeinterface.extractors import read_mda_sorting
+from nwb_conversion_tools import SortingInterface
 
 
 def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
@@ -17,8 +18,17 @@ def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
     mountain_sort_output_file_path = metadata["ephys"]["mountain_sort_output_file_path"]
     sampling_frequency = metadata["ephys"]["sampling_frequency"]
 
-    interface = MdaSortingInterface(mountain_sort_output_file_path, sampling_frequency=sampling_frequency)
-    metadata = interface.get_metadata()
+    # Load MountainSort output via SpikeInterface
+    sorting = read_mda_sorting(
+        folder_path=mountain_sort_output_file_path,
+        sampling_frequency=sampling_frequency
+    )
 
-    # Append to existing in-memory NWBFile
-    interface.add_to_nwbfile(nwbfile, metadata)
+    # Wrap it in an NWB converter interface
+    interface = SortingInterface(sorting=sorting)
+
+    # Get metadata for NWB
+    sorting_metadata = interface.get_metadata()
+
+    # Add to NWBFile
+    interface.add_to_nwbfile(nwbfile=nwbfile, metadata=sorting_metadata)
