@@ -191,6 +191,9 @@ def get_port_visits(continuous_dat_file_path: Path,
     Returns:
         port_visits (list[float]):
             List of port visit times in seconds
+        samples_to_remove (int):
+            Index of start pulse marking bonsai start time (in 30kHz sample frequency). 
+            Samples before this time will be trimmed from ephys data
     """
 
     pulse_high_threshold = 10_000
@@ -236,21 +239,29 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Kept {len(pulse_starts)} pulses.")
     logger.debug(f"Pulse durations: {pulse_durations}")
 
-    # Align to first pulse (which marks bonsai start time) and convert to seconds
+    # Set first pulse (which marks bonsai start time) as time=0 and convert to seconds
     # The duration of the first pulse is longer than a normal pulse (~500ms instead of ~10ms)
     if pulse_durations[0] < 300:
         logger.warning("Expected the first pulse marking the start time to have duration >= 300! "
                        f"Got pulse duration {pulse_durations[0]} - this may indicate a problem with the start pulse!")
-    logger.info("Removing the first ephys pulse, as it marks start time and not a true port visit")
+    logger.info(f"Bonsai start time occurred {pulse_starts[0] / downsampled_fs}s after ephys was started.")
+    logger.info("This will be set to time=0 and samples before this will be removed.")
+
+    # Convert port visit times to seconds relative to bonsai start pulse
     port_visits = pulse_starts[1:] - pulse_starts[0]
     port_visits = [float(visit / downsampled_fs) for visit in port_visits]
-    return port_visits
+
+    # Convert bonsai start pulse index in 1kHz to index in 30kHz
+    # This is the number of samples to remove from the start of the raw ephys data
+    samples_to_remove = int(pulse_starts[0] * int(openephys_fs / downsampled_fs))
+    return port_visits, samples_to_remove
 
 
 def get_raw_ephys_data(
     folder_path: Path,
     logger,
-    exclude_channels: list[str] = []
+    exclude_channels: list[str] = [],
+    samples_to_remove: int = 0
 ) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
     """
     Get the raw ephys data from the OpenEphys binary recording.
@@ -264,6 +275,9 @@ def get_raw_ephys_data(
         exclude_channels (list[str]):
             List of channel names to exclude, if any. 
             Channel names are 1-based and should start with 'CH', e.g. 'CH64'
+        samples_to_remove (int):
+            Number of samples to trim off of the start of the raw ephys data.
+            Used to remove data before bonsai start time
 
     Returns:
         traces_as_iterator (SpikeInterfaceRecordingDataChunkIterator):
@@ -327,10 +341,21 @@ def get_raw_ephys_data(
     channel_conversion_offsets = recording_sliced.get_channel_offsets()
     assert all(channel_conversion_offsets == 0), "Channel conversion offsets are not all 0."
 
+    fs = recording_sliced.get_sampling_frequency()
+    logger.debug(f"Open Ephys sampling frequency: {fs}")
+    time_to_remove_in_seconds = float(samples_to_remove/fs)
+
     # Get the original timestamps (in seconds)
     original_timestamps = recording_sliced.get_times()
 
-    logger.debug(f"Open Ephys sampling frequency: {recording_sliced.get_sampling_frequency()}")
+    # Remove samples before bonsai start time
+    recording_sliced = recording_sliced.frame_slice(start_frame=samples_to_remove, end_frame=None)
+
+    # Remove timestamps before bonsai start time and re-reference to bonsai start
+    # so they are in the same time base as the sync pulses (necessary for correct alignment with photometry)
+    original_timestamps = original_timestamps[samples_to_remove:] - time_to_remove_in_seconds
+    logger.debug(f"Trimmed {samples_to_remove} samples ({time_to_remove_in_seconds}s) from the start of "
+                 "ephys data to exclude data before bonsai start.")
 
     # Create a SpikeInterfaceRecordingDataChunkIterator using all default buffering and
     # chunking options. This will be passed to the pynwb.ecephys.ElectricalSeries
@@ -1148,23 +1173,27 @@ def add_raw_ephys(
         # based on the geometry of each channel map
         raise NotImplementedError("Full processing for Neuropixels not yet implemented.")
 
-    # Get raw ephys data
+    # Get port visits recorded by Open Ephys for timestamp alignment
+    logger.info("Getting port visits recorded by Open Ephys...")
+    ephys_visit_times, samples_to_remove = get_port_visits(continuous_dat_file_path=continuous_dat_file_path, 
+                                                           total_channels=total_channels,
+                                                           port_visits_channel_num=port_visits_channel_num,
+                                                           logger=logger)
+    print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
+    logger.info(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
+    logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
+
+    # Get raw ephys data (with times before bonsai start removed)
     (
         traces_as_iterator,
         channel_conversion_factor_uv,
         original_timestamps,
-    ) = get_raw_ephys_data(folder_path=openephys_folder_path, logger=logger, exclude_channels=exclude_channel_names)
+    ) = get_raw_ephys_data(folder_path=openephys_folder_path, 
+                           logger=logger, 
+                           exclude_channels=exclude_channel_names,
+                           samples_to_remove=samples_to_remove
+                           )
     num_samples, num_channels = traces_as_iterator.maxshape
-
-    # Get port visits recorded by Open Ephys for timestamp alignment
-    logger.info("Getting port visits recorded by Open Ephys...")
-    ephys_visit_times = get_port_visits(continuous_dat_file_path=continuous_dat_file_path, 
-                                        total_channels=total_channels,
-                                        port_visits_channel_num=port_visits_channel_num,
-                                        logger=logger)
-    print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
-    logger.info(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
-    logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
 
     # Check that the number of electrodes in the NWB file is the same as the number of channels in traces_as_iterator
     assert (len(nwbfile.electrodes) == num_channels), (
