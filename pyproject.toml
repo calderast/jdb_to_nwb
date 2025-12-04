@@ -30,7 +30,7 @@ dependencies = [
     "tqdm",
     "neuroconv",
     "pynwb == 3.0",
-    "ndx-fiber-photometry",
+    "ndx-fiber-photometry == 0.1.0",
     "ndx-franklab-novela",
     "scikit-learn",
     "matplotlib",
