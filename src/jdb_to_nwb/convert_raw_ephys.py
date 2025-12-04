@@ -217,9 +217,9 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Recording times the channel is high (>{pulse_high_threshold})")
     pulse_above_threshold = np.where(visits_channel_data > pulse_high_threshold)[0]
 
-    # If no port visits were found, return an empty list
+    # If no port visits were found, return an empty list of visits and 0 samples to remove
     if pulse_above_threshold.size == 0:
-        return []
+        return [], 0
 
     # Find pulse boundaries (breaks in the sequence of threshold crossings)
     breaks = np.where(np.diff(pulse_above_threshold) != 1)[0] + 1
