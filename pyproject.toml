@@ -28,7 +28,7 @@ classifiers = [
 dependencies = [
     "spikeinterface >= 0.101.0",
     "tqdm",
-    "neuroconv",
+    "neuroconv == 0.8.2",
     "pynwb == 3.0",
     "ndx-fiber-photometry == 0.1.0",
     "ndx-franklab-novela",
