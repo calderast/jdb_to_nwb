@@ -287,6 +287,7 @@ def get_raw_ephys_data(
         original_timestamps (np.ndarray):
             Array that could be used as the timestamps argument in pynwb.ecephys.ElectricalSeries
             or may need to be time aligned with the other data streams in the NWB file.
+            Should start at time=0, which is the bonsai start time.
     """
     # Create a SpikeInterface recording extractor for the OpenEphys binary data
     # NOTE: We could write our own extractor to handle the relatively simple OpenEphys binary format
@@ -343,19 +344,19 @@ def get_raw_ephys_data(
 
     fs = recording_sliced.get_sampling_frequency()
     logger.debug(f"Open Ephys sampling frequency: {fs}")
-    time_to_remove_in_seconds = float(samples_to_remove/fs)
+
+    # Remove ephys samples before bonsai start time
+    recording_sliced = recording_sliced.frame_slice(start_frame=samples_to_remove, end_frame=None)
+    logger.debug(f"Trimmed {samples_to_remove} samples ({float(samples_to_remove/fs)}s) from the start of "
+                 "ephys data to exclude data before bonsai start.")
 
     # Get the original timestamps (in seconds)
+    # NOTE THAT THESE TIMESTAMPS DO NOT START FROM 0
     original_timestamps = recording_sliced.get_times()
 
-    # Remove samples before bonsai start time
-    recording_sliced = recording_sliced.frame_slice(start_frame=samples_to_remove, end_frame=None)
-
-    # Remove timestamps before bonsai start time and re-reference to bonsai start
-    # so they are in the same time base as the sync pulses (necessary for correct alignment with photometry)
-    original_timestamps = original_timestamps[samples_to_remove:] - time_to_remove_in_seconds
-    logger.debug(f"Trimmed {samples_to_remove} samples ({time_to_remove_in_seconds}s) from the start of "
-                 "ephys data to exclude data before bonsai start.")
+    # We set the first timestamp (the bonsai start time) as time=0 
+    # so the timestamps match the sync pulses for alignment with photometry
+    original_timestamps = original_timestamps - original_timestamps[0]
 
     # Create a SpikeInterfaceRecordingDataChunkIterator using all default buffering and
     # chunking options. This will be passed to the pynwb.ecephys.ElectricalSeries
