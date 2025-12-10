@@ -1,4 +1,8 @@
 # jdb_to_nwb
+
+[![PyPI version](https://img.shields.io/pypi/v/jdb-to-nwb.svg)](https://pypi.org/project/jdb-to-nwb/)
+[![Test Package Build Status](https://github.com/calderast/jdb_to_nwb/actions/workflows/test_package_build.yml/badge.svg)](https://github.com/calderast/jdb_to_nwb/actions)
+
 Converts electrophysiology, photometry, and behavioral data for the hex maze task used by the Berke Lab at UCSF to NWB format for sharing and analysis.
 
 ## Installation
