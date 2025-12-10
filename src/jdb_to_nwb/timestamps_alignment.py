@@ -66,7 +66,7 @@ def handle_timestamps_reset(timestamps, logger):
     return adjusted_timestamps
 
 
-def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger):
+def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger, expected_best_start=None):
     """
     We may have an unequal number of sync pulses (port visit times) recorded by different datastreams
     (photometry vs ephys vs arduino), if one datastream was started (or ended) before (or after) another 
@@ -113,26 +113,31 @@ def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger):
     best_start = 0
 
     logger.info("Finding best alignment between port visits by minimizing error in pulse spacing.")
+    logger.info(f"The longer list has {len(long_list)-len(short_list)} more port visits than the shorter list.")
 
     for i in range(len(long_diffs) - len(short_diffs) + 1):
         error = np.sum(np.abs(long_diffs[i:i+len(short_diffs)] - short_diffs))
-        logger.debug(f"Trimming {i} samples from longer list. Sum of differences in pulse spacing={error}")
+        end_trim = len(long_list) - i - len(short_list)
+        logger.debug(f"Trimming {i} samples from start and {end_trim} from end of longer list. "
+                 f"Sum of differences in pulse spacing = {error}")
         if error < min_error:
             min_error = error
             best_start = i
 
-    logger.info(f"Best alignment is found by trimming {best_start} samples from the longer list (error={min_error})")
+    best_end = len(long_list) - best_start - len(short_list)
+    logger.info(f"Best alignment is found by trimming {best_start} samples from the start and "
+                f"{best_end} samples from the end of the longer list (error={min_error})")
 
     # We generally expect the error to be minimized by exclusively trimming pulses 
     # from the beginning of the longer list (because one datastream was started earlier). 
     # Warn if this isn't the case.
-    expected_best_start = len(long_diffs) - len(short_diffs)
+    if expected_best_start is None:
+        expected_best_start = len(long_diffs) - len(short_diffs)
     if best_start != expected_best_start:
         logger.warning(f"Expected best alignment to be found by removing {expected_best_start} samples "
                        f"from the start of the longer list, but got best alignment removing {best_start} samples!")
         logger.warning("Check differences in pulse spacing in the DEBUG log to make sure this is correct, "
-                       "and/or confirm this matches known experimental choices \n"
-                       "(e.g. this would be the case if a datastream was stopped earlier instead of started later)")
+                       "and/or confirm this matches known experimental choices")
 
     # Trim the longer list to match the length of the shorter list
     trimmed_list = long_list[best_start:best_start + len(short_list)]
@@ -159,7 +164,7 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
     Returns:
     aligned_timestamps (list or np.array): Timestamps aligned to the ground_truth_visit_times
     """
-    
+
     # Check that we have the same number of ground truth visit times and unaligned visit times
     # If we don't, warn the user and fix it so we can proceed with alignment
     if len(ground_truth_visit_times) != len(unaligned_visit_times):
@@ -172,10 +177,20 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
         logger.debug(f"There are {len(unaligned_visit_times)} visit times from both datastreams "
                      "to be used for alignment.")
 
+    logger.info("Aligning timestamps to ground truth port visit times via linear interpolation")
+    logger.debug(f"Ground truth visit times: {ground_truth_visit_times}")
+    logger.debug(f"Unaligned visit times: {unaligned_visit_times}")
+    logger.debug("Difference between ground truth and unaligned visit times: "
+                 f"{np.array(ground_truth_visit_times) - np.array(unaligned_visit_times)}")
+
     # Create an interpolation function to go from unaligned visit times to ground truth visit times
     # Extrapolate timestamps that fall before the first visit or after the last visit
-    logger.info("Aligning timestamps to ground truth port visit times via linear interpolation")
     interp_func = interp1d(unaligned_visit_times, ground_truth_visit_times, kind='linear', fill_value='extrapolate')
     aligned_timestamps = interp_func(unaligned_timestamps)
+
+    logger.debug(f"Unaligned (original) timestamps: {unaligned_timestamps}")
+    logger.debug(f"Aligned (new) timestamps: {aligned_timestamps}")
+    logger.debug("Difference between aligned and unaligned timestamps (the amount the timestamps were shifted by): "
+                 f"{np.array(aligned_timestamps) - np.array(unaligned_timestamps)}")
 
     return aligned_timestamps
