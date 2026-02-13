@@ -1,0 +1,597 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<SETTINGS>
+  <INFO>
+    <VERSION>1.0.0</VERSION>
+    <PLUGIN_API_VERSION>10</PLUGIN_API_VERSION>
+    <DATE>7 Feb 2026 17:30:09</DATE>
+    <OS>Windows 11</OS>
+    <MACHINE name="OldMazeRoom" cpu_model="Intel(R) Xeon(R) W-2123 CPU @ 3.60GHz"
+             cpu_num_cores="8"/>
+  </INFO>
+  <SIGNALCHAIN>
+    <PROCESSOR name="Acquisition Board" insertionPoint="0" pluginName="Acquisition Board"
+               type="4" index="0" libraryName="Acquisition Board" libraryVersion="1.1.6"
+               processorType="2" nodeId="100">
+      <PROCESSOR_PARAMETERS/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Acquisition Board"
+              activeStream="0" Type="Visualizer" tabText="Acq Board" SampleRate="30000"
+              LowCut="1.577845136933669" HighCut="7603.76512183337" AUXsOn="0"
+              ADCsOn="1" AudioOutputL="-1" AudioOutputR="-1" NoiseSlicer="0"
+              TTLFastSettle="1" DAC_TTL="0" DAC_HPF="1" DSPOffset="1" DSPCutoffFreq="0.1457129257077072"
+              LEDs="1" ClockDivideRatio="1" Channel_Naming_Scheme="1">
+        <TAB Active="1"/>
+        <WINDOW Active="0"/>
+        <HSOPTIONS index="0" hs1_full_channels="0" hs2_full_channels="0"/>
+        <HSOPTIONS index="1" hs1_full_channels="0" hs2_full_channels="0"/>
+        <HSOPTIONS index="2" hs1_full_channels="0" hs2_full_channels="0"/>
+        <HSOPTIONS index="3" hs1_full_channels="0" hs2_full_channels="0"/>
+        <VISUALIZER_PARAMETERS/>
+        <CUSTOM_PARAMETERS/>
+      </EDITOR>
+    </PROCESSOR>
+    <PROCESSOR name="Record Node" insertionPoint="1" pluginName="Record Node"
+               type="0" index="3" libraryName="" libraryVersion="" processorType="8"
+               nodeId="101">
+      <PROCESSOR_PARAMETERS directory="None" engine="0" events="1" spikes="1" main_sync="0"/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS channels="" sync_line="0"/>
+      </STREAM>
+      <CUSTOM_PARAMETERS fifoMonitorsVisible="1"/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Record Node" activeStream="0"/>
+    </PROCESSOR>
+    <PROCESSOR name="Channel Map" insertionPoint="1" pluginName="Channel Map"
+               type="1" index="2" libraryName="Channel Mapper" libraryVersion="1.0.0"
+               processorType="1" nodeId="109">
+      <PROCESSOR_PARAMETERS/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS enable_stream="1"/>
+      </STREAM>
+      <CUSTOM_PARAMETERS>
+        <STREAM>
+          <CH index="180" enabled="1"/>
+          <CH index="181" enabled="1"/>
+          <CH index="182" enabled="1"/>
+          <CH index="183" enabled="1"/>
+          <CH index="184" enabled="1"/>
+          <CH index="185" enabled="1"/>
+          <CH index="186" enabled="1"/>
+          <CH index="187" enabled="1"/>
+          <CH index="188" enabled="1"/>
+          <CH index="189" enabled="1"/>
+          <CH index="190" enabled="1"/>
+          <CH index="191" enabled="1"/>
+          <CH index="129" enabled="1"/>
+          <CH index="169" enabled="1"/>
+          <CH index="170" enabled="1"/>
+          <CH index="171" enabled="1"/>
+          <CH index="172" enabled="1"/>
+          <CH index="173" enabled="1"/>
+          <CH index="174" enabled="1"/>
+          <CH index="175" enabled="1"/>
+          <CH index="176" enabled="1"/>
+          <CH index="177" enabled="1"/>
+          <CH index="178" enabled="1"/>
+          <CH index="179" enabled="1"/>
+          <CH index="141" enabled="1"/>
+          <CH index="140" enabled="1"/>
+          <CH index="139" enabled="1"/>
+          <CH index="138" enabled="1"/>
+          <CH index="137" enabled="1"/>
+          <CH index="136" enabled="1"/>
+          <CH index="135" enabled="1"/>
+          <CH index="134" enabled="1"/>
+          <CH index="133" enabled="1"/>
+          <CH index="132" enabled="1"/>
+          <CH index="131" enabled="1"/>
+          <CH index="130" enabled="1"/>
+          <CH index="153" enabled="1"/>
+          <CH index="152" enabled="1"/>
+          <CH index="151" enabled="1"/>
+          <CH index="150" enabled="1"/>
+          <CH index="149" enabled="1"/>
+          <CH index="148" enabled="1"/>
+          <CH index="147" enabled="1"/>
+          <CH index="146" enabled="1"/>
+          <CH index="145" enabled="1"/>
+          <CH index="144" enabled="1"/>
+          <CH index="143" enabled="1"/>
+          <CH index="142" enabled="1"/>
+          <CH index="165" enabled="1"/>
+          <CH index="164" enabled="1"/>
+          <CH index="163" enabled="1"/>
+          <CH index="162" enabled="1"/>
+          <CH index="161" enabled="1"/>
+          <CH index="160" enabled="1"/>
+          <CH index="159" enabled="1"/>
+          <CH index="158" enabled="1"/>
+          <CH index="157" enabled="1"/>
+          <CH index="156" enabled="1"/>
+          <CH index="155" enabled="1"/>
+          <CH index="154" enabled="1"/>
+          <CH index="201" enabled="1"/>
+          <CH index="200" enabled="1"/>
+          <CH index="199" enabled="1"/>
+          <CH index="198" enabled="1"/>
+          <CH index="197" enabled="1"/>
+          <CH index="196" enabled="1"/>
+          <CH index="195" enabled="1"/>
+          <CH index="194" enabled="1"/>
+          <CH index="193" enabled="1"/>
+          <CH index="168" enabled="1"/>
+          <CH index="167" enabled="1"/>
+          <CH index="166" enabled="1"/>
+          <CH index="213" enabled="1"/>
+          <CH index="212" enabled="1"/>
+          <CH index="211" enabled="1"/>
+          <CH index="210" enabled="1"/>
+          <CH index="209" enabled="1"/>
+          <CH index="208" enabled="1"/>
+          <CH index="207" enabled="1"/>
+          <CH index="206" enabled="1"/>
+          <CH index="205" enabled="1"/>
+          <CH index="204" enabled="1"/>
+          <CH index="203" enabled="1"/>
+          <CH index="202" enabled="1"/>
+          <CH index="225" enabled="1"/>
+          <CH index="224" enabled="1"/>
+          <CH index="223" enabled="1"/>
+          <CH index="222" enabled="1"/>
+          <CH index="221" enabled="1"/>
+          <CH index="220" enabled="1"/>
+          <CH index="219" enabled="1"/>
+          <CH index="218" enabled="1"/>
+          <CH index="217" enabled="1"/>
+          <CH index="216" enabled="1"/>
+          <CH index="215" enabled="1"/>
+          <CH index="214" enabled="1"/>
+          <CH index="237" enabled="1"/>
+          <CH index="236" enabled="1"/>
+          <CH index="235" enabled="1"/>
+          <CH index="234" enabled="1"/>
+          <CH index="233" enabled="1"/>
+          <CH index="232" enabled="1"/>
+          <CH index="231" enabled="1"/>
+          <CH index="230" enabled="1"/>
+          <CH index="229" enabled="1"/>
+          <CH index="228" enabled="1"/>
+          <CH index="227" enabled="1"/>
+          <CH index="226" enabled="1"/>
+          <CH index="249" enabled="1"/>
+          <CH index="248" enabled="1"/>
+          <CH index="247" enabled="1"/>
+          <CH index="246" enabled="1"/>
+          <CH index="245" enabled="1"/>
+          <CH index="244" enabled="1"/>
+          <CH index="243" enabled="1"/>
+          <CH index="242" enabled="1"/>
+          <CH index="241" enabled="1"/>
+          <CH index="240" enabled="1"/>
+          <CH index="239" enabled="1"/>
+          <CH index="238" enabled="1"/>
+          <CH index="69" enabled="1"/>
+          <CH index="68" enabled="1"/>
+          <CH index="67" enabled="1"/>
+          <CH index="66" enabled="1"/>
+          <CH index="65" enabled="1"/>
+          <CH index="64" enabled="1"/>
+          <CH index="255" enabled="1"/>
+          <CH index="254" enabled="1"/>
+          <CH index="253" enabled="1"/>
+          <CH index="252" enabled="1"/>
+          <CH index="251" enabled="1"/>
+          <CH index="250" enabled="1"/>
+          <CH index="81" enabled="1"/>
+          <CH index="80" enabled="1"/>
+          <CH index="79" enabled="1"/>
+          <CH index="78" enabled="1"/>
+          <CH index="77" enabled="1"/>
+          <CH index="76" enabled="1"/>
+          <CH index="75" enabled="1"/>
+          <CH index="74" enabled="1"/>
+          <CH index="73" enabled="1"/>
+          <CH index="72" enabled="1"/>
+          <CH index="71" enabled="1"/>
+          <CH index="70" enabled="1"/>
+          <CH index="93" enabled="1"/>
+          <CH index="92" enabled="1"/>
+          <CH index="91" enabled="1"/>
+          <CH index="90" enabled="1"/>
+          <CH index="89" enabled="1"/>
+          <CH index="88" enabled="1"/>
+          <CH index="87" enabled="1"/>
+          <CH index="86" enabled="1"/>
+          <CH index="85" enabled="1"/>
+          <CH index="84" enabled="1"/>
+          <CH index="83" enabled="1"/>
+          <CH index="82" enabled="1"/>
+          <CH index="105" enabled="1"/>
+          <CH index="104" enabled="1"/>
+          <CH index="103" enabled="1"/>
+          <CH index="102" enabled="1"/>
+          <CH index="101" enabled="1"/>
+          <CH index="100" enabled="1"/>
+          <CH index="99" enabled="1"/>
+          <CH index="98" enabled="1"/>
+          <CH index="97" enabled="1"/>
+          <CH index="96" enabled="1"/>
+          <CH index="95" enabled="1"/>
+          <CH index="94" enabled="1"/>
+          <CH index="117" enabled="1"/>
+          <CH index="116" enabled="1"/>
+          <CH index="115" enabled="1"/>
+          <CH index="114" enabled="1"/>
+          <CH index="113" enabled="1"/>
+          <CH index="112" enabled="1"/>
+          <CH index="111" enabled="1"/>
+          <CH index="110" enabled="1"/>
+          <CH index="109" enabled="1"/>
+          <CH index="108" enabled="1"/>
+          <CH index="107" enabled="1"/>
+          <CH index="106" enabled="1"/>
+          <CH index="25" enabled="1"/>
+          <CH index="24" enabled="1"/>
+          <CH index="23" enabled="1"/>
+          <CH index="126" enabled="1"/>
+          <CH index="125" enabled="1"/>
+          <CH index="124" enabled="1"/>
+          <CH index="123" enabled="1"/>
+          <CH index="122" enabled="1"/>
+          <CH index="121" enabled="1"/>
+          <CH index="120" enabled="1"/>
+          <CH index="119" enabled="1"/>
+          <CH index="118" enabled="1"/>
+          <CH index="37" enabled="1"/>
+          <CH index="36" enabled="1"/>
+          <CH index="35" enabled="1"/>
+          <CH index="34" enabled="1"/>
+          <CH index="33" enabled="1"/>
+          <CH index="32" enabled="1"/>
+          <CH index="31" enabled="1"/>
+          <CH index="30" enabled="1"/>
+          <CH index="29" enabled="1"/>
+          <CH index="28" enabled="1"/>
+          <CH index="27" enabled="1"/>
+          <CH index="26" enabled="1"/>
+          <CH index="49" enabled="1"/>
+          <CH index="48" enabled="1"/>
+          <CH index="47" enabled="1"/>
+          <CH index="46" enabled="1"/>
+          <CH index="45" enabled="1"/>
+          <CH index="44" enabled="1"/>
+          <CH index="43" enabled="1"/>
+          <CH index="42" enabled="1"/>
+          <CH index="41" enabled="1"/>
+          <CH index="40" enabled="1"/>
+          <CH index="39" enabled="1"/>
+          <CH index="38" enabled="1"/>
+          <CH index="61" enabled="1"/>
+          <CH index="60" enabled="1"/>
+          <CH index="59" enabled="1"/>
+          <CH index="58" enabled="1"/>
+          <CH index="57" enabled="1"/>
+          <CH index="56" enabled="1"/>
+          <CH index="55" enabled="1"/>
+          <CH index="54" enabled="1"/>
+          <CH index="53" enabled="1"/>
+          <CH index="52" enabled="1"/>
+          <CH index="51" enabled="1"/>
+          <CH index="50" enabled="1"/>
+          <CH index="12" enabled="1"/>
+          <CH index="13" enabled="1"/>
+          <CH index="14" enabled="1"/>
+          <CH index="15" enabled="1"/>
+          <CH index="16" enabled="1"/>
+          <CH index="17" enabled="1"/>
+          <CH index="18" enabled="1"/>
+          <CH index="19" enabled="1"/>
+          <CH index="20" enabled="1"/>
+          <CH index="21" enabled="1"/>
+          <CH index="22" enabled="1"/>
+          <CH index="62" enabled="1"/>
+          <CH index="0" enabled="1"/>
+          <CH index="1" enabled="1"/>
+          <CH index="2" enabled="1"/>
+          <CH index="3" enabled="1"/>
+          <CH index="4" enabled="1"/>
+          <CH index="5" enabled="1"/>
+          <CH index="6" enabled="1"/>
+          <CH index="7" enabled="1"/>
+          <CH index="8" enabled="1"/>
+          <CH index="9" enabled="1"/>
+          <CH index="10" enabled="1"/>
+          <CH index="11" enabled="1"/>
+          <CH index="128" enabled="1"/>
+          <CH index="192" enabled="1"/>
+          <CH index="63" enabled="1"/>
+          <CH index="127" enabled="1"/>
+          <CH index="256" enabled="1"/>
+          <CH index="257" enabled="1"/>
+          <CH index="258" enabled="1"/>
+          <CH index="259" enabled="1"/>
+          <CH index="260" enabled="1"/>
+          <CH index="261" enabled="1"/>
+          <CH index="262" enabled="1"/>
+          <CH index="263" enabled="1"/>
+        </STREAM>
+      </CUSTOM_PARAMETERS>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Channel Map" activeStream="0"/>
+    </PROCESSOR>
+    <PROCESSOR name="LFP Viewer" insertionPoint="1" pluginName="LFP Viewer"
+               type="1" index="4" libraryName="LFP viewer" libraryVersion="1.0.0"
+               processorType="3" nodeId="108">
+      <PROCESSOR_PARAMETERS/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="LFP Viewer" activeStream="0"
+              Type="LfpDisplayEditor" tabText="LFP">
+        <TAB Active="0"/>
+        <WINDOW Active="0"/>
+        <VALUES SelectedLayout="1"/>
+        <VISUALIZER_PARAMETERS/>
+        <CUSTOM_PARAMETERS>
+          <LFPDISPLAY0 stream_key="100|acquisition_board" Range="250,2000,10.0" Timebase="2.0"
+                       Spread="40" colourScheme="1" colourGrouping="5" spikeRaster="OFF"
+                       clipWarning="1" satWarning="1" reverseOrder="0" sortByDepth="0"
+                       channelSkip="1" showChannelNum="0" subtractOffset="0" isInverted="0"
+                       triggerSource="1" trialAvg="0" singleChannelView="-1" EventButtonState="255"
+                       ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                       selectedChannelType="0" ScrollX="0" ScrollY="4512"/>
+          <LFPDISPLAY1 stream_key="100|acquisition_board" Range="250,2000,10.0" Timebase="2.0"
+                       Spread="40" colourScheme="1" colourGrouping="1" spikeRaster="OFF"
+                       clipWarning="1" satWarning="1" reverseOrder="0" sortByDepth="0"
+                       channelSkip="1" showChannelNum="0" subtractOffset="0" isInverted="0"
+                       triggerSource="1" trialAvg="0" singleChannelView="-1" EventButtonState="255"
+                       ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                       selectedChannelType="0" ScrollX="0" ScrollY="0"/>
+          <LFPDISPLAY2 stream_key="100|acquisition_board" Range="250,2000,10.0" Timebase="2.0"
+                       Spread="40" colourScheme="1" colourGrouping="1" spikeRaster="OFF"
+                       clipWarning="1" satWarning="1" reverseOrder="0" sortByDepth="0"
+                       channelSkip="1" showChannelNum="0" subtractOffset="0" isInverted="0"
+                       triggerSource="1" trialAvg="0" singleChannelView="-1" EventButtonState="255"
+                       ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                       selectedChannelType="0" ScrollX="0" ScrollY="0"/>
+          <CANVAS doubleVerticalSplitRatio="0.5" doubleHorizontalSplitRatio="0.5"
+                  tripleHorizontalSplitRatio="0.33,0.66" tripleVerticalSplitRatio="0.33,0.66"
+                  showAllOptions="0"/>
+        </CUSTOM_PARAMETERS>
+      </EDITOR>
+    </PROCESSOR>
+    <PROCESSOR name="Bandpass Filter" insertionPoint="1" pluginName="Bandpass Filter"
+               type="1" index="1" libraryName="Bandpass Filter" libraryVersion="1.0.0"
+               processorType="1" nodeId="104">
+      <PROCESSOR_PARAMETERS threads="1"/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS enable_stream="1" low_cut="0.1000000014901161" high_cut="5000.0"
+                    channels=""/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Bandpass Filter"
+              activeStream="0"/>
+    </PROCESSOR>
+    <PROCESSOR name="LFP Viewer" insertionPoint="1" pluginName="LFP Viewer"
+               type="1" index="4" libraryName="LFP viewer" libraryVersion="1.0.0"
+               processorType="3" nodeId="103">
+      <PROCESSOR_PARAMETERS/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="LFP Viewer" activeStream="0"
+              Type="LfpDisplayEditor" tabText="LFP">
+        <TAB Active="1"/>
+        <WINDOW Active="0"/>
+        <VALUES SelectedLayout="2"/>
+        <VISUALIZER_PARAMETERS/>
+        <CUSTOM_PARAMETERS>
+          <LFPDISPLAY0 stream_key="100|acquisition_board" Range="2000,2000,10.0" Timebase="2.0"
+                       Spread="20" colourScheme="1" colourGrouping="5" spikeRaster="OFF"
+                       clipWarning="1" satWarning="1" reverseOrder="0" sortByDepth="0"
+                       channelSkip="1" showChannelNum="0" subtractOffset="0" isInverted="0"
+                       triggerSource="1" trialAvg="0" singleChannelView="-1" EventButtonState="255"
+                       ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                       selectedChannelType="0" ScrollX="0" ScrollY="1764"/>
+          <LFPDISPLAY1 stream_key="100|acquisition_board" Range="250,2000,10.0" Timebase="2.0"
+                       Spread="40" colourScheme="1" colourGrouping="1" spikeRaster="OFF"
+                       clipWarning="1" satWarning="1" reverseOrder="0" sortByDepth="0"
+                       channelSkip="1" showChannelNum="0" subtractOffset="0" isInverted="0"
+                       triggerSource="1" trialAvg="0" singleChannelView="-1" EventButtonState="255"
+                       ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                       selectedChannelType="0" ScrollX="0" ScrollY="1885"/>
+          <LFPDISPLAY2 stream_key="100|acquisition_board" Range="250,2000,10.0" Timebase="2.0"
+                       Spread="40" colourScheme="1" colourGrouping="1" spikeRaster="OFF"
+                       clipWarning="1" satWarning="1" reverseOrder="0" sortByDepth="0"
+                       channelSkip="1" showChannelNum="0" subtractOffset="0" isInverted="0"
+                       triggerSource="1" trialAvg="0" singleChannelView="-1" EventButtonState="255"
+                       ChannelDisplayState="111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
+                       selectedChannelType="0" ScrollX="0" ScrollY="0"/>
+          <CANVAS doubleVerticalSplitRatio="0.5" doubleHorizontalSplitRatio="0.5"
+                  tripleHorizontalSplitRatio="0.33,0.66" tripleVerticalSplitRatio="0.33,0.66"
+                  showAllOptions="0"/>
+        </CUSTOM_PARAMETERS>
+      </EDITOR>
+    </PROCESSOR>
+    <PROCESSOR name="Spike Detector" insertionPoint="1" pluginName="Spike Detector"
+               type="1" index="7" libraryName="Spike Detector" libraryVersion="1.0.0"
+               processorType="1" nodeId="105">
+      <PROCESSOR_PARAMETERS/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS enable_stream="1"/>
+      </STREAM>
+      <CUSTOM_PARAMETERS>
+        <SPIKE_CHANNEL name="Tetrode 1" description="Tetrode from Spike Detector 105"
+                       num_channels="4" sample_rate="30000.0" stream_name="acquisition_board"
+                       stream_source="100" local_channels="1,2,3,4" thrshlder_type="0"
+                       abs_threshold1="-50.0" std_threshold1="4.0" dyn_threshold1="4.0"
+                       abs_threshold2="-50.0" std_threshold2="4.0" dyn_threshold2="4.0"
+                       abs_threshold3="-50.0" std_threshold3="4.0" dyn_threshold3="4.0"
+                       abs_threshold4="-50.0" std_threshold4="4.0" dyn_threshold4="4.0"
+                       waveform_type="0"/>
+        <SPIKE_CHANNEL name="Tetrode 2" description="Tetrode from Spike Detector 105"
+                       num_channels="4" sample_rate="30000.0" stream_name="acquisition_board"
+                       stream_source="100" local_channels="5,6,7,8" thrshlder_type="0"
+                       abs_threshold1="-50.0" std_threshold1="4.0" dyn_threshold1="4.0"
+                       abs_threshold2="-50.0" std_threshold2="4.0" dyn_threshold2="4.0"
+                       abs_threshold3="-50.0" std_threshold3="4.0" dyn_threshold3="4.0"
+                       abs_threshold4="-50.0" std_threshold4="4.0" dyn_threshold4="4.0"
+                       waveform_type="0"/>
+        <SPIKE_CHANNEL name="Tetrode 3" description="Tetrode from Spike Detector 105"
+                       num_channels="4" sample_rate="30000.0" stream_name="acquisition_board"
+                       stream_source="100" local_channels="9,10,11,12" thrshlder_type="0"
+                       abs_threshold1="-50.0" std_threshold1="4.0" dyn_threshold1="4.0"
+                       abs_threshold2="-50.0" std_threshold2="4.0" dyn_threshold2="4.0"
+                       abs_threshold3="-50.0" std_threshold3="4.0" dyn_threshold3="4.0"
+                       abs_threshold4="-50.0" std_threshold4="4.0" dyn_threshold4="4.0"
+                       waveform_type="0"/>
+        <SPIKE_CHANNEL name="Tetrode 4" description="Tetrode from Spike Detector 105"
+                       num_channels="4" sample_rate="30000.0" stream_name="acquisition_board"
+                       stream_source="100" local_channels="13,14,15,16" thrshlder_type="0"
+                       abs_threshold1="-50.0" std_threshold1="4.0" dyn_threshold1="4.0"
+                       abs_threshold2="-50.0" std_threshold2="4.0" dyn_threshold2="4.0"
+                       abs_threshold3="-50.0" std_threshold3="4.0" dyn_threshold3="4.0"
+                       abs_threshold4="-50.0" std_threshold4="4.0" dyn_threshold4="4.0"
+                       waveform_type="0"/>
+      </CUSTOM_PARAMETERS>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Spike Detector"
+              activeStream="0"/>
+    </PROCESSOR>
+    <PROCESSOR name="Audio Monitor" insertionPoint="1" pluginName="Audio Monitor"
+               type="0" index="4" libraryName="" libraryVersion="" processorType="6"
+               nodeId="102">
+      <PROCESSOR_PARAMETERS mute_audio="0" audio_output="1"/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS channels="" spike_channel="0"/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Audio Monitor"
+              activeStream="0"/>
+    </PROCESSOR>
+    <PROCESSOR name="Spike Viewer" insertionPoint="1" pluginName="Spike Viewer"
+               type="1" index="8" libraryName="Spike Viewer" libraryVersion="1.0.0"
+               processorType="3" nodeId="107">
+      <PROCESSOR_PARAMETERS/>
+      <STREAM name="acquisition_board" description="Continuous and event data from an Open Ephys Acquisition Board"
+              sample_rate="30000.0" channel_count="264">
+        <PARAMETERS/>
+      </STREAM>
+      <CUSTOM_PARAMETERS/>
+      <EDITOR isCollapsed="0" isDrawerOpen="0" displayName="Spike Viewer" activeStream="0"
+              Type="Visualizer" tabText="Spikes" scale_factor_index="5">
+        <TAB Active="1"/>
+        <WINDOW Active="0"/>
+        <VISUALIZER_PARAMETERS/>
+        <CUSTOM_PARAMETERS>
+          <SPIKEDISPLAY LockThresholds="0" InvertSpikes="0" Range="250" History="10"
+                        NumPlots="4">
+            <PLOT stream_source="100" stream_name="acquisition_board" spike_source="105"
+                  name="Tetrode 1" isMonitored="0">
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+            </PLOT>
+            <PLOT stream_source="100" stream_name="acquisition_board" spike_source="105"
+                  name="Tetrode 2" isMonitored="0">
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+            </PLOT>
+            <PLOT stream_source="100" stream_name="acquisition_board" spike_source="105"
+                  name="Tetrode 3" isMonitored="0">
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+            </PLOT>
+            <PLOT stream_source="100" stream_name="acquisition_board" spike_source="105"
+                  name="Tetrode 4" isMonitored="0">
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+              <AXIS thresh="0.0" range="250.0"/>
+            </PLOT>
+          </SPIKEDISPLAY>
+        </CUSTOM_PARAMETERS>
+      </EDITOR>
+    </PROCESSOR>
+  </SIGNALCHAIN>
+  <CONTROLPANEL isOpen="1" recordPath="C:\Users\berke\OneDrive\Documents\Open_Ephys_New_release_12032025\Data"
+                recordEngine="BINARY" clockMode="0" clockReferenceTime="0" forceNewDirectory="0"/>
+  <AUDIOEDITOR isMuted="0" volume="50.0" noiseGate="0.0"/>
+  <FILENAMECONFIG>
+    <PREPEND state="0" value=""/>
+    <MAIN state="1" value="2026-02-07_17-30-09"/>
+    <APPEND state="0" value=""/>
+  </FILENAMECONFIG>
+  <EDITORVIEWPORT selectedTab="0" scroll="0"/>
+  <GRAPHVIEWER>
+    <NODE id="100" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="101" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="109" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="108" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="104" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="103" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="105" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="102" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+    <NODE id="107" isProcessorInfoVisible="0">
+      <STREAM key="100|acquisition_board" isStreamVisible="0" isParamsVisible="0"/>
+    </NODE>
+  </GRAPHVIEWER>
+  <DATAVIEWPORT>
+    <TABBEDCOMPONENT index="0" selectedTabNodeId="103">
+      <TAB nodeId="0"/>
+      <TAB nodeId="1"/>
+      <TAB nodeId="2"/>
+      <TAB nodeId="100"/>
+      <TAB nodeId="107"/>
+      <TAB nodeId="103"/>
+    </TABBEDCOMPONENT>
+  </DATAVIEWPORT>
+  <PROCESSORLIST>
+    <COLOUR ID="801" R="50" G="50" B="50"/>
+    <COLOUR ID="804" R="241" G="90" B="41"/>
+    <COLOUR ID="802" R="0" G="174" B="239"/>
+    <COLOUR ID="803" R="0" G="166" B="81"/>
+    <COLOUR ID="805" R="90" G="110" B="110"/>
+    <COLOUR ID="806" R="255" G="0" B="0"/>
+    <COLOUR ID="807" R="0" G="0" B="0"/>
+  </PROCESSORLIST>
+  <UICOMPONENT isProcessorListOpen="1" isEditorViewportOpen="1" consoleOpenInWindow="0"/>
+  <AUDIO sampleRate="48000.0" bufferSize="1024" deviceType="Windows Audio">
+    <DEVICESETUP deviceType="Windows Audio" audioOutputDeviceName="Speakers / Headphones (Realtek Audio)"
+                 audioInputDeviceName="" audioDeviceRate="48000.0" audioDeviceBufferSize="1024"
+                 audioDeviceInChans="0"/>
+  </AUDIO>
+  <MESSAGES/>
+</SETTINGS>
