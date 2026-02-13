@@ -217,20 +217,25 @@ def test_read_open_ephys_settings_xml(dummy_logger):
     """
     Test that the read_open_ephys_settings_xml function extracts the correct metadata from the settings.xml file.
     """
-    # Read settings file to get filtering info and map of channel number to channel name
+    # Read settings file to validate channels and get filtering info
     settings_file_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00/settings.xml"
-    (
-        channel_number_to_channel_name,
-        filtering_info
-    ) = read_open_ephys_settings_xml(settings_file_path, dummy_logger)
+    filtering_info = read_open_ephys_settings_xml(settings_file_path, dummy_logger)
 
     # Check correct filtering info (single string for all electrodes)
     assert filtering_info == "Filter with highcut=7603.76512183337 Hz, lowcut=2.495988241877236 Hz"
 
-    # We expect channel numbers 0-255 mapping to CH1-CH256, then channels 256-263 mapping to ADC1-ADC8
-    expected_channel_dict = {i-1:f"CH{i}" for i in range(1, 257)}
-    expected_channel_dict.update({i+255 : f"ADC{i}" for i in range(1, 9)})
-    assert channel_number_to_channel_name == expected_channel_dict
+
+def test_read_open_ephys_settings_xml_new_format(dummy_logger):
+    """
+    Test that the read_open_ephys_settings_xml function handles the new-format settings.xml
+    (Open Ephys >= 1.0, with Acquisition Board processor and STREAM element instead of
+    Sources/Rhythm FPGA with CHANNEL_INFO).
+    """
+    settings_file_path = "tests/test_data/raw_ephys/new_format_settings.xml"
+    filtering_info = read_open_ephys_settings_xml(settings_file_path, dummy_logger)
+
+    # Check correct filtering info
+    assert filtering_info == "Filter with highcut=7603.76512183337 Hz, lowcut=1.577845136933669 Hz"
 
 
 def test_add_raw_ephys(dummy_logger):
