@@ -752,9 +752,14 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
     )
 
     # Sanity check that the channel numbers from the "Channel Name" column match the "intan_channel" column
-    # channel nums = the number for Port B channels (e.g. B-001 is 1) and number+128 for Port C channels (C-001 is 129)
+    # We expect that the impedance file contains either Port B and Port C, or Port A and Port D
+    port_prefixes = sorted(full_electrode_info_df["Channel Name"].str.split("-").str[0].unique())
+    assert port_prefixes in [["A", "D"], ["B", "C"]], f"Unexpected port prefixes: {port_prefixes}"
+
+    # Get the channel number based on the "Channel Name" column
+    # channel nums = the num for Port A/B channels (e.g. B-001 is 1) and num+128 for Port C/D channels (C-001 is 129)
     expected_channel_nums = full_electrode_info_df["Channel Name"].apply(
-        lambda s: int(s.split("-")[1]) + (128 if s.startswith("C-") else 0)
+        lambda s: int(s.split("-")[1]) + (128 if s.startswith(("C-", "D-")) else 0)
     )
 
     mismatched_channel_nums = full_electrode_info_df["intan_channel"] != expected_channel_nums
