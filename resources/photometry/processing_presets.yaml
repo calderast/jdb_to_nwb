@@ -1,0 +1,60 @@
+# Photometry processing presets
+#
+# Each preset specifies which method to use for each processing step.
+# Parameters for each method come from method_defaults below.
+# Users can override specific parameters via processing_overrides in session metadata.
+
+# ============================================================
+# Presets: pick a method, or "none", for each step.
+# ============================================================
+
+presets:
+  dlight_isosbestic:
+    description: "dLight with airPLS baseline + isosbestic Lasso correction"
+    smoothing: rolling_mean
+    baseline: airpls
+    zscore: median_std
+    correction: isosbestic_lasso
+
+  gach_ratiometric:
+    description: "gACh4h with filtering + ratiometric correction (470/405)"
+    smoothing: lowpass
+    baseline: highpass
+    zscore: mean_std
+    correction: ratiometric
+
+  rda_independent:
+    description: "rDA3m with filtering, no correction"
+    smoothing: lowpass
+    baseline: highpass
+    zscore: mean_std
+    correction: none
+
+# ============================================================
+# Default parameters for each method.
+# When a preset selects a method, these params are auto-applied.
+# Users never need to specify these unless overriding a specific value.
+# ============================================================
+
+method_defaults:
+  smoothing:
+    rolling_mean:
+      window_fraction: 0.0333   # window = Fs * this value (~8ms at 250Hz)
+    lowpass:
+      cutoff_hz: 10
+      order: 2
+  baseline:
+    airpls:
+      lambda: 1.0e+8
+      max_iterations: 50
+    highpass:
+      cutoff_hz: 0.001
+      order: 2
+    # exponential: {}           # (parameters TBD when implemented)
+  zscore:
+    median_std: {}              # (signal - median) / std
+    mean_std: {}                # (signal - mean) / std
+  correction:
+    isosbestic_lasso:
+      alpha: 0.0001
+    ratiometric: {}             # raw signal / raw reference
