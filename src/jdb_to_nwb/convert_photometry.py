@@ -54,7 +54,7 @@ WAVELENGTH_TO_LED_COLOR = {
 
 
 # ============================================================
-# Data Readers (unchanged)
+# Functions to read raw photometry data
 # ============================================================
 
 
@@ -353,11 +353,6 @@ def import_ppd(ppd_file_path):
     return data_dict
 
 
-# ============================================================
-# Standardized Data Container and Unified Loaders
-# ============================================================
-
-
 @dataclass
 class PhotometrySignalBundle:
     """Standardized container for loaded photometry data, before processing."""
@@ -369,7 +364,7 @@ class PhotometrySignalBundle:
 
 
 def load_labview_raw(phot_file_path, box_file_path, logger, phot_end_time_mins=0):
-    """Load raw LabVIEW .phot + .box files, run lock-in detection, downsample.
+    """Load raw LabVIEW .phot + .box files, run lock-in detection, downsample to 250 Hz.
 
     Returns a PhotometrySignalBundle with signals keyed by wavelength.
     """
@@ -392,6 +387,7 @@ def load_labview_raw(phot_file_path, box_file_path, logger, phot_end_time_mins=0
         logger.debug(f"{box_key}: {box_dict[box_key]}")
 
     # Get timestamps of port visits in 10 kHz photometry sample time
+    # And the start sample of the photometry signal
     visits, start = process_pulses(box_dict)
 
     # Run lockin detection to extract the modulated photometry signals
@@ -406,15 +402,11 @@ def load_labview_raw(phot_file_path, box_file_path, logger, phot_end_time_mins=0
     raw_405 = np.squeeze(lockin_signals["ref"])[:: int(SR / Fs)]
     port_visits = np.divide(np.squeeze(visits), SR / Fs).astype(int)
 
-    # Handle cropping
-    raw_470, raw_405 = _crop_signals(
-        [raw_470, raw_405], Fs, phot_end_time_mins, logger
-    )
+    # Handle cropping (if needed)
+    raw_470, raw_405 = crop_signals([raw_470, raw_405], Fs, phot_end_time_mins, logger)
 
-    # Convert start time
-    photometry_start = datetime.strptime(
-        f"{phot_dict['date']} {phot_dict['time']}".strip(), "%Y-%m-%d %H-%M-%S"
-    )
+    # Convert Labview photometry start time to datetime object and set timezone to Pacific Time
+    photometry_start = datetime.strptime(f"{phot_dict['date']} {phot_dict['time']}".strip(), "%Y-%m-%d %H-%M-%S")
     photometry_start = photometry_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"LabVIEW photometry start time: {photometry_start}")
 
@@ -449,10 +441,8 @@ def load_labview_mat(signals_mat_path, logger, phot_end_time_mins=0):
     raw_405 = np.squeeze(signals["ref"])[:: int(SR / Fs)]
     port_visits = np.divide(np.squeeze(signals["visits"]), SR / Fs).astype(int)
 
-    # Handle cropping
-    raw_470, raw_405 = _crop_signals(
-        [raw_470, raw_405], Fs, phot_end_time_mins, logger
-    )
+    # Handle cropping (if needed)
+    raw_470, raw_405 = crop_signals([raw_470, raw_405], Fs, phot_end_time_mins, logger)
 
     return PhotometrySignalBundle(
         signals={"470nm": raw_470, "405nm": raw_405},
@@ -511,7 +501,7 @@ def load_pyphotometry(ppd_file_path, logger):
     )
 
 
-def _crop_signals(signal_list, sampling_rate, phot_end_time_mins, logger):
+def crop_signals(signal_list, sampling_rate, phot_end_time_mins, logger):
     """Crop a list of signals to the desired end time. Returns cropped signals."""
     raw_signal_length_mins = len(signal_list[0]) / sampling_rate / 60
 
@@ -538,7 +528,7 @@ def _crop_signals(signal_list, sampling_rate, phot_end_time_mins, logger):
 
 
 # ============================================================
-# Processing Algorithms (unchanged)
+# Signal Processing
 # ============================================================
 
 
@@ -634,58 +624,50 @@ def airPLS(data, logger, lambda_=1e8, max_iterations=50):
     return baseline
 
 
-# ============================================================
-# Individual Processing Step Functions
-# ============================================================
-
-
-def apply_rolling_mean(signal, sampling_rate, window_fraction=0.0333, **_kwargs):
+def apply_rolling_mean(signal, sampling_rate, window_fraction=0.0333):
     """Smooth signal using a rolling mean. Returns 1D numpy array."""
     window = max(1, int(sampling_rate * window_fraction))
-    series = pd.Series(signal.ravel())
-    smoothed = series.rolling(window=window, min_periods=1).mean().to_numpy()
+    smoothed = pd.Series(signal).rolling(window=window, min_periods=1).mean().to_numpy()
     return smoothed
 
 
-def apply_lowpass_filter(signal, sampling_rate, cutoff_hz=10, order=2, **_kwargs):
+def apply_lowpass_filter(signal, sampling_rate, cutoff_hz=10, order=2):
     """Low-pass Butterworth filter."""
     b, a = butter(order, cutoff_hz, btype='low', fs=sampling_rate)
-    return filtfilt(b, a, signal.ravel())
+    return filtfilt(b, a, signal)
 
 
-def apply_highpass_filter(signal, sampling_rate, cutoff_hz=0.001, order=2, **_kwargs):
+def apply_highpass_filter(signal, sampling_rate, cutoff_hz=0.001, order=2):
     """High-pass Butterworth filter for baseline removal."""
     b, a = butter(order, cutoff_hz, btype='high', fs=sampling_rate)
-    return filtfilt(b, a, signal.ravel(), padtype='even')
+    return filtfilt(b, a, signal, padtype='even')
 
 
-def apply_airpls_baseline(signal, logger, raw_signal=None, lambda_=1e8, max_iterations=50, **_kwargs):
+def apply_airpls_baseline(signal, logger, baseline_signal=None, lambda_=1e8, max_iterations=50):
     """Compute airPLS baseline and subtract from signal.
 
-    If raw_signal is provided, the baseline is estimated from raw_signal
-    (not signal). This is needed because airPLS should estimate the baseline
-    from the raw data, then subtract it from the already-smoothed signal.
+    If baseline_signal is provided, the baseline is estimated from baseline_signal (not signal). 
+    We do this because historically, we have estimated the airPLS baseline from the raw data signal, 
+    then subtract it from the already-smoothed signal.
 
     Returns (baseline_subtracted, baseline).
     """
-    data_for_baseline = raw_signal.ravel() if raw_signal is not None else signal.ravel()
+    data_for_baseline = baseline_signal if baseline_signal is not None else signal
     baseline = airPLS(data=data_for_baseline, logger=logger, lambda_=lambda_, max_iterations=max_iterations)
-    return signal.ravel() - baseline, baseline
+    return signal - baseline, baseline
 
 
-def apply_zscore_median_std(signal, **_kwargs):
+def apply_zscore_median_std(signal):
     """Z-score using median and std: (signal - median) / std"""
-    signal = signal.ravel()
     return (signal - np.median(signal)) / np.std(signal)
 
 
-def apply_zscore_mean_std(signal, **_kwargs):
+def apply_zscore_mean_std(signal):
     """Z-score using mean and std: (signal - mean) / std"""
-    signal = signal.ravel()
     return (signal - np.mean(signal)) / np.std(signal)
 
 
-def apply_isosbestic_correction(signal, reference, alpha=0.0001, **_kwargs):
+def apply_isosbestic_correction(signal, reference, alpha=0.0001):
     """Isosbestic correction via Lasso regression.
 
     Fits the reference signal to the signal using Lasso regression,
@@ -695,17 +677,16 @@ def apply_isosbestic_correction(signal, reference, alpha=0.0001, **_kwargs):
     """
     signal_2d = signal.reshape(-1, 1)
     reference_2d = reference.reshape(-1, 1)
-    lin = Lasso(alpha=alpha, precompute=True, max_iter=1000,
-                positive=True, random_state=9999, selection="random")
+    lin = Lasso(alpha=alpha, precompute=True, max_iter=1000, positive=True, random_state=9999, selection="random")
     lin.fit(reference_2d, signal_2d)
     fitted_reference = lin.predict(reference_2d).ravel()
-    corrected = signal.ravel() - fitted_reference
+    corrected = signal - fitted_reference
     return corrected, fitted_reference
 
 
-def apply_ratiometric_correction(signal, reference, **_kwargs):
+def apply_ratiometric_correction(signal, reference):
     """Ratiometric correction: signal / reference."""
-    return signal.ravel() / reference.ravel()
+    return signal / reference
 
 
 # ============================================================
@@ -714,25 +695,25 @@ def apply_ratiometric_correction(signal, reference, **_kwargs):
 
 
 # Dispatch tables mapping method names to functions
-_SMOOTHING_METHODS = {
+SMOOTHING_METHODS = {
     "rolling_mean": apply_rolling_mean,
     "lowpass": apply_lowpass_filter,
     "none": None,
 }
 
-_BASELINE_METHODS = {
+BASELINE_METHODS = {
     "airpls": apply_airpls_baseline,
     "highpass": apply_highpass_filter,
     "none": None,
 }
 
-_ZSCORE_METHODS = {
-    "median_std": apply_zscore_median_std,
-    "mean_std": apply_zscore_mean_std,
+NORMALIZATION_METHODS = {
+    "median_zscore": apply_zscore_median_std,
+    "mean_zscore": apply_zscore_mean_std,
     "none": None,
 }
 
-_CORRECTION_METHODS = {
+CORRECTION_METHODS = {
     "isosbestic_lasso": apply_isosbestic_correction,
     "ratiometric": apply_ratiometric_correction,
     "none": None,
@@ -760,7 +741,7 @@ def load_processing_config(preset_name, overrides=None):
 
     # Build resolved config: for each step, get the method name and its default params
     config = {}
-    for step in ["smoothing", "baseline", "zscore", "correction"]:
+    for step in ["smoothing", "baseline", "normalization", "correction"]:
         method_name = preset.get(step, "none")
         # Get default params for this method
         step_defaults = method_defaults.get(step, {})
@@ -778,7 +759,7 @@ def load_processing_config(preset_name, overrides=None):
     return config
 
 
-def _resolve_indicator_configs(metadata, bundle, logger):
+def resolve_indicator_configs(metadata, bundle, logger):
     """Determine which indicators to process and their preset configs.
 
     Returns a list of dicts, each with:
@@ -815,7 +796,7 @@ def _resolve_indicator_configs(metadata, bundle, logger):
             ref_wl_nm = mapping.get("reference_wavelength_nm")
             reference_wl = f"{ref_wl_nm}nm" if ref_wl_nm is not None else None
 
-            # Check that the required wavelengths are in the bundle
+            # Check that the required wavelengths for this indicator are in the signals bundle
             if signal_wl not in bundle.signals:
                 logger.warning(
                     f"Indicator '{virus_name}' requires {signal_wl} but it's not in the loaded signals "
@@ -845,65 +826,36 @@ def _resolve_indicator_configs(metadata, bundle, logger):
                 "config": config,
             })
 
-    # Fallback: if no virus_injections, auto-detect from signal count
     if not indicator_configs:
-        logger.warning(
-            "No virus_injections found in metadata. Auto-detecting processing based on signal count."
+        raise ValueError(
+            "No indicator configs could be resolved. "
+            "Please specify 'virus_injections' in the photometry metadata."
         )
-        n_signals = len(bundle.signals)
-        if n_signals == 2 and "470nm" in bundle.signals and "405nm" in bundle.signals:
-            config = load_processing_config("dlight_isosbestic", overrides)
-            indicator_configs.append({
-                "indicator_name": "dLight",
-                "signal_wavelength": "470nm",
-                "reference_wavelength": "405nm",
-                "config": config,
-            })
-        elif n_signals == 3:
-            config_gach = load_processing_config("gach_ratiometric", overrides)
-            indicator_configs.append({
-                "indicator_name": "gACh4h",
-                "signal_wavelength": "470nm",
-                "reference_wavelength": "405nm",
-                "config": config_gach,
-            })
-            config_rda = load_processing_config("rda_independent", overrides)
-            indicator_configs.append({
-                "indicator_name": "rDA3m",
-                "signal_wavelength": "565nm",
-                "reference_wavelength": None,
-                "config": config_rda,
-            })
-        else:
-            raise ValueError(
-                f"Cannot auto-detect processing for {n_signals} signals. "
-                "Please specify 'virus_injections' and/or 'processing_presets' in metadata."
-            )
 
     return indicator_configs
 
 
-def _process_single_signal(signal, sampling_rate, config, logger):
-    """Apply smoothing -> baseline correction -> z-scoring to a single signal.
+def process_single_signal(signal, sampling_rate, config, logger):
+    """Apply smoothing -> baseline correction -> normalization to a single signal.
 
-    Returns dict with 'smoothed', 'baseline_subtracted', 'baseline' (if applicable), and 'zscored'.
+    Returns dict with 'smoothed', 'baseline_subtracted', 'baseline' (if applicable), and 'normalized'.
     """
     result = {}
     raw = signal.ravel()
 
     # Smoothing
     smooth_method = config["smoothing"]["method"]
-    smooth_fn = _SMOOTHING_METHODS.get(smooth_method)
+    smooth_fn = SMOOTHING_METHODS.get(smooth_method)
     if smooth_fn:
         logger.info(f"Applying smoothing: {smooth_method} with params {config['smoothing']['params']}")
-        smoothed = smooth_fn(signal, sampling_rate=sampling_rate, **config["smoothing"]["params"])
+        smoothed = smooth_fn(raw, sampling_rate=sampling_rate, **config["smoothing"]["params"])
     else:
         smoothed = raw
     result["smoothed"] = smoothed
 
     # Baseline correction
     baseline_method = config["baseline"]["method"]
-    baseline_fn = _BASELINE_METHODS.get(baseline_method)
+    baseline_fn = BASELINE_METHODS.get(baseline_method)
     if baseline_fn:
         logger.info(f"Applying baseline correction: {baseline_method} with params {config['baseline']['params']}")
         if baseline_method == "airpls":
@@ -913,7 +865,7 @@ def _process_single_signal(signal, sampling_rate, config, logger):
             baseline_subtracted, baseline = apply_airpls_baseline(
                 smoothed,
                 logger=logger,
-                raw_signal=raw,
+                baseline_signal=raw,
                 lambda_=params.get("lambda", 1e8),
                 max_iterations=params.get("max_iterations", 50),
             )
@@ -927,15 +879,15 @@ def _process_single_signal(signal, sampling_rate, config, logger):
         baseline_subtracted = smoothed
     result["baseline_subtracted"] = baseline_subtracted
 
-    # Z-scoring
-    zscore_method = config["zscore"]["method"]
-    zscore_fn = _ZSCORE_METHODS.get(zscore_method)
-    if zscore_fn:
-        logger.info(f"Applying z-scoring: {zscore_method}")
-        zscored = zscore_fn(baseline_subtracted)
+    # Normalization
+    norm_method = config["normalization"]["method"]
+    norm_fn = NORMALIZATION_METHODS.get(norm_method)
+    if norm_fn:
+        logger.info(f"Applying normalization: {norm_method}")
+        normalized = norm_fn(baseline_subtracted)
     else:
-        zscored = baseline_subtracted
-    result["zscored"] = zscored
+        normalized = baseline_subtracted
+    result["normalized"] = normalized
 
     return result
 
@@ -989,28 +941,28 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             )
 
         correction_method = config["correction"]["method"]
-        correction_fn = _CORRECTION_METHODS.get(correction_method)
+        correction_fn = CORRECTION_METHODS.get(correction_method)
         corrected = None
         fitted_reference = None
         raw_ratio = None
 
         # Process signal
         logger.info(f"Processing {signal_wl} signal for {indicator_name}...")
-        sig_result = _process_single_signal(raw_signal, bundle.sampling_rate, config, logger)
+        sig_result = process_single_signal(raw_signal, bundle.sampling_rate, config, logger)
 
         # Process reference (if applicable)
         ref_result = None
         if ref_wl:
             logger.info(f"Processing {ref_wl} reference for {indicator_name}...")
-            ref_result = _process_single_signal(raw_reference, bundle.sampling_rate, config, logger)
+            ref_result = process_single_signal(raw_reference, bundle.sampling_rate, config, logger)
 
         # Plot processing steps for signal
-        _plot_processing_steps(
+        plot_processing_steps(
             raw_signal, sig_result, bundle.port_visits, bundle.sampling_rate,
             signal_wl, indicator_name, fig_dir,
         )
         if ref_result:
-            _plot_processing_steps(
+            plot_processing_steps(
                 raw_reference, ref_result, bundle.port_visits, bundle.sampling_rate,
                 ref_wl, indicator_name, fig_dir,
             )
@@ -1019,13 +971,13 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
         if correction_method == "isosbestic_lasso" and correction_fn and ref_result:
             logger.info(f"Applying isosbestic correction via Lasso regression")
             corrected, fitted_reference = correction_fn(
-                sig_result["zscored"], ref_result["zscored"],
+                sig_result["normalized"], ref_result["normalized"],
                 **config["correction"]["params"],
             )
             # Plot isosbestic correction steps
             plot_photometry_signals(
                 visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
-                signals=[sig_result["zscored"], ref_result["zscored"], fitted_reference, corrected],
+                signals=[sig_result["normalized"], ref_result["normalized"], fitted_reference, corrected],
                 signal_labels=[
                     f"Z-scored {signal_wl}", f"Z-scored {ref_wl}",
                     f"Predicted {signal_wl} from {ref_wl}", "dF/F (post isosbestic correction)",
@@ -1044,11 +996,11 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
 
             # Process the ratio through the same pipeline (smoothing -> baseline -> zscore)
             logger.info(f"Processing {signal_wl}/{ref_wl} ratio for {indicator_name}...")
-            ratio_result = _process_single_signal(raw_ratio, bundle.sampling_rate, config, logger)
-            corrected = ratio_result["zscored"]
+            ratio_result = process_single_signal(raw_ratio, bundle.sampling_rate, config, logger)
+            corrected = ratio_result["normalized"]
 
             # Plot ratiometric correction steps
-            _plot_processing_steps(
+            plot_processing_steps(
                 raw_ratio, ratio_result, bundle.port_visits, bundle.sampling_rate,
                 f"{signal_wl}/{ref_wl} ratio", indicator_name, fig_dir,
             )
@@ -1059,8 +1011,8 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             "raw_signal": raw_signal,
             "raw_reference": raw_reference,
             "raw_ratio": raw_ratio if correction_method == "ratiometric" else None,
-            "processed_signal": sig_result["zscored"],
-            "processed_reference": ref_result["zscored"] if ref_result else None,
+            "processed_signal": sig_result["normalized"],
+            "processed_reference": ref_result["normalized"] if ref_result else None,
             "corrected": corrected,
             "fitted_reference": fitted_reference,
             "correction_method": correction_method,
@@ -1070,9 +1022,9 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
     return all_results
 
 
-def _plot_processing_steps(raw, result, visits, sampling_rate, wavelength, indicator_name, fig_dir):
+def plot_processing_steps(raw, result, visits, sampling_rate, wavelength, indicator_name, fig_dir):
     """Plot the processing steps for a single signal."""
-    signals_to_plot = [raw, result["smoothed"], result["baseline_subtracted"], result["zscored"]]
+    signals_to_plot = [raw, result["smoothed"], result["baseline_subtracted"], result["normalized"]]
     labels = [
         f"Raw {wavelength}",
         f"Smoothed {wavelength}",
@@ -1099,7 +1051,7 @@ def _plot_processing_steps(raw, result, visits, sampling_rate, wavelength, indic
 # ============================================================
 
 
-def _find_led_table_region(nwbfile, led_color, logger):
+def find_led_table_region(nwbfile, led_color, logger):
     """Find the FiberPhotometryTableRegion for a given LED color.
 
     Args:
@@ -1136,7 +1088,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
                 continue
 
             led_color = WAVELENGTH_TO_LED_COLOR[wl_key]
-            led_region = _find_led_table_region(nwbfile, led_color, logger)
+            led_region = find_led_table_region(nwbfile, led_color, logger)
             wl_num = wl_key.replace("nm", "")
             series_name = f"raw_{wl_num}"
 
@@ -1161,7 +1113,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
         ref_wl = ind_result["reference_wavelength"]
         signal_wl_num = signal_wl.replace("nm", "")
         signal_led_color = WAVELENGTH_TO_LED_COLOR[signal_wl]
-        signal_led_region = _find_led_table_region(nwbfile, signal_led_color, logger)
+        signal_led_region = find_led_table_region(nwbfile, signal_led_color, logger)
 
         # Write processed signal
         processed_name = f"processed_{signal_wl_num}"
@@ -1180,7 +1132,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
         if ref_wl and ind_result["processed_reference"] is not None:
             ref_wl_num = ref_wl.replace("nm", "")
             ref_led_color = WAVELENGTH_TO_LED_COLOR[ref_wl]
-            ref_led_region = _find_led_table_region(nwbfile, ref_led_color, logger)
+            ref_led_region = find_led_table_region(nwbfile, ref_led_color, logger)
 
             processed_ref_name = f"processed_{ref_wl_num}"
             # Only write if not already written by another indicator
@@ -1218,7 +1170,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
                 if ind_result["fitted_reference"] is not None:
                     ref_wl_num = ref_wl.replace("nm", "")
                     ref_led_color = WAVELENGTH_TO_LED_COLOR[ref_wl]
-                    ref_led_region = _find_led_table_region(nwbfile, ref_led_color, logger)
+                    ref_led_region = find_led_table_region(nwbfile, ref_led_color, logger)
                     fitted_name = f"fitted_{ref_wl_num}"
                     series = FiberPhotometryResponseSeries(
                         name=fitted_name,
@@ -1276,7 +1228,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
 
 
 # ============================================================
-# NWB Metadata (mostly unchanged)
+# NWB Metadata
 # ============================================================
 
 
@@ -1575,13 +1527,14 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         logger.info("No photometry metadata found for this session. Skipping photometry conversion.")
         return {}
 
-    # 1. Add photometry hardware metadata to NWB
+    # 1. Add photometry metadata to NWB
     print("Adding photometry metadata to NWB...")
     logger.info("Adding photometry metadata to NWB...")
     add_photometry_metadata(nwbfile, metadata, logger)
 
-    # 2. Load data into PhotometrySignalBundle
+    # 2. Load photometry signals into PhotometrySignalBundle
     phot_meta = metadata["photometry"]
+    # If we have raw LabVIEW data (.phot and .box files)
     if "phot_file_path" in phot_meta and "box_file_path" in phot_meta:
         logger.info("Using LabVIEW for photometry!")
         print("Processing raw .phot and .box files from LabVIEW...")
@@ -1589,6 +1542,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             phot_meta["phot_file_path"], phot_meta["box_file_path"],
             logger, phot_meta.get("phot_end_time_mins", 0),
         )
+    # If we have already processed the LabVIEW .phot and .box files into signals.mat (legacy, will be deprecated)
     elif "signals_mat_file_path" in phot_meta:
         logger.info("Using LabVIEW for photometry!")
         print("Processing signals.mat file of photometry signals from LabVIEW...")
@@ -1596,6 +1550,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             phot_meta["signals_mat_file_path"],
             logger, phot_meta.get("phot_end_time_mins", 0),
         )
+    # If we have a ppd file from pyPhotometry
     elif "ppd_file_path" in phot_meta:
         logger.info("Using pyPhotometry for photometry!")
         print("Processing ppd file from pyPhotometry...")
@@ -1613,7 +1568,7 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         )
 
     # 3. Resolve processing config for each indicator
-    indicator_configs = _resolve_indicator_configs(metadata, bundle, logger)
+    indicator_configs = resolve_indicator_configs(metadata, bundle, logger)
 
     # 4. Run processing pipeline
     processing_results = run_processing_pipeline(bundle, indicator_configs, logger, fig_dir)

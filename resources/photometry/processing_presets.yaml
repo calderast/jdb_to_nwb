@@ -13,21 +13,21 @@ presets:
     description: "dLight with airPLS baseline + isosbestic Lasso correction"
     smoothing: rolling_mean
     baseline: airpls
-    zscore: median_std
+    normalization: median_zscore
     correction: isosbestic_lasso
 
   gach_ratiometric:
     description: "gACh4h with filtering + ratiometric correction (470/405)"
     smoothing: lowpass
     baseline: highpass
-    zscore: mean_std
+    normalization: mean_zscore
     correction: ratiometric
 
   rda_independent:
-    description: "rDA3m with filtering, no correction"
+    description: "rDA3m with filtering"
     smoothing: lowpass
     baseline: highpass
-    zscore: mean_std
+    normalization: mean_zscore
     correction: none
 
 # ============================================================
@@ -51,9 +51,9 @@ method_defaults:
       cutoff_hz: 0.001
       order: 2
     # exponential: {}           # (parameters TBD when implemented)
-  zscore:
-    median_std: {}              # (signal - median) / std
-    mean_std: {}                # (signal - mean) / std
+  normalization:
+    median_zscore: {}            # (signal - median) / std
+    mean_zscore: {}              # (signal - mean) / std
   correction:
     isosbestic_lasso:
       alpha: 0.0001
