@@ -969,7 +969,7 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
 
         # Apply correction
         if correction_method == "isosbestic_lasso" and correction_fn and ref_result:
-            logger.info(f"Applying isosbestic correction via Lasso regression")
+            logger.info("Applying isosbestic correction via Lasso regression")
             corrected, fitted_reference = correction_fn(
                 sig_result["normalized"], ref_result["normalized"],
                 **config["correction"]["params"],
