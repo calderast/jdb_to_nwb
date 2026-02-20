@@ -924,27 +924,16 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
         raw_signal = bundle.signals[signal_wl]
         raw_reference = bundle.signals[ref_wl] if ref_wl else None
 
-        # Plot raw signals
-        if ref_wl:
-            plot_photometry_signals(
-                visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
-                signals=[raw_signal, raw_reference],
-                signal_labels=[f"Raw {signal_wl}", f"Raw {ref_wl}"],
-                signal_colors=["blue", "purple"],
-                title=f"Raw {bundle.source} signals for {indicator_name}",
-                signal_units="a.u." if bundle.source != "pyphotometry" else "V",
-                fig_dir=fig_dir,
-            )
-            plot_signal_correlation(
-                sig1=raw_signal, sig2=raw_reference,
-                label1=f"Raw {signal_wl}", label2=f"Raw {ref_wl}", fig_dir=fig_dir,
-            )
+        # Build plot label from indicator + wavelength (e.g. "dLight 470nm")
+        def label(wl):
+            return f"{indicator_name} {wl}"
 
         correction_method = config["correction"]["method"]
         correction_fn = CORRECTION_METHODS.get(correction_method)
         corrected = None
         fitted_reference = None
         raw_ratio = None
+        ratio_result = None
 
         # Process signal
         logger.info(f"Processing {signal_wl} signal for {indicator_name}...")
@@ -956,36 +945,12 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             logger.info(f"Processing {ref_wl} reference for {indicator_name}...")
             ref_result = process_single_signal(raw_reference, bundle.sampling_rate, config, logger)
 
-        # Plot processing steps for signal
-        plot_processing_steps(
-            raw_signal, sig_result, bundle.port_visits, bundle.sampling_rate,
-            signal_wl, indicator_name, fig_dir,
-        )
-        if ref_result:
-            plot_processing_steps(
-                raw_reference, ref_result, bundle.port_visits, bundle.sampling_rate,
-                ref_wl, indicator_name, fig_dir,
-            )
-
         # Apply correction
         if correction_method == "isosbestic_lasso" and correction_fn and ref_result:
             logger.info("Applying isosbestic correction via Lasso regression")
             corrected, fitted_reference = correction_fn(
                 sig_result["normalized"], ref_result["normalized"],
                 **config["correction"]["params"],
-            )
-            # Plot isosbestic correction steps
-            plot_photometry_signals(
-                visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
-                signals=[sig_result["normalized"], ref_result["normalized"], fitted_reference, corrected],
-                signal_labels=[
-                    f"Z-scored {signal_wl}", f"Z-scored {ref_wl}",
-                    f"Predicted {signal_wl} from {ref_wl}", "dF/F (post isosbestic correction)",
-                ],
-                signal_colors=["blue", "purple", "gray", "green"],
-                title=f"{indicator_name} isosbestic correction",
-                signal_units="Z-score",
-                fig_dir=fig_dir,
             )
 
         elif correction_method == "ratiometric" and raw_reference is not None:
@@ -994,16 +959,9 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             logger.info(f"Computing ratiometric correction: raw {signal_wl} / raw {ref_wl}")
             raw_ratio = apply_ratiometric_correction(raw_signal, raw_reference)
 
-            # Process the ratio through the same pipeline (smoothing -> baseline -> zscore)
             logger.info(f"Processing {signal_wl}/{ref_wl} ratio for {indicator_name}...")
             ratio_result = process_single_signal(raw_ratio, bundle.sampling_rate, config, logger)
             corrected = ratio_result["normalized"]
-
-            # Plot ratiometric correction steps
-            plot_processing_steps(
-                raw_ratio, ratio_result, bundle.port_visits, bundle.sampling_rate,
-                f"{signal_wl}/{ref_wl} ratio", indicator_name, fig_dir,
-            )
 
         all_results[indicator_name] = {
             "signal_wavelength": signal_wl,
@@ -1019,27 +977,72 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             "config": config,
         }
 
+        # --- Plotting ---
+        if ref_wl:
+            plot_photometry_signals(
+                visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
+                signals=[raw_signal, raw_reference],
+                signal_labels=[f"Raw {label(signal_wl)}", f"Raw {label(ref_wl)}"],
+                signal_colors=["blue", "purple"],
+                title=f"Raw signals for {indicator_name}",
+                signal_units="a.u." if bundle.source != "pyphotometry" else "V",
+                fig_dir=fig_dir,
+            )
+            plot_signal_correlation(
+                sig1=raw_signal, sig2=raw_reference,
+                label1=label(signal_wl), label2=label(ref_wl), fig_dir=fig_dir,
+            )
+
+        plot_processing_steps(
+            raw_signal, sig_result, bundle.port_visits, bundle.sampling_rate,
+            label(signal_wl), fig_dir,
+        )
+        if ref_result:
+            plot_processing_steps(
+                raw_reference, ref_result, bundle.port_visits, bundle.sampling_rate,
+                label(ref_wl), fig_dir,
+            )
+
+        if correction_method == "isosbestic_lasso" and corrected is not None:
+            plot_photometry_signals(
+                visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
+                signals=[sig_result["normalized"], ref_result["normalized"], fitted_reference, corrected],
+                signal_labels=[
+                    f"Normalized {label(signal_wl)}", f"Normalized {label(ref_wl)}",
+                    f"Predicted {label(signal_wl)} from {label(ref_wl)}", "dF/F (corrected)",
+                ],
+                signal_colors=["blue", "purple", "gray", "green"],
+                title=f"{indicator_name} isosbestic correction",
+                signal_units="normalized",
+                fig_dir=fig_dir,
+            )
+        elif correction_method == "ratiometric" and ratio_result is not None:
+            plot_processing_steps(
+                raw_ratio, ratio_result, bundle.port_visits, bundle.sampling_rate,
+                label(f"{signal_wl}/{ref_wl} ratio"), fig_dir,
+            )
+
     return all_results
 
 
-def plot_processing_steps(raw, result, visits, sampling_rate, wavelength, indicator_name, fig_dir):
+def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_dir):
     """Plot the processing steps for a single signal."""
     signals_to_plot = [raw, result["smoothed"], result["baseline_subtracted"], result["normalized"]]
     labels = [
-        f"Raw {wavelength}",
-        f"Smoothed {wavelength}",
-        f"Baseline-subtracted {wavelength}",
-        f"Z-scored {wavelength}",
+        f"Raw {signal_label}",
+        f"Smoothed {signal_label}",
+        f"Baseline-subtracted {signal_label}",
+        f"Normalized {signal_label}",
     ]
-    units = ["a.u.", "a.u.", "a.u.", "Z-score"]
+    units = ["a.u.", "a.u.", "a.u.", "normalized"]
     overlay = None
     if "baseline" in result:
-        overlay = [(result["baseline"], 1, "red", "airPLS baseline")]
+        overlay = [(result["baseline"], 1, "red", "baseline")]
 
     plot_photometry_signals(
         visits=visits, sampling_rate=sampling_rate,
         signals=signals_to_plot, signal_labels=labels,
-        title=f"{wavelength} processing for {indicator_name}",
+        title=f"{signal_label} processing steps",
         signal_units=units,
         overlay_signals=overlay,
         fig_dir=fig_dir,
@@ -1199,11 +1202,11 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
                 nwbfile.add_acquisition(series)
                 logger.info(f"Added raw ratio '{raw_ratio_name}' to NWB")
 
-                # Write z-scored ratio
+                # Write normalized ratio
                 corrected_name = f"corrected_{signal_wl_num}_{ref_wl_num}_ratio"
                 series = FiberPhotometryResponseSeries(
                     name=corrected_name,
-                    description=f"Z-scored ratiometric correction ({signal_wl}/{ref_wl}) for {indicator_name}",
+                    description=f"Normalized ratiometric correction ({signal_wl}/{ref_wl}) for {indicator_name}",
                     data=ind_result["corrected"],
                     unit="z-score",
                     rate=float(bundle.sampling_rate),

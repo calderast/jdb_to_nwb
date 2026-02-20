@@ -863,7 +863,7 @@ def test_load_processing_config():
     assert config["baseline"]["method"] == "airpls"
     assert config["baseline"]["params"]["lambda"] == 1e8
     assert config["baseline"]["params"]["max_iterations"] == 50
-    assert config["zscore"]["method"] == "median_std"
+    assert config["normalization"]["method"] == "median_zscore"
     assert config["correction"]["method"] == "isosbestic_lasso"
     assert config["correction"]["params"]["alpha"] == 0.0001
     assert "description" in config
@@ -874,7 +874,7 @@ def test_load_processing_config():
     assert config["smoothing"]["params"]["order"] == 2
     assert config["baseline"]["method"] == "highpass"
     assert config["baseline"]["params"]["cutoff_hz"] == 0.001
-    assert config["zscore"]["method"] == "mean_std"
+    assert config["normalization"]["method"] == "mean_zscore"
     assert config["correction"]["method"] == "ratiometric"
 
     config = load_processing_config("rda_independent")
@@ -978,15 +978,15 @@ def test_apply_airpls_baseline(dummy_logger):
 
 
 def test_apply_airpls_baseline_with_raw_signal(dummy_logger):
-    """Test that airPLS computes baseline from raw_signal when provided."""
+    """Test that airPLS computes baseline from baseline_signal when provided."""
     np.random.seed(42)
     n = 5000
     raw = np.random.randn(n) * 10 + 1000
     smoothed = np.convolve(raw, np.ones(10) / 10, mode='same')
 
-    # When raw_signal is provided, baseline should be computed from raw_signal
+    # When baseline_signal is provided, baseline should be computed from baseline_signal
     subtracted_with_raw, baseline_from_raw = apply_airpls_baseline(
-        smoothed, dummy_logger, raw_signal=raw
+        smoothed, dummy_logger, baseline_signal=raw
     )
     subtracted_without_raw, baseline_from_smoothed = apply_airpls_baseline(
         smoothed, dummy_logger
