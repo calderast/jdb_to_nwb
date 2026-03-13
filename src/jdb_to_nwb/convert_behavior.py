@@ -8,7 +8,7 @@ from pynwb import NWBFile
 from hdmf.common.table import DynamicTable, VectorData
 from ndx_franklab_novela import AssociatedFiles
 from .timestamps_alignment import trim_sync_pulses, handle_timestamps_reset
-from .plotting.plot_behavior import plot_maze_configurations, plot_trial_time_histogram
+from .plotting.plot_behavior import plot_maze_configurations, plot_trial_time_histogram, plot_probability_matching
 
 
 def load_maze_configurations(maze_configuration_file_path: Path):
