@@ -53,10 +53,7 @@ WAVELENGTH_TO_LED_COLOR = {
 }
 
 
-# ============================================================
-# Functions to read raw photometry data
-# ============================================================
-
+############################ Functions to read raw photometry data ############################
 
 def read_phot_data(phot_file_path):
     """Parse .phot file from Labview into a dict"""
@@ -227,8 +224,7 @@ def run_lockin_detection(phot, start, logger):
 
     Args:
     phot (dict): Dictionary of photometry data
-    start (int): Number of samples to remove from the start of photometry signals
-    for alignment
+    start (int): Number of samples to remove from the start of photometry signals for alignment
     """
     # Default args for lockin detection
     tau = 10
@@ -253,23 +249,15 @@ def run_lockin_detection(phot, start, logger):
     exc1 = phot["data"][0, :]
     exc2 = phot["data"][1, :]
 
-    # Call lockin_detection function for the second set of signals
-    sig2, ref2 = lockin_detection(
-        detector, exc1, exc2, phot["sampling_rate"], tau=tau, filter_order=filter_order, detrend=detrend, full=full
-    )
-
     # Cut off the beginning of the signals to match behavioral data
     sig1 = sig1[start:]
-    sig2 = sig2[start:]
     ref = ref[start:]
-    ref2 = ref2[start:]
 
     loc = phot["channels"][2]["location"][:15]  # First 15 characters of the location
     logger.debug(f"The location of the fiber is: {loc}")
 
     # Create a dict with the relevant signals to match signals.mat returned by the original MATLAB processing code
-    # NOTE: We don't use sig2 and ref2 - these may be removed in a future PR but are kept for posterity for now
-    signals = {"sig1": sig1, "ref": ref, "sig2": sig2, "ref2": ref2, "loc": loc}
+    signals = {"sig1": sig1, "ref": ref, "loc": loc}
     return signals
 
 
@@ -527,10 +515,7 @@ def crop_signals(signal_list, sampling_rate, phot_end_time_mins, logger):
     return tuple(sig[:samples_to_keep] for sig in signal_list)
 
 
-# ============================================================
-# Signal Processing
-# ============================================================
-
+############################ Signal processing functions ############################
 
 def whittaker_smooth(data, binary_mask, lambda_):
     """
@@ -689,10 +674,7 @@ def apply_ratiometric_correction(signal, reference):
     return signal / reference
 
 
-# ============================================================
-# Pipeline Orchestration
-# ============================================================
-
+############################ Processing pipeline for a given signal ############################
 
 # Dispatch tables mapping method names to functions
 SMOOTHING_METHODS = {
@@ -977,7 +959,7 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             "config": config,
         }
 
-        # --- Plotting ---
+        # Plotting
         if ref_wl:
             plot_photometry_signals(
                 visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
@@ -1049,10 +1031,7 @@ def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_
     )
 
 
-# ============================================================
-# NWB Writing
-# ============================================================
-
+############################ Add signals to nwb ############################
 
 def find_led_table_region(nwbfile, led_color, logger):
     """Find the FiberPhotometryTableRegion for a given LED color.
@@ -1230,9 +1209,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
     }
 
 
-# ============================================================
-# NWB Metadata
-# ============================================================
+############################ Add metatdata to nwb ############################
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
@@ -1504,9 +1481,7 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     nwbfile.add_lab_meta_data(fiber_photometry_lab_meta_data)
 
 
-# ============================================================
-# Public Entry Point
-# ============================================================
+############################ Entry point ############################
 
 
 def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):

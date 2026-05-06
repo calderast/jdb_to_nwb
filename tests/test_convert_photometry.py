@@ -598,9 +598,18 @@ def test_load_labview_raw(dummy_logger, labview_dlight_ref):
     assert set(bundle.signals.keys()) == {"470nm", "405nm"}
     assert len(bundle.port_visits) == 188
 
-    # Signals must match the reference exactly (same Python lock-in + downsample)
-    np.testing.assert_array_equal(bundle.signals["470nm"], labview_dlight_ref["raw_green"])
-    np.testing.assert_array_equal(bundle.signals["405nm"], labview_dlight_ref["raw_reference"])
+    # Lock-in detection uses FFT (via scipy.signal.hilbert), which is not bit-reproducible across
+    # platforms (ARM macOS vs x86 Linux produce ~1e-5 relative differences). 
+    # Use rtol=1e-4 so tests pass on github actions.
+    # For the record, on Stephanie's Mac, tests pass locally with assert_array_equal
+    np.testing.assert_allclose(
+        bundle.signals["470nm"], labview_dlight_ref["raw_green"], rtol=1e-4,
+        err_msg="470nm signal mismatch after lock-in detection",
+    )
+    np.testing.assert_allclose(
+        bundle.signals["405nm"], labview_dlight_ref["raw_reference"], rtol=1e-4,
+        err_msg="405nm signal mismatch after lock-in detection",
+    )
     np.testing.assert_array_equal(bundle.port_visits, labview_dlight_ref["port_visits"])
 
 
@@ -1241,7 +1250,11 @@ def test_process_single_signal_gach_ratiometric(ppd_gach_rda_ref, dummy_logger):
         result["baseline_subtracted"], ppd_gach_rda_ref["ratio_highpass"], atol=1e-10,
         err_msg="Highpass baseline-subtracted ratio mismatch",
     )
+    # np.mean/std use platform-specific SIMD summation (AVX/SSE on x86 vs NEON on ARM),
+    # producing ~1e-8 differences in z-score when computed from a recomputed (vs stored) array.
+    # We'll test with atol=1e-7 so tests pass on Github actions.
+    # For the record, on Stephanie's Mac, tests pass locally with atol=1e-10
     np.testing.assert_allclose(
-        result["normalized"], ppd_gach_rda_ref["ratio_zscored"], atol=1e-10,
+        result["normalized"], ppd_gach_rda_ref["ratio_zscored"], atol=1e-7,
         err_msg="Z-scored ratio mismatch",
     )
