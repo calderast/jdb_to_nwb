@@ -441,7 +441,7 @@ def load_labview_mat(signals_mat_path, logger, phot_end_time_mins=0):
     )
 
 
-def load_pyphotometry(ppd_file_path, logger):
+def load_pyphotometry(ppd_file_path, logger, phot_end_time_mins=0):
     """Load pyPhotometry .ppd file.
 
     Returns a PhotometrySignalBundle with signals keyed by wavelength.
@@ -468,17 +468,16 @@ def load_pyphotometry(ppd_file_path, logger):
     # Map channels to wavelengths based on signal count
     if ppd_data.get('analog_3') is not None:
         logger.info("Detected 3-signal pyPhotometry: analog_1=470nm, analog_2=565nm, analog_3=405nm")
-        signals = {
-            "470nm": ppd_data['analog_1'],
-            "565nm": ppd_data['analog_2'],
-            "405nm": ppd_data['analog_3'],
-        }
+        wavelength_keys = ["470nm", "565nm", "405nm"]
+        raw_signals = [ppd_data['analog_1'], ppd_data['analog_2'], ppd_data['analog_3']]
     else:
         logger.info("Detected 2-signal pyPhotometry: analog_1=470nm, analog_2=405nm")
-        signals = {
-            "470nm": ppd_data['analog_1'],
-            "405nm": ppd_data['analog_2'],
-        }
+        wavelength_keys = ["470nm", "405nm"]
+        raw_signals = [ppd_data['analog_1'], ppd_data['analog_2']]
+
+    # Handle cropping (if needed)
+    cropped_signals = crop_signals(raw_signals, sampling_rate, phot_end_time_mins, logger)
+    signals = dict(zip(wavelength_keys, cropped_signals))
 
     return PhotometrySignalBundle(
         signals=signals,
@@ -1532,7 +1531,9 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     elif "ppd_file_path" in phot_meta:
         logger.info("Using pyPhotometry for photometry!")
         print("Processing ppd file from pyPhotometry...")
-        bundle = load_pyphotometry(phot_meta["ppd_file_path"], logger)
+        bundle = load_pyphotometry(
+            phot_meta["ppd_file_path"], logger, phot_meta.get("phot_end_time_mins", 0),
+        )
     else:
         logger.error("The required photometry subfields do not exist in the metadata dictionary.")
         raise ValueError(
