@@ -1209,7 +1209,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
     }
 
 
-############################ Add metatdata to nwb ############################
+############################ Add metadata to nwb ############################
 
 
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
