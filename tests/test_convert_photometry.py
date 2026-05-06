@@ -1,6 +1,7 @@
 from datetime import datetime
 import numpy as np
 import pandas as pd
+import pytest
 from pathlib import Path
 import scipy.io
 from dateutil import tz
@@ -24,13 +25,24 @@ from jdb_to_nwb.convert_photometry import (
     load_pyphotometry,
     load_processing_config,
     PhotometrySignalBundle,
+    apply_rolling_mean,
+    apply_lowpass_filter,
+    apply_highpass_filter,
+    apply_airpls_baseline,
+    apply_zscore_median_std,
+    apply_zscore_mean_std,
+    apply_isosbestic_correction,
+    apply_ratiometric_correction,
+    process_single_signal,
 )
 
 
-def add_dummy_labview_metadata_to_metadata(metadata):
+### Helper functions to add photometry metadata to the metadata dict so the tests can run
+
+def add_dummy_2_signal_dlight_metadata(metadata):
     """
     Add values to the metadata dictionary so that the tests can run.
-    Values assume recording in the old maze room with LabVIEW
+    Values assume recording 2 signals (dLight at 470nm and 405nm) in the old maze room (Thorlabs LEDs)
     """
     metadata["photometry"]["excitation_sources"] = [
         "Thorlabs Blue LED",
@@ -78,11 +90,10 @@ def add_dummy_labview_metadata_to_metadata(metadata):
     ]
 
 
-def add_dummy_pyphotometry_metadata_to_metadata(metadata):
+def add_dummy_3_signal_gach_rda_metadata(metadata):
     """
     Add values to the metadata dictionary so that the tests can run.
-    Values assume recording in the new maze room with pyPhotometry
-    test_add_photometry_metadata tests that the values are added correctly.
+    Values assume recording 3 signals (gACh4h at 470nm and 405nm, rDA3m at 565nm) in the new maze room (Doric LEDs)
     """
     metadata["photometry"]["excitation_sources"] = [
         "Doric Purple LED",
@@ -147,355 +158,83 @@ def add_dummy_pyphotometry_metadata_to_metadata(metadata):
             "titer_in_vg_per_mL": 5.89e12,
         }
     ]
+    
 
+######################## Test adding photometry metadata + correct signal mappings ########################
 
-def test_load_labview_raw(dummy_logger):
+def test_add_photometry_metadata_2_signals(dummy_logger):
     """
-    Test that load_labview_raw returns a valid PhotometrySignalBundle
-    with signals consistent with the reference signals.mat.
+    Test that the add_photometry_metadata function adds the expected metadata to the NWB file.
+    For this test, we use 2 signal (dLight at 470nm and 405nm) metadata. 
     """
-
-    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
-
-    # Load signals.mat created by the external MATLAB photometry processing code as a reference
-    signals_mat_file_path = test_data_dir / "signals.mat"
-    reference_signals_mat = scipy.io.loadmat(signals_mat_file_path, matlab_compatible=True)
-
-    # Load the raw .phot and .box files through the new pipeline
-    phot_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    box_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
-    bundle = load_labview_raw(phot_file_path, box_file_path, dummy_logger)
-
-    # Check bundle type and structure
-    assert isinstance(bundle, PhotometrySignalBundle)
-    assert isinstance(bundle.photometry_start, datetime)
-    assert bundle.sampling_rate == 250
-    assert bundle.source == "labview_raw"
-    assert set(bundle.signals.keys()) == {"470nm", "405nm"}
-
-    # Signals should be non-empty and same length
-    assert len(bundle.signals["470nm"]) > 0
-    assert len(bundle.signals["470nm"]) == len(bundle.signals["405nm"])
-
-    # Port visits should be non-negative
-    assert len(bundle.port_visits) > 0
-    assert all(v >= 0 for v in bundle.port_visits)
-
-    # Cross-validate against signals.mat (preprocessed by MATLAB at 10kHz).
-    # The MATLAB pipeline removed some initial samples for alignment. Our pipeline does not,
-    # so the bundle has more samples at the front. Both are downsampled to 250Hz.
-    SR, Fs = 10000, 250
-    downsample_factor = int(SR / Fs)
-    # In the loader, 470nm comes from lockin_signals["sig1"] and 405nm comes from lockin_signals["ref"]
-    ref_sig1 = np.squeeze(reference_signals_mat["sig1"])[::downsample_factor]
-    ref_ref = np.squeeze(reference_signals_mat["ref"])[::downsample_factor]
-
-    assert len(bundle.signals["470nm"]) >= len(ref_sig1), (
-        "Bundle should have at least as many samples as the reference signals.mat"
-    )
-
-    # Calculate the offset: our bundle has extra samples at the front that the MATLAB pipeline removed
-    samples_removed_from_reference = len(bundle.signals["470nm"]) - len(ref_sig1)
-
-    # The 470nm signal (sig1) should match the reference within 0.01%
-    assert np.allclose(
-        bundle.signals["470nm"][samples_removed_from_reference:],
-        ref_sig1,
-        rtol=1e-4,
-    )
-    # The 405nm signal (ref) should match the reference within 0.01%
-    assert np.allclose(
-        bundle.signals["405nm"][samples_removed_from_reference:],
-        ref_ref,
-        rtol=1e-4,
-    )
-
-    # Port visit count should match (visits occur at the same times)
-    ref_visits = np.divide(np.squeeze(reference_signals_mat["visits"]), downsample_factor).astype(int)
-    assert np.allclose(bundle.port_visits, ref_visits, atol=1)
-
-
-def test_add_photometry_from_signals_mat(dummy_logger):
-    """
-    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
-
-    This version of the test uses the already created signals.mat at "signals_mat_file_path"
-    to further process and add photometry signals to the NWB.
-    """
-
-    # Create a test metadata dictionary with preprocessed LabVIEW data ("signals_mat_file_path")
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
-    add_dummy_labview_metadata_to_metadata(metadata)
-
-    # Define paths to reference data
-    reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
-    reference_dataframe = pd.read_csv(reference_data_path)
-
-    # Create a test NWBFile
+    # Add metadata for recording dLight in the old maze room to the metadata dict
+    add_dummy_2_signal_dlight_metadata(metadata)
+    
     nwbfile = NWBFile(
         session_description="Mock session",
         session_start_time=datetime.now(tz.tzlocal()),
         identifier="mock_session",
     )
 
-    # Add photometry data to the nwbfile
-    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    add_photometry_metadata(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
-    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
-    expected_photometry_series = {"raw_470", "raw_405", "processed_470", "processed_405",
-                                  "corrected_470_dFF", "fitted_405"}
-    expected_sampling_rate = 250  # Hz
+    # Check Thorlabs excitation sources
+    assert "Thorlabs Blue LED" in nwbfile.devices
+    blue_led = nwbfile.devices["Thorlabs Blue LED"]
+    assert isinstance(blue_led, ExcitationSource)
+    assert blue_led.excitation_wavelength_in_nm == 470.0
+    assert blue_led.illumination_type == "LED"
+    assert blue_led.manufacturer == "Thorlabs"
 
-    # Assert that we have returned the correct sampling rate
-    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
-        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
-    # We expect photometry_start = None when starting photometry conversion from signals.mat
-    assert photometry_data_dict.get('photometry_start') is None, (
-        f"Expected 'photometry_start' = None when starting from signals.mat, "
-        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
-    # Assert that the returned photometry_data_dict includes port_visits as a list or array
-    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
-        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
-    )
+    assert "Thorlabs Purple LED" in nwbfile.devices
+    purple_led = nwbfile.devices["Thorlabs Purple LED"]
+    assert isinstance(purple_led, ExcitationSource)
+    assert purple_led.excitation_wavelength_in_nm == 405.0
+    assert purple_led.illumination_type == "LED"
+    assert purple_led.manufacturer == "Thorlabs"
 
-    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
-    actual_photometry_series = set(nwbfile.acquisition.keys())
-    missing_photometry_series = expected_photometry_series - actual_photometry_series
-    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
+    # Check photodetector
+    assert "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)" in nwbfile.devices
+    photodetector = nwbfile.devices["Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"]
+    assert isinstance(photodetector, Photodetector)
 
-    # Check the basic attributes of each series
-    for series_name in expected_photometry_series:
-        # Assert that all series are of type FiberPhotometryResponseSeries
-        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
-            f"{series_name} is not of type FiberPhotometryResponseSeries")
-        # Assert all series have a sampling rate of 250 Hz
-        assert (
-            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
-        ), (
-            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
-            f"expected {expected_sampling_rate}"
-        )
+    # Check optical fibers (bilateral, recording from right)
+    assert "Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)" in nwbfile.devices
+    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
+    assert isinstance(optic_fiber, OpticalFiber)
 
-    # Check that the corrected dF/F signal in the nwbfile matches the reference green signal
-    corrected_dFF = np.array(nwbfile.acquisition["corrected_470_dFF"].data)
-    green_dFF_reference = reference_dataframe["green"].values
+    # Check dLight indicators
+    assert "dLight1.3b (right NAcc)" in nwbfile.devices
+    indicator = nwbfile.devices["dLight1.3b (right NAcc)"]
+    assert isinstance(indicator, Indicator)
+    assert indicator.injection_location == "NAcc"
+    assert indicator.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
 
-    # Check that the lengths match
-    assert len(corrected_dFF) == len(green_dFF_reference), (
-        f"Data length mismatch: corrected_470_dFF has {len(corrected_dFF)} points, "
-        f"but the reference signal has {len(green_dFF_reference)} points."
-    )
+    # Check fiber photometry table
+    table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
+    # dLight has 2 excitation sources (blue + purple), recording from right NAcc
+    assert len(table) == 2
 
-    # Check that the corrected dF/F signal matches the reference (within a tolerance)
-    np.testing.assert_allclose(
-        corrected_dFF,
-        green_dFF_reference,
-        atol=0.005,
-        rtol=0.05,
-        err_msg="Data mismatch between nwbfile corrected_470_dFF and reference data",
-    )
+    # Verify the table rows have the correct indicator + LED combinations
+    table_combos = set()
+    for row in table:
+        table_combos.add((row["indicator"].item().name, row["excitation_source"].item().name))
+
+    expected_combos = {
+        ("dLight1.3b (right NAcc)", "Thorlabs Blue LED"),
+        ("dLight1.3b (right NAcc)", "Thorlabs Purple LED"),
+    }
+    assert table_combos == expected_combos
 
 
-def test_add_photometry_from_raw_labview(dummy_logger):
-    """
-    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
-
-    This version of the test uses the raw LabVIEW data at "phot_file_path" and "box_file_path"
-    to first create a signals dict, and then further process and add photometry signals to the NWB.
-    """
-
-    # Create a test metadata dictionary with raw LabVIEW data ("phot_file_path" and "box_file_path")
-    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
-    metadata = {}
-    metadata["photometry"] = {}
-    metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
-    metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
-    add_dummy_labview_metadata_to_metadata(metadata)
-
-    # Define paths to reference data
-    reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
-    reference_dataframe = pd.read_csv(reference_data_path)
-
-    # Create a test NWBFile
-    nwbfile = NWBFile(
-        session_description="Mock session",
-        session_start_time=datetime.now(tz.tzlocal()),
-        identifier="mock_session",
-    )
-
-    # Add photometry data to the nwbfile
-    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-
-    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
-    expected_photometry_series = {"raw_470", "raw_405", "processed_470", "processed_405",
-                                  "corrected_470_dFF", "fitted_405"}
-    expected_sampling_rate = 250  # Hz
-
-    # Assert that we have returned the correct sampling rate
-    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
-        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
-    # Assert that we have returned photometry_start as a datetime object
-    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
-        f"Expected photometry data dict to include 'photometry_start' as a datetime object, "
-        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
-    # Assert that the returned photometry_data_dict includes port_visits as a list or array
-    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
-        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
-    )
-
-    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
-    actual_photometry_series = set(nwbfile.acquisition.keys())
-    missing_photometry_series = expected_photometry_series - actual_photometry_series
-    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
-
-    # Check the basic attributes of each series
-    for series_name in expected_photometry_series:
-        # Assert that all series are of type FiberPhotometryResponseSeries
-        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
-            f"{series_name} is not of type FiberPhotometryResponseSeries")
-        # Assert all series have a sampling rate of 250 Hz
-        assert (
-            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
-        ), (
-            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
-            f"expected {expected_sampling_rate}"
-        )
-
-    # Check that the corrected dF/F signal in the nwbfile matches the reference green signal
-    corrected_dFF = np.array(nwbfile.acquisition["corrected_470_dFF"].data)
-    green_dFF_reference = reference_dataframe["green"].values
-
-    # In our former MATLAB photometry preprocessing pipeline (used to create the reference dataframe),
-    # we would sometimes remove some samples from the beginning of our signals for alignment with behavior.
-    # In this new pipeline, we do this alignment later so this is no longer necessary at this step.
-    # This results in the signals in our created dict being longer than the reference signals in the dataframe,
-    # so we calculate the number of samples to remove from the beginning so we can do comparisons.
-    samples_removed_from_reference = len(corrected_dFF) - len(green_dFF_reference)
-    corrected_dFF = corrected_dFF[samples_removed_from_reference:]
-
-    # Check that the corrected dF/F signal matches the reference (within a tolerance)
-    # TODO: have a conversation about how we feel about the removal of some samples from the front of the signal.
-    # Because the signals in our returned signals dict and signals.mat are different lengths, when we downsample to
-    # 250 Hz we end up taking slightly different data points from the signal. These differences propagate through our
-    # filtering etc. The signals are visually pretty similar but would fail most reasonable assertions of similarity.
-    # Commenting out this similarity test for now.
-
-    # np.testing.assert_allclose(
-    #    corrected_dFF,
-    #    green_dFF_reference,
-    #    atol=0.005,
-    #    rtol=0.05,
-    #    err_msg="Data mismatch between nwbfile corrected_470_dFF and reference data",
-    # )
-
-
-def test_add_photometry_from_pyphotometry(dummy_logger):
-    """
-    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
-
-    This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
-    """
-
-    # Create a test metadata dictionary with pyPhotometry data
-    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
-    metadata = {}
-    metadata["photometry"] = {}
-    metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
-    add_dummy_pyphotometry_metadata_to_metadata(metadata)
-
-    # Define paths to reference data
-    reference_data_path = test_data_dir / "sampleframe.csv"
-    reference_dataframe = pd.read_csv(reference_data_path)
-
-    # Create a test NWBFile
-    nwbfile = NWBFile(
-        session_description="Mock session",
-        session_start_time=datetime.now(tz.tzlocal()),
-        identifier="mock_session",
-    )
-
-    # Add photometry data to the nwbfile
-    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-
-    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
-    # gACh4h (signal=470nm, reference=405nm, preset=gach_ratiometric) produces:
-    #   raw_470, raw_405, processed_470, processed_405, corrected_470_405_ratio
-    # rDA3m (signal=565nm, no reference, preset=rda_independent) produces:
-    #   raw_565, processed_565
-    expected_photometry_series = {"raw_470", "raw_405", "raw_565",
-                                  "processed_470", "processed_405", "processed_565",
-                                  "raw_470_405_ratio", "corrected_470_405_ratio"}
-    expected_sampling_rate = 86  # Hz
-
-    # Assert that we have returned the correct sampling rate
-    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
-        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
-    # Assert that we have returned photometry_start as a datetime object
-    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
-        f"Expected photometry data dict to include 'photometry_start' as a datetime object, "
-        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
-    # Assert that the returned photometry_data_dict includes port_visits as a list or array
-    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
-        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
-    )
-
-    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
-    actual_photometry_series = set(nwbfile.acquisition.keys())
-    missing_photometry_series = expected_photometry_series - actual_photometry_series
-    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
-
-    # Check the basic attributes of each series
-    for series_name in expected_photometry_series:
-        # Assert that all series are of type FiberPhotometryResponseSeries
-        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
-            f"{series_name} is not of type FiberPhotometryResponseSeries")
-        # Assert all series have a sampling rate of 86 Hz
-        assert (
-            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
-        ), (
-            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
-            f"expected {expected_sampling_rate}"
-        )
-
-    # Compare raw signals, individually-processed signals, and ratiometric correction against reference.
-    # Raw signals should match exactly. Individually processed signals (lowpass + highpass + mean_std z-score)
-    # use the same methods as the old pipeline, so they should also match.
-    # The ratiometric correction computes the ratio from raw signals first, then processes it through
-    # the same pipeline, matching the old code's behavior.
-    nwb_signal_names = ["raw_470", "raw_405", "raw_565",
-                        "processed_470", "processed_405", "processed_565",
-                        "raw_470_405_ratio", "corrected_470_405_ratio"]
-    reference_signal_names = ["raw_green", "raw_405", "raw_red",
-                              "green_z_scored", "z_scored_405", "red_z_scored",
-                              "raw 470/405", "ratio_z_scored"]
-
-    for sig_name, ref_name in zip(nwb_signal_names, reference_signal_names):
-        signal = np.array(nwbfile.acquisition[sig_name].data)
-        reference = reference_dataframe[ref_name].values
-
-        # Check that the lengths match
-        assert len(signal) == len(reference), (
-            f"Data length mismatch: {sig_name} has {len(signal)} points, "
-            f"but the reference signal {ref_name} has {len(reference)} points."
-        )
-
-        # Check that the signal in the nwbfile matches the reference signal (within a tolerance)
-        np.testing.assert_allclose(
-            signal,
-            reference,
-            atol=0.005,
-            rtol=0.05,
-            err_msg=f"Data mismatch between nwbfile {sig_name} and reference {ref_name}",
-        )
-
-
-def test_add_photometry_metadata(dummy_logger):
+def test_add_photometry_metadata_3_signals(dummy_logger):
     """
     Test that the add_photometry_metadata function adds the expected metadata to the NWB file.
-    For this test, we use pyPhotometry metadata. 
+    For this test, we use 3 signal (gACh4h at 470nm and 405nm, rDA3m at 565nm) metadata. 
     """
 
     # Create a test metadata dictionary with pyPhotometry data and metadata
@@ -503,7 +242,8 @@ def test_add_photometry_metadata(dummy_logger):
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
-    add_dummy_pyphotometry_metadata_to_metadata(metadata)
+    # Add metadata for recording gACh4h and rDA3m in the new maze room to the metadata dict
+    add_dummy_3_signal_gach_rda_metadata(metadata)
 
     # Create a test NWBFile
     nwbfile = NWBFile(
@@ -652,6 +392,59 @@ def test_add_photometry_metadata(dummy_logger):
     assert expected_combinations == combinations_in_table
 
 
+def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
+    """
+    Test that the add_photometry function responds appropriately to missing or incomplete metadata.
+
+    If no 'photometry' key is in the metadata dictionary, it should print that we are skipping
+    photometry conversion and move on without raising any errors.
+
+    If there is a 'photometry' key in the metadata dict but the required paths to photometry data
+    are not present, raise a ValueError telling the user which keys must be present in the dict.
+    """
+
+    # Create a test metadata dictionary with no photometry key
+    metadata = {}
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # If we call the add_photometry function with no 'photometry' key in metadata,
+    # It should print that we are skipping photometry conversion and return None for visits.
+    # This should not raise any errors, as omitting the 'photometry' key is a
+    # valid way to specify that we have no photometry data for this session.
+
+    # Call the add_photometry function with no 'photometry' key in metadata
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    captured = capsys.readouterr() # capture stdout
+
+    # Check that the correct message was printed to stdout and returned dict is empty
+    assert "No photometry metadata found for this session. Skipping photometry conversion." in captured.out
+    assert photometry_data_dict.get('sampling_rate') is None
+    assert photometry_data_dict.get('port_visits') is None
+    assert photometry_data_dict.get('photometry_start') is None
+
+    # Create a test metadata dictionary with a photometry field and metadata but no photometry data
+    metadata["photometry"] = {}
+    # Add metadata for recording gACh4h and rDA3m in the new maze room to the metadata dict
+    add_dummy_3_signal_gach_rda_metadata(metadata)
+
+    # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
+    try:
+        photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    except ValueError as e:
+        assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
+    else:
+        assert False, (
+            "Expected ValueError was not raised in response to "
+            "missing photometry subfields in the metadata dict."
+        )
+
+
 def test_photometry_series_mappings(dummy_logger):
     """Test that each FiberPhotometryResponseSeries is linked to the correct fiber_photometry_table row."""
 
@@ -659,7 +452,8 @@ def test_photometry_series_mappings(dummy_logger):
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
-    add_dummy_pyphotometry_metadata_to_metadata(metadata)
+    # Add metadata for recording gACh4h and rDA3m in the new maze room to the metadata dict
+    add_dummy_3_signal_gach_rda_metadata(metadata)
 
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -710,142 +504,7 @@ def test_photometry_series_mappings(dummy_logger):
         )
 
 
-def test_add_photometry_with_incomplete_metadata(capsys, dummy_logger):
-    """
-    Test that the add_photometry function responds appropriately to missing or incomplete metadata.
-
-    If no 'photometry' key is in the metadata dictionary, it should print that we are skipping
-    photometry conversion and move on without raising any errors.
-
-    If there is a 'photometry' key in the metadata dict but the required paths to photometry data
-    are not present, raise a ValueError telling the user which keys must be present in the dict.
-    """
-
-    # Create a test metadata dictionary with no photometry key
-    metadata = {}
-
-    # Create a test NWBFile
-    nwbfile = NWBFile(
-        session_description="Mock session",
-        session_start_time=datetime.now(tz.tzlocal()),
-        identifier="mock_session",
-    )
-
-    # If we call the add_photometry function with no 'photometry' key in metadata,
-    # It should print that we are skipping photometry conversion and return None for visits.
-    # This should not raise any errors, as omitting the 'photometry' key is a
-    # valid way to specify that we have no photometry data for this session.
-
-    # Call the add_photometry function with no 'photometry' key in metadata
-    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    captured = capsys.readouterr() # capture stdout
-
-    # Check that the correct message was printed to stdout and returned dict is empty
-    assert "No photometry metadata found for this session. Skipping photometry conversion." in captured.out
-    assert photometry_data_dict.get('sampling_rate') is None
-    assert photometry_data_dict.get('port_visits') is None
-    assert photometry_data_dict.get('photometry_start') is None
-
-    # Create a test metadata dictionary with a photometry field and metadata but no photometry data
-    metadata["photometry"] = {}
-    add_dummy_pyphotometry_metadata_to_metadata(metadata)
-
-    # Check that add_photometry raises a ValueError about missing fields in the metadata dictionary
-    try:
-        photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
-    except ValueError as e:
-        assert str(e).startswith("The required photometry subfields do not exist in the metadata dictionary")
-    else:
-        assert False, (
-            "Expected ValueError was not raised in response to "
-            "missing photometry subfields in the metadata dict."
-        )
-
-
-# ============================================================
-# Loader unit tests
-# ============================================================
-
-
-def test_load_labview_mat(dummy_logger):
-    """Test that load_labview_mat returns a valid PhotometrySignalBundle."""
-    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
-    signals_mat_path = test_data_dir / "signals.mat"
-    bundle = load_labview_mat(signals_mat_path, dummy_logger)
-
-    # Check bundle structure
-    assert isinstance(bundle, PhotometrySignalBundle)
-    assert bundle.sampling_rate == 250
-    assert bundle.source == "labview_mat"
-    assert bundle.photometry_start is None  # signals.mat has no start time
-    assert set(bundle.signals.keys()) == {"470nm", "405nm"}
-
-    # Signals should be non-empty and same length
-    assert len(bundle.signals["470nm"]) > 0
-    assert len(bundle.signals["470nm"]) == len(bundle.signals["405nm"])
-
-    # Port visits should be non-negative
-    assert len(bundle.port_visits) > 0
-    assert all(v >= 0 for v in bundle.port_visits)
-
-    # Cross-validate: the signals should match the raw signals.mat downsampled to 250Hz
-    reference_signals_mat = scipy.io.loadmat(signals_mat_path, matlab_compatible=True)
-    downsample_factor = int(10000 / 250)
-    ref_sig1 = np.squeeze(reference_signals_mat["sig1"])[::downsample_factor]
-    ref_ref = np.squeeze(reference_signals_mat["ref"])[::downsample_factor]
-
-    np.testing.assert_array_equal(bundle.signals["470nm"], ref_sig1)
-    np.testing.assert_array_equal(bundle.signals["405nm"], ref_ref)
-
-
-def test_load_pyphotometry(dummy_logger):
-    """Test that load_pyphotometry returns a valid PhotometrySignalBundle for 3-signal data."""
-    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
-    ppd_path = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
-    bundle = load_pyphotometry(ppd_path, dummy_logger)
-
-    # Check bundle structure
-    assert isinstance(bundle, PhotometrySignalBundle)
-    assert bundle.sampling_rate == 86
-    assert bundle.source == "pyphotometry"
-    assert isinstance(bundle.photometry_start, datetime)
-    assert set(bundle.signals.keys()) == {"470nm", "405nm", "565nm"}
-
-    # Signals should be non-empty and same length
-    assert len(bundle.signals["470nm"]) > 0
-    assert len(bundle.signals["470nm"]) == len(bundle.signals["405nm"])
-    assert len(bundle.signals["470nm"]) == len(bundle.signals["565nm"])
-
-    # Port visits should be non-negative
-    assert len(bundle.port_visits) > 0
-    assert all(v >= 0 for v in bundle.port_visits)
-
-    # Cross-validate raw signals against reference CSV
-    reference_dataframe = pd.read_csv(test_data_dir / "sampleframe.csv")
-    np.testing.assert_allclose(
-        bundle.signals["470nm"],
-        reference_dataframe["raw_green"].values,
-        atol=1e-10,
-        err_msg="470nm raw signal doesn't match reference raw_green",
-    )
-    np.testing.assert_allclose(
-        bundle.signals["405nm"],
-        reference_dataframe["raw_405"].values,
-        atol=1e-10,
-        err_msg="405nm raw signal doesn't match reference raw_405",
-    )
-    np.testing.assert_allclose(
-        bundle.signals["565nm"],
-        reference_dataframe["raw_red"].values,
-        atol=1e-10,
-        err_msg="565nm raw signal doesn't match reference raw_red",
-    )
-
-
-# ============================================================
-# Processing config tests
-# ============================================================
-
+######################## Test loading processing presets and overrides ########################
 
 def test_load_processing_config():
     """Test that load_processing_config loads presets and resolves method defaults."""
@@ -898,71 +557,600 @@ def test_load_processing_config_invalid_preset():
         assert False, "Expected ValueError for invalid preset name"
 
 
-# ============================================================
-# LabVIEW metadata test (Thorlabs LEDs)
-# ============================================================
+######################## Test loading signals into a PhotometrySignalBundle ########################
+# We have 4 cases:
+# 1. Load LabVIEW from signals.mat (legacy)
+# 2. Load LabVIEW from raw phot and box files
+# 3. Load pyPhotometry from ppd file (3 signals)
+# 4. Load pyPhotometry from ppd file (2 signals)
+
+def test_load_labview_mat(dummy_logger, labview_mat_ref):
+    """Test that load_labview_mat returns a PhotometrySignalBundle matching the reference npz."""
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
+    signals_mat_path = test_data_dir / "signals.mat"
+    bundle = load_labview_mat(signals_mat_path, dummy_logger)
+
+    # Check bundle structure
+    assert isinstance(bundle, PhotometrySignalBundle)
+    assert bundle.sampling_rate == 250
+    assert bundle.source == "labview_mat"
+    assert bundle.photometry_start is None  # signals.mat has no start time
+    assert set(bundle.signals.keys()) == {"470nm", "405nm"}
+    assert len(bundle.port_visits) == 188
+
+    # Signals and port visits must match the reference exactly
+    np.testing.assert_array_equal(bundle.signals["470nm"], labview_mat_ref["raw_green"])
+    np.testing.assert_array_equal(bundle.signals["405nm"], labview_mat_ref["raw_reference"])
+    np.testing.assert_array_equal(bundle.port_visits, labview_mat_ref["port_visits"])
 
 
-def test_add_photometry_metadata_labview(dummy_logger):
-    """Test that add_photometry_metadata works for LabVIEW sessions with Thorlabs LEDs."""
+def test_load_labview_raw(dummy_logger, labview_dlight_ref):
+    """Test that load_labview_raw returns a PhotometrySignalBundle matching the reference npz."""
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
+    phot_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    box_file_path = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    bundle = load_labview_raw(phot_file_path, box_file_path, dummy_logger)
+
+    # Check bundle structure
+    assert isinstance(bundle, PhotometrySignalBundle)
+    assert isinstance(bundle.photometry_start, datetime)
+    assert bundle.sampling_rate == 250
+    assert bundle.source == "labview_raw"
+    assert set(bundle.signals.keys()) == {"470nm", "405nm"}
+    assert len(bundle.port_visits) == 188
+
+    # Signals must match the reference exactly (same Python lock-in + downsample)
+    np.testing.assert_array_equal(bundle.signals["470nm"], labview_dlight_ref["raw_green"])
+    np.testing.assert_array_equal(bundle.signals["405nm"], labview_dlight_ref["raw_reference"])
+    np.testing.assert_array_equal(bundle.port_visits, labview_dlight_ref["port_visits"])
+
+
+def test_load_3_signal_pyphotometry(dummy_logger, ppd_gach_rda_ref):
+    """Test that load_pyphotometry returns a PhotometrySignalBundle matching the reference npz."""
+    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
+    ppd_path = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+    bundle = load_pyphotometry(ppd_path, dummy_logger)
+
+    # Check bundle structure
+    assert isinstance(bundle, PhotometrySignalBundle)
+    assert bundle.sampling_rate == 86
+    assert bundle.source == "pyphotometry"
+    assert isinstance(bundle.photometry_start, datetime)
+    assert set(bundle.signals.keys()) == {"470nm", "405nm", "565nm"}
+    assert len(bundle.port_visits) == 220
+
+    # Signals and port visits must match the reference exactly
+    np.testing.assert_array_equal(bundle.signals["470nm"], ppd_gach_rda_ref["raw_green"])
+    np.testing.assert_array_equal(bundle.signals["405nm"], ppd_gach_rda_ref["raw_405"])
+    np.testing.assert_array_equal(bundle.signals["565nm"], ppd_gach_rda_ref["raw_red"])
+    np.testing.assert_array_equal(bundle.port_visits, ppd_gach_rda_ref["port_visits"])
+    
+#TODO: add test_load_2_signal_pyphotometry
+    
+    
+######################## Test full process of going from raw photometry to signals in nwb ########################
+# We have 4 cases:
+# 1. Load LabVIEW from signals.mat (legacy)
+# 2. Load LabVIEW from raw phot and box files
+# 3. Load pyPhotometry from ppd file (3 signals)
+# 4. Load pyPhotometry from ppd file (2 signals)
+
+
+def test_add_photometry_from_signals_mat(dummy_logger):
+    """
+    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
+
+    This version of the test uses the already created signals.mat at "signals_mat_file_path"
+    to further process and add photometry signals to the NWB.
+    """
+
+    # Create a test metadata dictionary with preprocessed LabVIEW data ("signals_mat_file_path")
     test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
     metadata = {}
     metadata["photometry"] = {}
     metadata["photometry"]["signals_mat_file_path"] = test_data_dir / "signals.mat"
-    add_dummy_labview_metadata_to_metadata(metadata)
+    # Add metadata for recording dLight in the old maze room to the metadata dict
+    add_dummy_2_signal_dlight_metadata(metadata)
 
+    # Define paths to reference data
+    reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
+    reference_dataframe = pd.read_csv(reference_data_path)
+
+    # Create a test NWBFile
     nwbfile = NWBFile(
         session_description="Mock session",
         session_start_time=datetime.now(tz.tzlocal()),
         identifier="mock_session",
     )
 
-    add_photometry_metadata(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    # Add photometry data to the nwbfile
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
-    # Check Thorlabs excitation sources
-    assert "Thorlabs Blue LED" in nwbfile.devices
-    blue_led = nwbfile.devices["Thorlabs Blue LED"]
-    assert isinstance(blue_led, ExcitationSource)
-    assert blue_led.excitation_wavelength_in_nm == 470.0
-    assert blue_led.illumination_type == "LED"
-    assert blue_led.manufacturer == "Thorlabs"
+    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
+    expected_photometry_series = {"raw_470", "raw_405", "processed_470", "processed_405",
+                                  "corrected_470_dFF", "fitted_405"}
+    expected_sampling_rate = 250  # Hz
 
-    assert "Thorlabs Purple LED" in nwbfile.devices
-    purple_led = nwbfile.devices["Thorlabs Purple LED"]
-    assert isinstance(purple_led, ExcitationSource)
-    assert purple_led.excitation_wavelength_in_nm == 405.0
-    assert purple_led.illumination_type == "LED"
-    assert purple_led.manufacturer == "Thorlabs"
+    # Assert that we have returned the correct sampling rate
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    # We expect photometry_start = None when starting photometry conversion from signals.mat
+    assert photometry_data_dict.get('photometry_start') is None, (
+        f"Expected 'photometry_start' = None when starting from signals.mat, "
+        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
+    # Assert that the returned photometry_data_dict includes port_visits as a list or array
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
+    )
 
-    # Check photodetector
-    assert "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)" in nwbfile.devices
-    photodetector = nwbfile.devices["Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"]
-    assert isinstance(photodetector, Photodetector)
+    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
+    actual_photometry_series = set(nwbfile.acquisition.keys())
+    missing_photometry_series = expected_photometry_series - actual_photometry_series
+    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
 
-    # Check optical fibers (bilateral, recording from right)
-    assert "Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)" in nwbfile.devices
-    optic_fiber = nwbfile.devices["Doric 0.66mm Flat 40mm Optic Fiber (right NAcc)"]
-    assert isinstance(optic_fiber, OpticalFiber)
+    # Check the basic attributes of each series
+    for series_name in expected_photometry_series:
+        # Assert that all series are of type FiberPhotometryResponseSeries
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
+        # Assert all series have a sampling rate of 250 Hz
+        assert (
+            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
+        ), (
+            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}"
+        )
 
-    # Check dLight indicators
-    assert "dLight1.3b (right NAcc)" in nwbfile.devices
-    indicator = nwbfile.devices["dLight1.3b (right NAcc)"]
-    assert isinstance(indicator, Indicator)
-    assert indicator.injection_location == "NAcc"
-    assert indicator.injection_coordinates_in_mm == (1.7, 1.7, -6.2)
+    # Check that the corrected dF/F signal in the nwbfile matches the reference green signal
+    corrected_dFF = np.array(nwbfile.acquisition["corrected_470_dFF"].data)
+    green_dFF_reference = reference_dataframe["green"].values
 
-    # Check fiber photometry table
-    table = nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table
-    # dLight has 2 excitation sources (blue + purple), recording from right NAcc
-    assert len(table) == 2
+    # Check that the lengths match
+    assert len(corrected_dFF) == len(green_dFF_reference), (
+        f"Data length mismatch: corrected_470_dFF has {len(corrected_dFF)} points, "
+        f"but the reference signal has {len(green_dFF_reference)} points."
+    )
 
-    # Verify the table rows have the correct indicator + LED combinations
-    table_combos = set()
-    for row in table:
-        table_combos.add((row["indicator"].item().name, row["excitation_source"].item().name))
+    # Check that the corrected dF/F signal matches the reference (within a tolerance)
+    np.testing.assert_allclose(
+        corrected_dFF,
+        green_dFF_reference,
+        atol=0.005,
+        rtol=0.05,
+        err_msg="Data mismatch between nwbfile corrected_470_dFF and reference data",
+    )
 
-    expected_combos = {
-        ("dLight1.3b (right NAcc)", "Thorlabs Blue LED"),
-        ("dLight1.3b (right NAcc)", "Thorlabs Purple LED"),
-    }
-    assert table_combos == expected_combos
+
+def test_add_photometry_from_raw_labview(dummy_logger):
+    """
+    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
+
+    This version of the test uses the raw LabVIEW data at "phot_file_path" and "box_file_path"
+    to first create a signals dict, and then further process and add photometry signals to the NWB.
+    """
+
+    # Create a test metadata dictionary with raw LabVIEW data ("phot_file_path" and "box_file_path")
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
+    metadata = {}
+    metadata["photometry"] = {}
+    metadata["photometry"]["phot_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
+    metadata["photometry"]["box_file_path"] = test_data_dir / "IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
+    # Add metadata for recording dLight in the old maze room to the metadata dict
+    add_dummy_2_signal_dlight_metadata(metadata)
+
+    # Define paths to reference data
+    reference_data_path = test_data_dir / "IM-1478_07252022_h_sampleframe.csv"
+    reference_dataframe = pd.read_csv(reference_data_path)
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # Add photometry data to the nwbfile
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
+    expected_photometry_series = {"raw_470", "raw_405", "processed_470", "processed_405",
+                                  "corrected_470_dFF", "fitted_405"}
+    expected_sampling_rate = 250  # Hz
+
+    # Assert that we have returned the correct sampling rate
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    # Assert that we have returned photometry_start as a datetime object
+    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
+        f"Expected photometry data dict to include 'photometry_start' as a datetime object, "
+        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
+    # Assert that the returned photometry_data_dict includes port_visits as a list or array
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
+    )
+
+    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
+    actual_photometry_series = set(nwbfile.acquisition.keys())
+    missing_photometry_series = expected_photometry_series - actual_photometry_series
+    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
+
+    # Check the basic attributes of each series
+    for series_name in expected_photometry_series:
+        # Assert that all series are of type FiberPhotometryResponseSeries
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
+        # Assert all series have a sampling rate of 250 Hz
+        assert (
+            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
+        ), (
+            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}"
+        )
+
+    # Check that the corrected dF/F signal in the nwbfile matches the reference green signal
+    corrected_dFF = np.array(nwbfile.acquisition["corrected_470_dFF"].data)
+    green_dFF_reference = reference_dataframe["green"].values
+
+    # In our former MATLAB photometry preprocessing pipeline (used to create the reference dataframe),
+    # we would sometimes remove some samples from the beginning of our signals for alignment with behavior.
+    # In this new pipeline, we do this alignment later so this is no longer necessary at this step.
+    # This results in the signals in our created dict being longer than the reference signals in the dataframe,
+    # so we calculate the number of samples to remove from the beginning so we can do comparisons.
+    samples_removed_from_reference = len(corrected_dFF) - len(green_dFF_reference)
+    corrected_dFF = corrected_dFF[samples_removed_from_reference:]
+
+    np.testing.assert_allclose(
+       corrected_dFF,
+       green_dFF_reference,
+       atol=0.005,
+       rtol=0.05,
+       err_msg="Data mismatch between nwbfile corrected_470_dFF and reference data",
+    )
+
+
+def test_add_photometry_from_3_signal_pyphotometry(dummy_logger):
+    """
+    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
+
+    This version of the test uses the ppd file from pyPhotometry to add photometry signals to the NWB.
+    """
+
+    # Create a test metadata dictionary with pyPhotometry data
+    test_data_dir = Path("tests/test_data/downloaded/IM-1770_corvette/11062024")
+    metadata = {}
+    metadata["photometry"] = {}
+    metadata["photometry"]["ppd_file_path"] = test_data_dir / "Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
+    # Add metadata for recording gACh4h and rDA3m in the new maze room to the metadata dict
+    add_dummy_3_signal_gach_rda_metadata(metadata)
+
+    # Define paths to reference data
+    reference_data_path = test_data_dir / "sampleframe.csv"
+    reference_dataframe = pd.read_csv(reference_data_path)
+
+    # Create a test NWBFile
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    # Add photometry data to the nwbfile
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # Define the FiberPhotometryResponseSeries we expect to have been added to the nwbfile
+    # gACh4h (signal=470nm, reference=405nm, preset=gach_ratiometric) produces:
+    #   raw_470, raw_405, processed_470, processed_405, corrected_470_405_ratio
+    # rDA3m (signal=565nm, no reference, preset=rda_independent) produces:
+    #   raw_565, processed_565
+    expected_photometry_series = {"raw_470", "raw_405", "raw_565",
+                                  "processed_470", "processed_405", "processed_565",
+                                  "raw_470_405_ratio", "corrected_470_405_ratio"}
+    expected_sampling_rate = 86  # Hz
+
+    # Assert that we have returned the correct sampling rate
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    # Assert that we have returned photometry_start as a datetime object
+    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
+        f"Expected photometry data dict to include 'photometry_start' as a datetime object, "
+        f"got 'photometry_start'={photometry_data_dict.get('photometry_start')}")
+    # Assert that the returned photometry_data_dict includes port_visits as a list or array
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected 'port_visits' to be a list or NumPy array, but got {type(photometry_data_dict.get('port_visits'))}"
+    )
+
+    # Assert that all expected photometry series are present in the acquisition field of the nwbfile
+    actual_photometry_series = set(nwbfile.acquisition.keys())
+    missing_photometry_series = expected_photometry_series - actual_photometry_series
+    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
+
+    # Check the basic attributes of each series
+    for series_name in expected_photometry_series:
+        # Assert that all series are of type FiberPhotometryResponseSeries
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
+        # Assert all series have a sampling rate of 86 Hz
+        assert (
+            getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate
+        ), (
+            f"{series_name} has a sampling rate of {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}"
+        )
+
+    # Compare raw signals, individually-processed signals, and ratiometric correction against reference.
+    # Raw signals should match exactly. Individually processed signals (lowpass + highpass + mean_std z-score)
+    # use the same methods as the old pipeline, so they should also match.
+    # The ratiometric correction computes the ratio from raw signals first, then processes it through
+    # the same pipeline, matching the old code's behavior.
+    nwb_signal_names = ["raw_470", "raw_405", "raw_565",
+                        "processed_470", "processed_405", "processed_565",
+                        "raw_470_405_ratio", "corrected_470_405_ratio"]
+    reference_signal_names = ["raw_green", "raw_405", "raw_red",
+                              "green_z_scored", "z_scored_405", "red_z_scored",
+                              "raw 470/405", "ratio_z_scored"]
+
+    for sig_name, ref_name in zip(nwb_signal_names, reference_signal_names):
+        signal = np.array(nwbfile.acquisition[sig_name].data)
+        reference = reference_dataframe[ref_name].values
+
+        # Check that the lengths match
+        assert len(signal) == len(reference), (
+            f"Data length mismatch: {sig_name} has {len(signal)} points, "
+            f"but the reference signal {ref_name} has {len(reference)} points."
+        )
+
+        # Check that the signal in the nwbfile matches the reference signal (within a tolerance)
+        np.testing.assert_allclose(
+            signal,
+            reference,
+            atol=0.005,
+            rtol=0.05,
+            err_msg=f"Data mismatch between nwbfile {sig_name} and reference {ref_name}",
+        )
+        
+#TODO: add test_add_photometry_from_2_signal_pyphotometry
+
+
+# ============================================================
+# Processing step unit tests (using .npz reference data)
+# ============================================================
+# These tests load the intermediate arrays saved by tests/generate_reference_data.ipynb
+# (which runs the old main-branch pipeline on real data), then verify that each new
+# modular function produces exactly the same output.
+#
+# Reference data lives in tests/test_data/reference/<main-commit-hash>/*.npz.
+# Run the notebook to regenerate if the data is missing or the commit hash changes.
+
+_REFERENCE_DIR = Path("tests/test_data/reference/1c415f98146fea2f0f9e2d9bf39c442569048fa3")
+
+
+@pytest.fixture(scope="module")
+def labview_dlight_ref():
+    npz_path = _REFERENCE_DIR / "labview_dlight_intermediates.npz"
+    if not npz_path.exists():
+        pytest.skip("LabVIEW raw reference data not found. Run tests/generate_reference_data.ipynb first.")
+    return np.load(npz_path)
+
+
+@pytest.fixture(scope="module")
+def labview_mat_ref():
+    npz_path = _REFERENCE_DIR / "labview_mat_dlight_intermediates.npz"
+    if not npz_path.exists():
+        pytest.skip("LabVIEW mat reference data not found. Run tests/generate_reference_data.ipynb first.")
+    return np.load(npz_path)
+
+
+@pytest.fixture(scope="module")
+def ppd_gach_rda_ref():
+    npz_path = _REFERENCE_DIR / "pyphotometry_gach_rda_intermediates.npz"
+    if not npz_path.exists():
+        pytest.skip("pyPhotometry gACh4h+rDA3m reference data not found. Run tests/generate_reference_data.ipynb first.")
+    return np.load(npz_path)
+
+
+@pytest.fixture(scope="module")
+def ppd_dlight_ref():
+    npz_path = _REFERENCE_DIR / "pyphotometry_dlight_intermediates.npz"
+    if not npz_path.exists():
+        pytest.skip("pyPhotometry dLight reference data not found. Run tests/generate_reference_data.ipynb first.")
+    return np.load(npz_path)
+
+
+def test_apply_rolling_mean_dlight(labview_mat_ref):
+    """Rolling mean output matches reference for LabVIEW 470nm and 405nm signals."""
+    sampling_rate = float(labview_mat_ref["sampling_rate"])
+    for signal_key, smoothed_key in [
+        ("raw_green", "smoothed_green"),
+        ("raw_reference", "smoothed_reference"),
+    ]:
+        result = apply_rolling_mean(labview_mat_ref[signal_key], sampling_rate=sampling_rate)
+        np.testing.assert_allclose(
+            result, labview_mat_ref[smoothed_key].flatten(), atol=1e-10,
+            err_msg=f"Rolling mean mismatch for {signal_key}",
+        )
+
+
+def test_apply_rolling_mean_ppd2_dlight(ppd_dlight_ref):
+    """Rolling mean output matches reference for 2-signal pyPhotometry dLight."""
+    sampling_rate = float(ppd_dlight_ref["sampling_rate"])
+    for signal_key, smoothed_key in [
+        ("raw_green", "smoothed_green"),
+        ("raw_reference", "smoothed_reference"),
+    ]:
+        result = apply_rolling_mean(ppd_dlight_ref[signal_key], sampling_rate=sampling_rate)
+        np.testing.assert_allclose(
+            result, ppd_dlight_ref[smoothed_key].flatten(), atol=1e-10,
+            err_msg=f"Rolling mean mismatch for {signal_key}",
+        )
+
+
+def test_apply_airpls_baseline_dlight(labview_mat_ref, dummy_logger):
+    """airPLS baseline and baseline-subtracted signal match reference for LabVIEW dLight."""
+    for raw_key, smoothed_key, baseline_key, subtracted_key in [
+        ("raw_green", "smoothed_green", "green_baseline", "baseline_subtracted_green"),
+        ("raw_reference", "smoothed_reference", "ref_baseline", "baseline_subtracted_ref"),
+    ]:
+        baseline_subtracted, baseline = apply_airpls_baseline(
+            signal=labview_mat_ref[smoothed_key].flatten(),
+            logger=dummy_logger,
+            baseline_signal=labview_mat_ref[raw_key],
+        )
+        np.testing.assert_allclose(
+            baseline, labview_mat_ref[baseline_key].flatten(), atol=1e-10,
+            err_msg=f"airPLS baseline mismatch for {raw_key}",
+        )
+        np.testing.assert_allclose(
+            baseline_subtracted, labview_mat_ref[subtracted_key].flatten(), atol=1e-10,
+            err_msg=f"airPLS subtracted mismatch for {raw_key}",
+        )
+
+
+def test_apply_zscore_median_std_dlight(labview_mat_ref):
+    """Median z-score matches reference for LabVIEW dLight baseline-subtracted signals."""
+    for subtracted_key, zscored_key in [
+        ("baseline_subtracted_green", "z_scored_green"),
+        ("baseline_subtracted_ref", "z_scored_reference"),
+    ]:
+        result = apply_zscore_median_std(labview_mat_ref[subtracted_key].flatten())
+        np.testing.assert_allclose(
+            result, labview_mat_ref[zscored_key].flatten(), atol=1e-10,
+            err_msg=f"Median z-score mismatch for {subtracted_key}",
+        )
+
+
+def test_apply_isosbestic_correction_dlight(labview_mat_ref):
+    """Isosbestic Lasso correction (fitted reference and dF/F) matches reference for LabVIEW dLight."""
+    z_scored_green = labview_mat_ref["z_scored_green"].flatten()
+    z_scored_reference = labview_mat_ref["z_scored_reference"].flatten()
+
+    corrected, fitted_reference = apply_isosbestic_correction(z_scored_green, z_scored_reference)
+
+    np.testing.assert_allclose(
+        fitted_reference, labview_mat_ref["z_scored_reference_fitted"].flatten(), atol=1e-10,
+        err_msg="Lasso fitted reference mismatch",
+    )
+    np.testing.assert_allclose(
+        corrected, labview_mat_ref["z_scored_green_dFF"].flatten(), atol=1e-10,
+        err_msg="dF/F mismatch after isosbestic correction",
+    )
+
+
+def test_apply_isosbestic_correction_ppd2_dlight(ppd_dlight_ref):
+    """Isosbestic Lasso correction matches reference for 2-signal pyPhotometry dLight."""
+    z_scored_green = ppd_dlight_ref["z_scored_green"].flatten()
+    z_scored_reference = ppd_dlight_ref["z_scored_reference"].flatten()
+
+    corrected, fitted_reference = apply_isosbestic_correction(z_scored_green, z_scored_reference)
+
+    np.testing.assert_allclose(
+        fitted_reference, ppd_dlight_ref["z_scored_reference_fitted"].flatten(), atol=1e-10,
+        err_msg="Lasso fitted reference mismatch (pyPhotometry dLight)",
+    )
+    np.testing.assert_allclose(
+        corrected, ppd_dlight_ref["z_scored_green_dFF"].flatten(), atol=1e-10,
+        err_msg="dF/F mismatch after isosbestic correction (pyPhotometry dLight)",
+    )
+
+
+def test_apply_ratiometric_correction_gach(ppd_gach_rda_ref):
+    """Ratiometric correction (470/405) matches reference raw ratio."""
+    result = apply_ratiometric_correction(ppd_gach_rda_ref["raw_green"], ppd_gach_rda_ref["raw_405"])
+    np.testing.assert_allclose(
+        result, ppd_gach_rda_ref["raw_ratio"], atol=1e-10,
+        err_msg="Ratiometric correction mismatch",
+    )
+
+
+def test_apply_lowpass_filter_gach(ppd_gach_rda_ref):
+    """Lowpass filter matches reference for pyPhotometry gACh4h signals."""
+    sampling_rate = float(ppd_gach_rda_ref["sampling_rate"])
+    for raw_key, lowpass_key in [
+        ("raw_green", "green_lowpass"),
+        ("raw_red", "red_lowpass"),
+        ("raw_405", "lowpass_405"),
+        ("raw_ratio", "ratio_lowpass"),
+    ]:
+        result = apply_lowpass_filter(ppd_gach_rda_ref[raw_key], sampling_rate=sampling_rate)
+        np.testing.assert_allclose(
+            result, ppd_gach_rda_ref[lowpass_key], atol=1e-10,
+            err_msg=f"Lowpass filter mismatch for {raw_key}",
+        )
+
+
+def test_apply_highpass_filter_gach(ppd_gach_rda_ref):
+    """Highpass filter matches reference for pyPhotometry gACh4h lowpass-filtered signals."""
+    sampling_rate = float(ppd_gach_rda_ref["sampling_rate"])
+    for lowpass_key, highpass_key in [
+        ("green_lowpass", "green_highpass"),
+        ("red_lowpass", "red_highpass"),
+        ("lowpass_405", "highpass_405"),
+        ("ratio_lowpass", "ratio_highpass"),
+    ]:
+        result = apply_highpass_filter(ppd_gach_rda_ref[lowpass_key], sampling_rate=sampling_rate)
+        np.testing.assert_allclose(
+            result, ppd_gach_rda_ref[highpass_key], atol=1e-10,
+            err_msg=f"Highpass filter mismatch for {lowpass_key}",
+        )
+
+
+def test_apply_zscore_mean_std_gach(ppd_gach_rda_ref):
+    """Mean z-score matches reference for pyPhotometry gACh4h highpass-filtered signals."""
+    for highpass_key, zscored_key in [
+        ("green_highpass", "green_zscored"),
+        ("red_highpass", "red_zscored"),
+        ("highpass_405", "zscored_405"),
+        ("ratio_highpass", "ratio_zscored"),
+    ]:
+        result = apply_zscore_mean_std(ppd_gach_rda_ref[highpass_key])
+        np.testing.assert_allclose(
+            result, ppd_gach_rda_ref[zscored_key], atol=1e-10,
+            err_msg=f"Mean z-score mismatch for {highpass_key}",
+        )
+
+
+def test_process_single_signal_dlight_isosbestic(labview_mat_ref, dummy_logger):
+    """process_single_signal with dlight_isosbestic config matches all reference intermediates."""
+    raw_green = labview_mat_ref["raw_green"]
+    sampling_rate = float(labview_mat_ref["sampling_rate"])
+    config = load_processing_config("dlight_isosbestic")
+
+    result = process_single_signal(raw_green, sampling_rate, config, dummy_logger)
+
+    np.testing.assert_allclose(
+        result["smoothed"], labview_mat_ref["smoothed_green"].flatten(), atol=1e-10,
+        err_msg="Smoothed signal mismatch",
+    )
+    np.testing.assert_allclose(
+        result["baseline"], labview_mat_ref["green_baseline"].flatten(), atol=1e-10,
+        err_msg="airPLS baseline mismatch",
+    )
+    np.testing.assert_allclose(
+        result["baseline_subtracted"], labview_mat_ref["baseline_subtracted_green"].flatten(), atol=1e-10,
+        err_msg="Baseline-subtracted signal mismatch",
+    )
+    np.testing.assert_allclose(
+        result["normalized"], labview_mat_ref["z_scored_green"].flatten(), atol=1e-10,
+        err_msg="Normalized (median z-scored) signal mismatch",
+    )
+
+
+def test_process_single_signal_gach_ratiometric(ppd_gach_rda_ref, dummy_logger):
+    """process_single_signal with gach_ratiometric config matches reference intermediates for the ratio signal."""
+    raw_ratio = ppd_gach_rda_ref["raw_ratio"]
+    sampling_rate = float(ppd_gach_rda_ref["sampling_rate"])
+    config = load_processing_config("gach_ratiometric")
+
+    result = process_single_signal(raw_ratio, sampling_rate, config, dummy_logger)
+
+    np.testing.assert_allclose(
+        result["smoothed"], ppd_gach_rda_ref["ratio_lowpass"], atol=1e-10,
+        err_msg="Lowpass-smoothed ratio mismatch",
+    )
+    np.testing.assert_allclose(
+        result["baseline_subtracted"], ppd_gach_rda_ref["ratio_highpass"], atol=1e-10,
+        err_msg="Highpass baseline-subtracted ratio mismatch",
+    )
+    np.testing.assert_allclose(
+        result["normalized"], ppd_gach_rda_ref["ratio_zscored"], atol=1e-10,
+        err_msg="Z-scored ratio mismatch",
+    )
