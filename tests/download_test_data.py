@@ -195,6 +195,7 @@ def main():
         "IM-1478/07252022",
         "IM-1770_corvette/11062024",
         "IM-1947/20260422",
+        "reference/1c415f98146fea2f0f9e2d9bf39c442569048fa3",
     ]
 
     # Prepend the base remote directory to each path

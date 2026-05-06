@@ -994,20 +994,23 @@ def test_add_photometry_from_2_signal_pyphotometry(dummy_logger, ppd_dlight_ref)
 
 ######################## Unit tests of individual processing steps ########################
 
-# These tests load the intermediate arrays saved by tests/generate_reference_data.ipynb
+# These tests load the intermediate arrays saved by tests/generate_photometry_reference_data.ipynb
 # Test that each of our new modular functions (post- photometry refactor) produce the same output
 # as each step in the pipeline as of commit 1c415f98146fea2f0f9e2d9bf39c442569048fa3 (pre-refactor).
 
-# Reference data lives in tests/test_data/reference/<main-commit-hash>/*.npz.
-# Run the notebook to regenerate if the data is missing or the commit hash changes.
-_REFERENCE_DIR = Path("tests/test_data/reference/1c415f98146fea2f0f9e2d9bf39c442569048fa3")
+# Reference data lives in tests/test_data/downloaded/reference/<main-commit-hash>/*.npz.
+# Download via tests/download_test_data.py, or run tests/generate_photometry_reference_data.ipynb to regenerate.
+_REFERENCE_DIR = Path("tests/test_data/downloaded/reference/1c415f98146fea2f0f9e2d9bf39c442569048fa3")
 
 
 @pytest.fixture(scope="module")
 def labview_dlight_ref():
     npz_path = _REFERENCE_DIR / "labview_dlight_intermediates.npz"
     if not npz_path.exists():
-        pytest.skip("LabVIEW raw reference data not found. Run tests/generate_reference_data.ipynb first.")
+        pytest.skip(
+            "LabVIEW raw reference data not found. "
+            "Run tests/generate_photometry_reference_data.ipynb first."
+        )
     return np.load(npz_path)
 
 
@@ -1015,7 +1018,10 @@ def labview_dlight_ref():
 def labview_mat_ref():
     npz_path = _REFERENCE_DIR / "labview_mat_dlight_intermediates.npz"
     if not npz_path.exists():
-        pytest.skip("LabVIEW mat reference data not found. Run tests/generate_reference_data.ipynb first.")
+        pytest.skip(
+            "LabVIEW signals.mat reference data not found. "
+            "Run tests/generate_photometry_reference_data.ipynb first."
+        )
     return np.load(npz_path)
 
 
@@ -1023,7 +1029,10 @@ def labview_mat_ref():
 def ppd_gach_rda_ref():
     npz_path = _REFERENCE_DIR / "pyphotometry_gach_rda_intermediates.npz"
     if not npz_path.exists():
-        pytest.skip("pyPhotometry gACh4h+rDA3m reference data not found. Run tests/generate_reference_data.ipynb first.")
+        pytest.skip(
+            "pyPhotometry gACh4h+rDA3m reference data not found. "
+            "Run tests/generate_photometry_reference_data.ipynb first."
+        )
     return np.load(npz_path)
 
 
@@ -1031,7 +1040,10 @@ def ppd_gach_rda_ref():
 def ppd_dlight_ref():
     npz_path = _REFERENCE_DIR / "pyphotometry_dlight_intermediates.npz"
     if not npz_path.exists():
-        pytest.skip("pyPhotometry dLight reference data not found. Run tests/generate_reference_data.ipynb first.")
+        pytest.skip(
+            "pyPhotometry dLight reference data not found. "
+            "Run tests/generate_photometry_reference_data.ipynb first."
+        )
     return np.load(npz_path)
 
 
