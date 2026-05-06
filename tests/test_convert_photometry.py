@@ -527,12 +527,36 @@ def test_load_processing_config():
     assert config["normalization"]["method"] == "mean_zscore"
     assert config["correction"]["method"] == "ratiometric"
 
-    config = load_processing_config("rda_independent")
+    config = load_processing_config("classic_filtering")
     assert config["correction"]["method"] == "none"
 
 
+def test_load_processing_config_preset_param_overrides():
+    """Preset-level param_overrides bake non-default parameters into the preset."""
+    config = load_processing_config("dlight_isosbestic_tight_baseline")
+    # Same pipeline structure as dlight_isosbestic
+    assert config["smoothing"]["method"] == "rolling_mean"
+    assert config["baseline"]["method"] == "airpls"
+    assert config["normalization"]["method"] == "median_zscore"
+    assert config["correction"]["method"] == "isosbestic_lasso"
+    # lambda overridden from 1e8 (default) to 1e6 via param_overrides in the preset
+    assert config["baseline"]["params"]["lambda"] == 1e6
+    # max_iterations not overridden — should still be the method default
+    assert config["baseline"]["params"]["max_iterations"] == 50
+
+
+def test_load_processing_config_session_overrides_take_priority():
+    """Session-level processing_overrides take priority over preset param_overrides."""
+    session_overrides = {"baseline": {"lambda": 1e4}}
+    config = load_processing_config("dlight_isosbestic_tight_baseline", overrides=session_overrides)
+    # Session override (1e4) should win over preset param_override (1e6)
+    assert config["baseline"]["params"]["lambda"] == 1e4
+    # Unrelated params still come from method defaults
+    assert config["baseline"]["params"]["max_iterations"] == 50
+
+
 def test_load_processing_config_with_overrides():
-    """Test that processing overrides are applied correctly."""
+    """Test that session-level processing overrides are applied correctly."""
     overrides = {
         "smoothing": {"cutoff_hz": 8},
         "baseline": {"cutoff_hz": 0.01},

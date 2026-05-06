@@ -9,6 +9,7 @@
 # ============================================================
 
 presets:
+  # Default for dLight. This exactly matches Tim's original pipeline.
   dlight_isosbestic:
     description: "dLight with airPLS baseline + isosbestic Lasso correction"
     smoothing: rolling_mean
@@ -16,6 +17,20 @@ presets:
     normalization: median_zscore
     correction: isosbestic_lasso
 
+  # Same as dlight_isosbestic but with a lower airPLS lambda (tighter baseline).
+  # Useful when the baseline has sharper fluctuations when plugging was unstable that the default lambda under-fits.
+  # higher lambda = smoother baseline, lower = follows signal more closely.
+  dlight_isosbestic_tight_baseline:
+    description: "dLight with tighter airPLS baseline (lambda=1e6) + isosbestic Lasso correction"
+    smoothing: rolling_mean
+    baseline: airpls
+    normalization: median_zscore
+    correction: isosbestic_lasso
+    param_overrides:
+      baseline:
+        lambda: 1.0e+6
+
+  # Default for gACh. Classic pyPhotometry filtering, baseline removal, and normalization. Ratiometric correction.
   gach_ratiometric:
     description: "gACh4h with filtering + ratiometric correction (470/405)"
     smoothing: lowpass
@@ -23,8 +38,9 @@ presets:
     normalization: mean_zscore
     correction: ratiometric
 
-  rda_independent:
-    description: "rDA3m with filtering"
+  # Default for rDA3m. Classic pyPhotometry filtering, baseline removal, and normalization, no correction.
+  classic_filtering:
+    description: "lowpass filter to remove noise, highpass to remove photobleaching drift, zscore"
     smoothing: lowpass
     baseline: highpass
     normalization: mean_zscore

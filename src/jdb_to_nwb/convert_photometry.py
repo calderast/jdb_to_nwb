@@ -719,6 +719,7 @@ def load_processing_config(preset_name, overrides=None):
         )
 
     preset = presets[preset_name]
+    preset_param_overrides = preset.get("param_overrides", {})
 
     # Build resolved config: for each step, get the method name and its default params
     config = {}
@@ -727,11 +728,14 @@ def load_processing_config(preset_name, overrides=None):
         # Get default params for this method
         step_defaults = method_defaults.get(step, {})
         params = dict(step_defaults.get(method_name, {}))
+        # Apply preset-level param overrides (e.g. a different lambda for a specific preset)
+        if step in preset_param_overrides:
+            params.update(preset_param_overrides[step])
         config[step] = {"method": method_name, "params": params}
 
     config["description"] = preset.get("description", "")
 
-    # Apply overrides
+    # Apply session-level overrides (from processing_overrides in metadata)
     if overrides:
         for step, override_params in overrides.items():
             if step in config:

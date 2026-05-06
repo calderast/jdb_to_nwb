@@ -29,14 +29,14 @@ dLight3.8:
 rDA3m (AAV9):
   signal_wavelength_nm: 565
   reference_wavelength_nm: null
-  default_preset: rda_independent
+  default_preset: classic_filtering
   excitation_sources:
     - Doric Green LED                 # 565 nm (signal wavelength)
 
 rDA3m (rAAV):
   signal_wavelength_nm: 565
   reference_wavelength_nm: null
-  default_preset: rda_independent
+  default_preset: classic_filtering
   excitation_sources:
     - Doric Green LED                 # 565 nm (signal wavelength)
 

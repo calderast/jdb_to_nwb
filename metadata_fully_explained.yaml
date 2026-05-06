@@ -71,7 +71,7 @@ photometry:
   # Can specify path to .phot and .box file if using LabVIEW
   phot_file_path: "path/to/file/like/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
   box_file_path: "path/to/file/like/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
-  # OR path to signals.mat for legacy LabVIEW processing
+  # OR path to signals.mat for legacy LabVIEW processing (discouraged, ALWAYS use phot and box if available)
   signals_mat_file_path: "path/to/signals.mat"
   # OR path to ppd file if using pyPhotometry.
   # 2-signal: analog_1=470nm, analog_2=405nm
@@ -87,12 +87,15 @@ photometry:
   # OPTIONAL - override which processing preset is used for a given indicator.
   # By default, the preset is determined from resources/photometry/photometry_mappings.yaml.
   # Currently available presets (defined in resources/photometry/processing_presets.yaml):
-  #   dlight_isosbestic   - dLight: rolling mean -> airPLS baseline -> median z-score -> isosbestic Lasso correction
-  #   gach_ratiometric    - gACh4h: lowpass -> highpass -> mean z-score -> ratiometric correction (470/405)
-  #   classic_filtering   - rDA3m: lowpass -> highpass -> mean z-score (no correction)
-  # Example: add your own preset (named e.g. stephanie_dlight) in processing_presets.yaml and reference it here
+  #   dlight_isosbestic                - default for dLight: rolling mean -> airPLS (lambda=1e8) -> median z-score -> isosbestic Lasso
+  #   dlight_isosbestic_tight_baseline - same as above, but airPLS lambda=1e6 (tighter baseline)
+  #   gach_ratiometric                 - default for gACh4h: lowpass -> highpass -> mean z-score -> ratiometric correction (470/405)
+  #   classic_filtering                - default for rDA3m: lowpass -> highpass -> mean z-score (no correction)
+  # New presets can be added in resources/photometry/processing_presets.yaml and referenced here.
+  # Presets support a param_overrides key to bake in non-default parameters (e.g. a different lambda).
+  # If you want to use a non-defualt processing preset for a given indicator, reference it as shown:
   processing_presets:
-    dLight1.3b: stephanie_dlight
+    dLight1.3b: dlight_isosbestic_tight_baseline
 
   # OPTIONAL - override specific method parameters within the selected preset.
   # Applies globally to all indicators in this session.
