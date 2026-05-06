@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import pytest
 from pathlib import Path
-import scipy.io
 from dateutil import tz
 from pynwb import NWBFile
 from ndx_fiber_photometry import (
@@ -624,9 +623,27 @@ def test_load_3_signal_pyphotometry(dummy_logger, ppd_gach_rda_ref):
     np.testing.assert_array_equal(bundle.signals["405nm"], ppd_gach_rda_ref["raw_405"])
     np.testing.assert_array_equal(bundle.signals["565nm"], ppd_gach_rda_ref["raw_red"])
     np.testing.assert_array_equal(bundle.port_visits, ppd_gach_rda_ref["port_visits"])
-    
-#TODO: add test_load_2_signal_pyphotometry
-    
+
+
+def test_load_2_signal_pyphotometry(dummy_logger, ppd_dlight_ref):
+    """Test that load_pyphotometry returns a PhotometrySignalBundle matching the reference npz for a 2-signal ppd."""
+    test_data_dir = Path("tests/test_data/downloaded/IM-1947/20260422")
+    ppd_path = test_data_dir / "IM-1947_L-2026-04-22-145706.ppd"
+    bundle = load_pyphotometry(ppd_path, dummy_logger)
+
+    # Check bundle structure
+    assert isinstance(bundle, PhotometrySignalBundle)
+    assert bundle.sampling_rate == 130
+    assert bundle.source == "pyphotometry"
+    assert isinstance(bundle.photometry_start, datetime)
+    assert set(bundle.signals.keys()) == {"470nm", "405nm"}
+    assert len(bundle.port_visits) == 373
+
+    # Signals and port visits must match the reference exactly
+    np.testing.assert_array_equal(bundle.signals["470nm"], ppd_dlight_ref["raw_green"])
+    np.testing.assert_array_equal(bundle.signals["405nm"], ppd_dlight_ref["raw_reference"])
+    np.testing.assert_array_equal(bundle.port_visits, ppd_dlight_ref["port_visits"])
+
     
 ######################## Test full process of going from raw photometry to signals in nwb ########################
 # We have 4 cases:
@@ -907,20 +924,82 @@ def test_add_photometry_from_3_signal_pyphotometry(dummy_logger):
             rtol=0.05,
             err_msg=f"Data mismatch between nwbfile {sig_name} and reference {ref_name}",
         )
-        
-#TODO: add test_add_photometry_from_2_signal_pyphotometry
 
 
-# ============================================================
-# Processing step unit tests (using .npz reference data)
-# ============================================================
+def test_add_photometry_from_2_signal_pyphotometry(dummy_logger, ppd_dlight_ref):
+    """
+    Test that the add_photometry function results in the expected FiberPhotometryResponseSeries.
+    Here we do not have reference data from sampleframes. We use signals data generated via the pipeline as
+    of commit 1c415f98146fea2f0f9e2d9bf39c442569048fa3 (before the big refactor) as our ground truth reference
+    to ensure the refactor and subsequent changes don't break things.
+
+    This version uses a 2-signal pyPhotometry ppd file (470nm dLight + 405nm isosbestic reference).
+    Compares all NWB signals against the reference npz with tight tolerance.
+    """
+    test_data_dir = Path("tests/test_data/downloaded/IM-1947/20260422")
+    metadata = {}
+    metadata["photometry"] = {}
+    metadata["photometry"]["ppd_file_path"] = test_data_dir / "IM-1947_L-2026-04-22-145706.ppd"
+    # Add metadata for recording dLight in the old maze room to the metadata dict
+    add_dummy_2_signal_dlight_metadata(metadata)
+
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+
+    photometry_data_dict = add_photometry(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # dLight 2-signal isosbestic pipeline produces these 6 series
+    expected_photometry_series = {"raw_470", "raw_405", "processed_470", "processed_405",
+                                  "corrected_470_dFF", "fitted_405"}
+    expected_sampling_rate = 130  # Hz
+
+    assert photometry_data_dict.get('sampling_rate') == expected_sampling_rate, (
+        f"Expected sampling rate {expected_sampling_rate} Hz, got {photometry_data_dict.get('sampling_rate')} Hz")
+    assert isinstance(photometry_data_dict.get('photometry_start'), datetime), (
+        f"Expected photometry_start as datetime, got {type(photometry_data_dict.get('photometry_start'))}")
+    assert isinstance(photometry_data_dict.get('port_visits'), (list, np.ndarray)), (
+        f"Expected port_visits as list or array, got {type(photometry_data_dict.get('port_visits'))}")
+
+    actual_photometry_series = set(nwbfile.acquisition.keys())
+    missing_photometry_series = expected_photometry_series - actual_photometry_series
+    assert not missing_photometry_series, f"Missing FiberPhotometryResponseSeries: {missing_photometry_series}"
+
+    for series_name in expected_photometry_series:
+        assert isinstance(nwbfile.acquisition[series_name], FiberPhotometryResponseSeries), (
+            f"{series_name} is not of type FiberPhotometryResponseSeries")
+        assert getattr(nwbfile.acquisition[series_name], "rate", None) == expected_sampling_rate, (
+            f"{series_name} has unexpected sampling rate {getattr(nwbfile.acquisition[series_name], 'rate', None)}, "
+            f"expected {expected_sampling_rate}")
+
+    # Compare all signals against reference with tight tolerance (same Python pipeline = exact match)
+    nwb_to_ref = [
+        ("raw_470",           "raw_green",                 False),
+        ("raw_405",           "raw_reference",             False),
+        ("processed_470",     "z_scored_green",            True),
+        ("processed_405",     "z_scored_reference",        True),
+        ("fitted_405",        "z_scored_reference_fitted", True),
+        ("corrected_470_dFF", "z_scored_green_dFF",        True),
+    ]
+    for nwb_name, ref_key, do_flatten in nwb_to_ref:
+        signal = np.array(nwbfile.acquisition[nwb_name].data)
+        reference = ppd_dlight_ref[ref_key].flatten() if do_flatten else ppd_dlight_ref[ref_key]
+        np.testing.assert_allclose(
+            signal, reference, atol=1e-10,
+            err_msg=f"Mismatch between NWB '{nwb_name}' and reference '{ref_key}'",
+        )
+
+
+######################## Unit tests of individual processing steps ########################
+
 # These tests load the intermediate arrays saved by tests/generate_reference_data.ipynb
-# (which runs the old main-branch pipeline on real data), then verify that each new
-# modular function produces exactly the same output.
-#
+# Test that each of our new modular functions (post- photometry refactor) produce the same output
+# as each step in the pipeline as of commit 1c415f98146fea2f0f9e2d9bf39c442569048fa3 (pre-refactor).
+
 # Reference data lives in tests/test_data/reference/<main-commit-hash>/*.npz.
 # Run the notebook to regenerate if the data is missing or the commit hash changes.
-
 _REFERENCE_DIR = Path("tests/test_data/reference/1c415f98146fea2f0f9e2d9bf39c442569048fa3")
 
 
