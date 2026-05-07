@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 from importlib.resources import files
 from scipy.signal import butter, lfilter, hilbert, filtfilt
+from scipy.optimize import curve_fit
 from scipy.sparse import diags, eye, csc_matrix
 from scipy.sparse.linalg import spsolve
 from sklearn.linear_model import Lasso
@@ -639,18 +640,66 @@ def apply_highpass_filter(signal, sampling_rate, cutoff_hz=0.001, order=2):
     return filtfilt(b, a, signal, padtype='even')
 
 
-def apply_airpls_baseline(signal, logger, baseline_signal=None, lambda_=1e8, max_iterations=50):
-    """Compute airPLS baseline and subtract from signal.
+def apply_airpls_baseline(signal, logger, baseline_signal=None, lambda_=1e8, max_iterations=50, mode="subtract"):
+    """Compute airPLS baseline and remove it from the signal.
 
-    If baseline_signal is provided, the baseline is estimated from baseline_signal (not signal). 
-    We do this because historically, we have estimated the airPLS baseline from the raw data signal, 
+    If baseline_signal is provided, the baseline is estimated from baseline_signal (not signal).
+    We do this because historically, we have estimated the airPLS baseline from the raw data signal,
     then subtract it from the already-smoothed signal.
 
-    Returns (baseline_subtracted, baseline).
+    mode:
+        "subtract": signal - baseline  (removes drift, keeps signal in raw units)
+        "dff": (signal - baseline) / baseline  (true dF/F, normalizes for signal magnitude)
+
+    Returns (corrected, baseline).
     """
     data_for_baseline = baseline_signal if baseline_signal is not None else signal
     baseline = airPLS(data=data_for_baseline, logger=logger, lambda_=lambda_, max_iterations=max_iterations)
-    return signal - baseline, baseline
+    if mode == "dff":
+        corrected = (signal - baseline) / np.maximum(baseline, 1e-6)
+    else:
+        corrected = signal - baseline
+    return corrected, baseline
+
+
+def double_exponential(t, const, amp_fast, amp_slow, tau_slow, tau_multiplier):
+    """Double exponential with constant offset, used for photobleaching baseline fitting."""
+    tau_fast = tau_slow * tau_multiplier
+    return const + amp_slow * np.exp(-t / tau_slow) + amp_fast * np.exp(-t / tau_fast)
+
+
+def apply_double_exponential_baseline(signal, sampling_rate, mode="subtract", tau_slow=3600, tau_multiplier=0.1):
+    """Fit a double exponential to the signal and use it as a photobleaching baseline.
+    From Thomas Akam (https://github.com/ThomasAkam/photometry_preprocessing/):
+    In practice we find that a double exponential fit is preferable to a single exponential fit because there are 
+    typically multiple sources of fluorescence that contribute to the bleaching (e.g. autofluorescence from fiber, 
+    autofluorescence from brain tissue, and flurophore fluorescence), which may bleach at different rates, 
+    so a single exponential fit can be overly restrictive.
+    
+    Parameters:
+        signal:          1D signal array (smoothed)
+        sampling_rate:   Hz, used to construct the time vector
+        mode:            "subtract" or "dff" — same semantics as apply_airpls_baseline
+        tau_slow:        Initial guess for slow time constant in seconds (default: 3600)
+        tau_multiplier:  Initial guess for fast/slow tau ratio (default: 0.1)
+
+    Returns (corrected, baseline).
+    """
+    t = np.arange(len(signal)) / sampling_rate
+    max_sig = np.max(signal)
+    p0 = [max_sig / 2, max_sig / 4, max_sig / 4, tau_slow, tau_multiplier]
+    bounds = (
+        [0,       0,       0,       600,        0],
+        [max_sig, max_sig, max_sig, 36000,      1],
+    )
+    parms, _ = curve_fit(double_exponential, t, signal, p0=p0, bounds=bounds, maxfev=1000)
+    baseline = double_exponential(t, *parms)
+
+    if mode == "dff":
+        corrected = (signal - baseline) / np.maximum(baseline, 1e-6)
+    else:
+        corrected = signal - baseline
+    return corrected, baseline
 
 
 def apply_zscore_median_std(signal):
@@ -696,6 +745,7 @@ SMOOTHING_METHODS = {
 
 BASELINE_METHODS = {
     "airpls": apply_airpls_baseline,
+    "double_exp": apply_double_exponential_baseline,
     "highpass": apply_highpass_filter,
     "none": None,
 }
@@ -865,6 +915,17 @@ def process_single_signal(signal, sampling_rate, config, logger):
                 baseline_signal=raw,
                 lambda_=params.get("lambda", 1e8),
                 max_iterations=params.get("max_iterations", 50),
+                mode=params.get("mode", "subtract"),
+            )
+            result["baseline"] = baseline
+        elif baseline_method == "double_exp":
+            params = config["baseline"]["params"]
+            baseline_subtracted, baseline = apply_double_exponential_baseline(
+                smoothed,
+                sampling_rate=sampling_rate,
+                mode=params.get("mode", "subtract"),
+                tau_slow=params.get("tau_slow", 3600),
+                tau_multiplier=params.get("tau_multiplier", 0.1),
             )
             result["baseline"] = baseline
         else:
@@ -1077,8 +1138,10 @@ def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_
         smooth = config["smoothing"]["method"]
         baseline = config["baseline"]["method"]
         norm = config["normalization"]["method"]
+        baseline_mode = config["baseline"]["params"].get("mode", "subtract")
+        step2_label = "dF/F" if baseline_mode == "dff" else "Baseline-subtracted"
         labels[1] = f"Smoothed {signal_label} ({smooth})"
-        labels[2] = f"Baseline-subtracted {signal_label} ({baseline})"
+        labels[2] = f"{step2_label} {signal_label} ({baseline})"
         labels[3] = f"Normalized {signal_label} ({norm})"
 
     plot_photometry_signals(

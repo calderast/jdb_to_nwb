@@ -9,9 +9,11 @@
 # ============================================================
 
 presets:
-  # Default for dLight. This exactly matches Tim's original pipeline.
+  # Default for dLight1.3b and dLight3.8. This exactly matches Tim's original pipeline.
   dlight_isosbestic:
-    description: "dLight with airPLS baseline + isosbestic Lasso correction"
+    description: >
+      smooth with rolling mean, airPLS baseline, isosbestic Lasso correction,
+      median zscore (Tim's original pipeline)
     smoothing: rolling_mean
     baseline: airpls
     normalization: median_zscore
@@ -21,26 +23,55 @@ presets:
   # Useful when the baseline has sharper fluctuations when plugging was unstable that the default lambda under-fits.
   # higher lambda = smoother baseline, lower = follows signal more closely.
   dlight_isosbestic_tight_baseline:
-    description: "dLight with tighter airPLS baseline (lambda=1e6) + isosbestic Lasso correction"
+    description: >
+      smooth with rolling mean, tight airPLS baseline (lambda=1e6),
+      isosbestic Lasso correction, median zscore
     smoothing: rolling_mean
     baseline: airpls
     normalization: median_zscore
     correction: isosbestic_lasso
     param_overrides:
       baseline:
-        lambda: 1.0e+6
+        lambda: 1.0e+5
+
+  # dLight with double exponential baseline instead of airPLS.
+  # Useful when we want to remove photobleaching drift but don't want to remove 
+  # other (potentially relevant) low-frequency variation in the signal
+  dlight_isosbestic_double_exp:
+    description: >
+      smooth with rolling mean, double exponential baseline,
+      isosbestic Lasso correction, median zscore
+    smoothing: rolling_mean
+    baseline: double_exp
+    normalization: median_zscore
+    correction: isosbestic_lasso
+
+  # No baseline correction. Useful if we are interested in changes in the signal on
+  # slow timescales that would be removed by a highpass filter, airPLS, etc.
+  dlight_isosbestic_no_baseline:
+    description: >
+      smooth with rolling mean, no baseline correction,
+      isosbestic Lasso correction, median zscore
+    smoothing: rolling_mean
+    baseline: none
+    normalization: median_zscore
+    correction: isosbestic_lasso
 
   # Default for gACh. Classic pyPhotometry filtering, baseline removal, and normalization. Ratiometric correction.
   gach_ratiometric:
-    description: "gACh4h with filtering + ratiometric correction (470/405)"
+    description: >
+      smooth with lowpass filter, remove photobleaching drift with highpass filter,
+      mean zscore, ratiometric correction (470/405)
     smoothing: lowpass
     baseline: highpass
     normalization: mean_zscore
     correction: ratiometric
 
-  # Default for rDA3m. Classic pyPhotometry filtering, baseline removal, and normalization, no correction.
+  # Default for rDA3m. Classic pyPhotometry filtering, baseline removal, and normalization. No correction.
   classic_filtering:
-    description: "lowpass filter to remove noise, highpass to remove photobleaching drift, zscore"
+    description: >
+      smooth with lowpass filter, remove photobleaching drift with highpass filter,
+      mean zscore
     smoothing: lowpass
     baseline: highpass
     normalization: mean_zscore
@@ -63,10 +94,14 @@ method_defaults:
     airpls:
       lambda: 1.0e+8
       max_iterations: 50
+      mode: subtract       # "subtract": signal - baseline | "dff": (signal - baseline) / baseline
+    double_exp:
+      tau_slow: 3600       # initial guess for slow time constant in seconds
+      tau_multiplier: 0.1  # tau_fast = tau_slow * tau_multiplier
+      mode: subtract       # "subtract" or "dff"
     highpass:
       cutoff_hz: 0.001
       order: 2
-    # exponential: {}           # (parameters TBD when implemented)
   normalization:
     median_zscore: {}            # (signal - median) / std
     mean_zscore: {}              # (signal - mean) / std
