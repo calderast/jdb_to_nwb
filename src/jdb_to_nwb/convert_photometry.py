@@ -692,8 +692,8 @@ def apply_double_exponential_baseline(signal, sampling_rate, mode="subtract", ta
         [0,       0,       0,       600,        0],
         [max_sig, max_sig, max_sig, 36000,      1],
     )
-    parms, _ = curve_fit(double_exponential, t, signal, p0=p0, bounds=bounds, maxfev=1000)
-    baseline = double_exponential(t, *parms)
+    params, _ = curve_fit(double_exponential, t, signal, p0=p0, bounds=bounds, maxfev=1000)
+    baseline = double_exponential(t, *params)
 
     if mode == "dff":
         corrected = (signal - baseline) / np.maximum(baseline, 1e-6)

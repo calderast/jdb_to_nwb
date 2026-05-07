@@ -539,8 +539,8 @@ def test_load_processing_config_preset_param_overrides():
     assert config["baseline"]["method"] == "airpls"
     assert config["normalization"]["method"] == "median_zscore"
     assert config["correction"]["method"] == "isosbestic_lasso"
-    # lambda overridden from 1e8 (default) to 1e6 via param_overrides in the preset
-    assert config["baseline"]["params"]["lambda"] == 1e6
+    # lambda overridden from 1e8 (default) to 1e5 via param_overrides in the preset
+    assert config["baseline"]["params"]["lambda"] == 1e5
     # max_iterations not overridden — should still be the method default
     assert config["baseline"]["params"]["max_iterations"] == 50
 
@@ -549,7 +549,7 @@ def test_load_processing_config_session_overrides_take_priority():
     """Session-level processing_overrides take priority over preset param_overrides."""
     session_overrides = {"baseline": {"lambda": 1e4}}
     config = load_processing_config("dlight_isosbestic_tight_baseline", overrides=session_overrides)
-    # Session override (1e4) should win over preset param_override (1e6)
+    # Session override (1e4) should win over preset param_override (1e5)
     assert config["baseline"]["params"]["lambda"] == 1e4
     # Unrelated params still come from method defaults
     assert config["baseline"]["params"]["max_iterations"] == 50
