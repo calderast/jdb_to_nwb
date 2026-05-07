@@ -9,10 +9,6 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
     """
     Plots photometry signals and port visit times.
 
-    This function can be used to plot any signals, but our current use case is:
-    - LabVIEW has 470nm and 405nm (dLight) 
-    - pyPhotometry has 470nm, 405nm, and 470/405 ratio (gACh4h), and 565nm (rDA3m)
-
     Parameters:
         visits (list or np.array): Port visits in photometry sample time
         sampling_rate (float): Sampling rate of signals and port visits in Hz
@@ -71,13 +67,13 @@ def plot_photometry_signals(visits, sampling_rate, signals, signal_labels, title
         if overlay_signals:
             for overlay_signal, overlay_subplot_idx, overlay_color, overlay_label in overlay_signals:
                 if overlay_subplot_idx == i:
-                    axs[i].plot(xvals, overlay_signal, color=overlay_color, 
-                                lw=1.5, label=f'{overlay_label}')
+                    axs[i].plot(xvals, overlay_signal, color=overlay_color,
+                                lw=2, label=f'{overlay_label}')
 
         # Set title and ylabel
         axs[i].set_ylabel(f'{unit}', fontsize=10)
         axs[i].set_title(f'{label}', fontsize=15)
-        axs[i].legend(loc='upper right')
+        axs[i].legend(loc='upper right', bbox_to_anchor=(1.0, 0.88))
 
     axs[-1].set_xlabel('Time (minutes)', fontsize=12)
 

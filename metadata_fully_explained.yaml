@@ -71,14 +71,46 @@ photometry:
   # Can specify path to .phot and .box file if using LabVIEW
   phot_file_path: "path/to/file/like/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.phot"
   box_file_path: "path/to/file/like/IM-1478_2022-07-25_15-24-22____Tim_Conditioning.box"
-  # OR path to signals.mat for legacy LabVIEW processing
+  # OR path to signals.mat for legacy LabVIEW processing (discouraged, ALWAYS use phot and box if available)
   signals_mat_file_path: "path/to/signals.mat"
-  # OR path to ppd file if using pyPhotometry
+  # OR path to ppd file if using pyPhotometry.
+  # 2-signal: analog_1=470nm, analog_2=405nm
+  # 3-signal: analog_1=470nm, analog_2=565nm, analog_3=405nm
+  # The number of signals is detected automatically from the ppd file.
   ppd_file_path: "path/to/file/like/Lhem_barswitch_GACh4h_rDA3m_CKTL-2024-11-06-185407.ppd"
 
-  # OPTIONAL - if you need to crop LabVIEW photometry signals, specify the desired end time
-  # See the crop_photometry notebook in resources/photometry to help find the correct end time
+  # OPTIONAL - if you need to crop photometry signals, specify the desired end time in minutes.
+  # Applies to all recording types (LabVIEW raw, LabVIEW mat, and pyPhotometry).
+  # See the crop_photometry notebook in resources/photometry to help find the correct end time.
   phot_end_time_mins: 77.5
+
+  # OPTIONAL - override which processing preset is used for a given indicator.
+  # By default, the preset is determined from resources/photometry/photometry_mappings.yaml.
+  # Currently available presets (defined in resources/photometry/processing_presets.yaml):
+  #   dlight_isosbestic                - default for dLight: rolling mean -> airPLS (lambda=1e8) -> median z-score -> isosbestic Lasso
+  #   dlight_isosbestic_tight_baseline - same as above, but airPLS lambda=1e6 (tighter baseline)
+  #   gach_ratiometric                 - default for gACh4h: lowpass -> highpass -> mean z-score -> ratiometric correction (470/405)
+  #   classic_filtering                - default for rDA3m: lowpass -> highpass -> mean z-score (no correction)
+  # New presets can be added in resources/photometry/processing_presets.yaml and referenced here.
+  # Presets support a param_overrides key to bake in non-default parameters (e.g. a different lambda).
+  # If you want to use a non-defualt processing preset for a given indicator, reference it as shown:
+  processing_presets:
+    dLight1.3b: dlight_isosbestic_tight_baseline
+
+  # OPTIONAL - override specific method parameters within the selected preset.
+  # Applies globally to all indicators in this session.
+  # Each key is a processing step (smoothing, baseline, normalization, correction),
+  # and the value is a dict of parameter overrides for that step's method.
+  # Default parameter values are in resources/photometry/processing_presets.yaml under method_defaults.
+  # Example: tighten Lasso regularization and use a longer rolling-mean window
+  processing_overrides:
+    smoothing:
+      window_fraction: 0.05     # default: 0.0333 (window = Fs * window_fraction)
+    baseline:
+      lambda: 1.0e+9            # default: 1.0e+8 (higher = smoother airPLS baseline)
+      max_iterations: 100       # default: 50
+    correction:
+      alpha: 0.00001            # default: 0.0001 (Lasso regularization; lower = tighter fit)
 
   # see Methods > Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC6555489/#S6 and
   # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
