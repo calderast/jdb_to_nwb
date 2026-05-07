@@ -52,6 +52,18 @@ WAVELENGTH_TO_LED_COLOR = {
     "565nm": "green",
 }
 
+# Plot colors per indicator. The reference channel (405nm isosbestic) always uses REFERENCE_PLOT_COLOR.
+# Add new indicators here as needed; unknown indicators fall back to DEFAULT_SIGNAL_PLOT_COLOR.
+INDICATOR_PLOT_COLORS = {
+    "dLight1.3b":    "#2CA02C", # green
+    "dLight3.8":     "#2CA02C", # green
+    "gACh4h":        "#2CA02C", # green
+    "rDA3m (AAV9)":  "#D62728", # red
+    "rDA3m (rAAV)":  "#D62728", # red
+}
+REFERENCE_PLOT_COLOR = "#8FBF8F"   # 405nm reference for dLight and gACh4h. green, but desaturated.
+DEFAULT_SIGNAL_PLOT_COLOR = "#1f77b4"   # matplotlib default blue
+
 
 ############################ Functions to read raw photometry data ############################
 
@@ -912,6 +924,8 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
         # Build plot label from indicator + wavelength (e.g. "dLight 470nm")
         def label(wl):
             return f"{indicator_name} {wl}"
+        # Get color to plot this signal
+        sig_color = INDICATOR_PLOT_COLORS.get(indicator_name, DEFAULT_SIGNAL_PLOT_COLOR)
 
         correction_method = config["correction"]["method"]
         correction_fn = CORRECTION_METHODS.get(correction_method)
@@ -930,7 +944,7 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             logger.info(f"Processing {ref_wl} reference for {indicator_name}...")
             ref_result = process_single_signal(raw_reference, bundle.sampling_rate, config, logger)
 
-        # Apply correction
+        # Apply isosbestic or ratiometric correction if applicable
         if correction_method == "isosbestic_lasso" and correction_fn and ref_result:
             logger.info("Applying isosbestic correction via Lasso regression")
             corrected, fitted_reference = correction_fn(
@@ -962,32 +976,49 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
             "config": config,
         }
 
-        # Plotting
+        # Plotting!
+        signal_units = "a.u." if bundle.source != "pyphotometry" else "V"
+        # If we have a reference wavelength (e.g. dLight, gACh4h)
         if ref_wl:
+            # Plot raw signal and reference on same plot (2 subplots)
             plot_photometry_signals(
                 visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
                 signals=[raw_signal, raw_reference],
                 signal_labels=[f"Raw {label(signal_wl)}", f"Raw {label(ref_wl)}"],
-                signal_colors=["blue", "purple"],
+                signal_colors=[sig_color, REFERENCE_PLOT_COLOR],
                 title=f"Raw signals for {indicator_name}",
-                signal_units="a.u." if bundle.source != "pyphotometry" else "V",
+                signal_units=signal_units,
                 fig_dir=fig_dir,
             )
+            # Plot correlation between signal and reference
             plot_signal_correlation(
                 sig1=raw_signal, sig2=raw_reference,
                 label1=label(signal_wl), label2=label(ref_wl), fig_dir=fig_dir,
             )
-
+        # If no reference wavelength (e.g. rDA3m)
+        else:
+            # Just plot raw signal
+            plot_photometry_signals(
+                visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
+                signals=[raw_signal],
+                signal_labels=[f"Raw {label(signal_wl)}"],
+                signal_colors=[sig_color],
+                title=f"Raw signals for {indicator_name}",
+                signal_units=signal_units,
+                fig_dir=fig_dir,
+            )
+        # Plot processing steps for this signal (raw, smoothing, baseline, normalization)
         plot_processing_steps(
             raw_signal, sig_result, bundle.port_visits, bundle.sampling_rate,
-            label(signal_wl), fig_dir,
+            label(signal_wl), fig_dir, signal_color=sig_color, config=config,
         )
+        # Plot processing steps for the reference wavelength (raw, smoothing, baseline, normalization) if it exists
         if ref_result:
             plot_processing_steps(
                 raw_reference, ref_result, bundle.port_visits, bundle.sampling_rate,
-                label(ref_wl), fig_dir,
+                label(ref_wl), fig_dir, signal_color=REFERENCE_PLOT_COLOR, config=config,
             )
-
+        # If we did isosbestic correction, plot the steps (signal, reference, predicted signal from ref, dF/F)
         if correction_method == "isosbestic_lasso" and corrected is not None:
             plot_photometry_signals(
                 visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
@@ -996,21 +1027,37 @@ def run_processing_pipeline(bundle, indicator_configs, logger, fig_dir=None):
                     f"Normalized {label(signal_wl)}", f"Normalized {label(ref_wl)}",
                     f"Predicted {label(signal_wl)} from {label(ref_wl)}", "dF/F (corrected)",
                 ],
-                signal_colors=["blue", "purple", "gray", "green"],
+                signal_colors=[sig_color, REFERENCE_PLOT_COLOR, "gray", sig_color],
                 title=f"{indicator_name} isosbestic correction",
                 signal_units="normalized",
                 fig_dir=fig_dir,
             )
+        # If we did ratiometric correction
         elif correction_method == "ratiometric" and ratio_result is not None:
+            # Plot processing steps for the ratio (raw, smoothing, baseline, normalization)
             plot_processing_steps(
                 raw_ratio, ratio_result, bundle.port_visits, bundle.sampling_rate,
-                label(f"{signal_wl}/{ref_wl} ratio"), fig_dir,
+                label(f"{signal_wl}/{ref_wl} ratio"), fig_dir, signal_color=sig_color, config=config,
+            )
+            # Plot the signal (numerator), reference (denominator), and ratio
+            plot_photometry_signals(
+                visits=bundle.port_visits, sampling_rate=bundle.sampling_rate,
+                signals=[sig_result["normalized"], ref_result["normalized"], corrected],
+                signal_labels=[
+                    f"Normalized {label(signal_wl)}",
+                    f"Normalized {label(ref_wl)}",
+                    f"Ratio {label(signal_wl)}/{label(ref_wl)} (corrected)",
+                ],
+                signal_colors=[sig_color, REFERENCE_PLOT_COLOR, sig_color],
+                title=f"{indicator_name} ratiometric correction",
+                signal_units="normalized",
+                fig_dir=fig_dir,
             )
 
     return all_results
 
 
-def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_dir):
+def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_dir, signal_color=None, config=None):
     """Plot the processing steps for a single signal."""
     signals_to_plot = [raw, result["smoothed"], result["baseline_subtracted"], result["normalized"]]
     labels = [
@@ -1022,13 +1069,24 @@ def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_
     units = ["a.u.", "a.u.", "a.u.", "normalized"]
     overlay = None
     if "baseline" in result:
-        overlay = [(result["baseline"], 1, "red", "baseline")]
+        overlay = [(result["baseline"], 1, "black", "baseline")]
+
+    colors = [signal_color] * 4 if signal_color else None
+
+    if config:
+        smooth = config["smoothing"]["method"]
+        baseline = config["baseline"]["method"]
+        norm = config["normalization"]["method"]
+        labels[1] = f"Smoothed {signal_label} ({smooth})"
+        labels[2] = f"Baseline-subtracted {signal_label} ({baseline})"
+        labels[3] = f"Normalized {signal_label} ({norm})"
 
     plot_photometry_signals(
         visits=visits, sampling_rate=sampling_rate,
         signals=signals_to_plot, signal_labels=labels,
         title=f"{signal_label} processing steps",
         signal_units=units,
+        signal_colors=colors,
         overlay_signals=overlay,
         fig_dir=fig_dir,
     )
