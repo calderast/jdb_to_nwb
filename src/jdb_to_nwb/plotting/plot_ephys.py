@@ -16,7 +16,7 @@ def plot_channel_map(probe_name, channel_coords, fig_dir=None):
         fig_dir (str): 
             The directory to save the figure. If None, the figure will not be saved.
     """
-    plt.figure(figsize=(16, 6))
+    fig = plt.figure(figsize=(16, 6))
     plt.scatter(channel_coords["x_um"], channel_coords["y_um"], s=10, alpha=0)
     for _, row in channel_coords.iterrows():
         plt.text(row["x_um"], row["y_um"], row["intan_channel"], fontsize=8, ha='center', va='center')
@@ -30,8 +30,10 @@ def plot_channel_map(probe_name, channel_coords, fig_dir=None):
     if fig_dir:
         save_name = f"{probe_name.lower().replace(' ', '_').replace(',', '').replace('-','')}"
         save_path = os.path.join(fig_dir, f"{save_name}_channel_coords.png")
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+    return fig
 
 
 def plot_channel_impedances(probe_name, electrode_info, min_impedance, max_impedance, fig_dir=None):
@@ -94,8 +96,10 @@ def plot_channel_impedances(probe_name, electrode_info, min_impedance, max_imped
     if fig_dir:
         save_name = f"{probe_name.lower().replace(' ', '_').replace(',', '').replace('-', '')}"
         save_path = os.path.join(fig_dir, f"{save_name}_channel_impedances.png")
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+
+    return fig
 
 
 def plot_neuropixels(all_neuropixels_electrodes: pd.DataFrame, channel_info: pd.DataFrame, 
@@ -115,8 +119,8 @@ def plot_neuropixels(all_neuropixels_electrodes: pd.DataFrame, channel_info: pd.
             The directory to save the figure. If None, the figure will not be saved.
     """
     # Plot all electrodes with recording electrodes highlighted
-    plt.figure(figsize=(10, 25))
-    plt.scatter(all_neuropixels_electrodes["x_um"], all_neuropixels_electrodes["y_um"], 
+    fig1 = plt.figure(figsize=(10, 25))
+    plt.scatter(all_neuropixels_electrodes["x_um"], all_neuropixels_electrodes["y_um"],
                 color="black", s=1, label="All electrodes")
     plt.scatter(channel_info["x_um"], channel_info["y_um"], color="red", s=1, label="Recording electrodes")
     plt.title(f"Neuropixels 2.0 (multishank) Recording Electrode Layout{f' — {probe_name}' if probe_name else ''}")
@@ -127,11 +131,11 @@ def plot_neuropixels(all_neuropixels_electrodes: pd.DataFrame, channel_info: pd.
 
     if fig_dir:
         save_path = os.path.join(fig_dir, f"neuropixels_recording_sites{f'_{probe_name}' if probe_name else ''}.png")
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig1.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig1)
 
     # Plot channel names on the electrode layout (colored by channel number)
-    plt.figure(figsize=(10, 25))
+    fig2 = plt.figure(figsize=(10, 25))
     sc = plt.scatter(channel_info["x_um"], channel_info["y_um"], c=channel_info["channel_num"], cmap="viridis", s=10)
     cbar = plt.colorbar(sc)
     cbar.set_label("Channel Number")
@@ -144,5 +148,7 @@ def plot_neuropixels(all_neuropixels_electrodes: pd.DataFrame, channel_info: pd.
 
     if fig_dir:
         save_path = os.path.join(fig_dir, f"neuropixels_channel_layout{f'_{probe_name}' if probe_name else ''}.png")
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig2.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig2)
+
+    return fig1, fig2
