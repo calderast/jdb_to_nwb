@@ -836,6 +836,18 @@ def add_electrode_data_berke_probe(
     # Get dataframe of electrode information (channel map, x/y coordinates, and impedance info)
     electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
 
+    # Save electrode info as an AssociatedFiles object in the NWB
+    if "associated_files" not in nwbfile.processing:
+        logger.debug("Creating nwb processing module for associated files")
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+    logger.debug("Saving electrode info CSV as an AssociatedFiles object")
+    nwbfile.processing["associated_files"].add(AssociatedFiles(
+        name="electrode_info",
+        description="Electrode channel map and impedance information (CSV)",
+        content=electrode_info.to_csv(index=False),
+        task_epochs="0",
+    ))
+
     # Get general metadata for the Probe
     electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
     if electrodes_location == "unspecified":
