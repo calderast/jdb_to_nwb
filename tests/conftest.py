@@ -1,13 +1,8 @@
 import logging
 import pytest
 import shutil
+import matplotlib.pyplot as plt
 
-# @pytest.fixture
-# def dummy_logger():
-#     logger = logging.getLogger("test_logger")
-#     logger.setLevel(logging.DEBUG)
-#     logger.addHandler(logging.NullHandler())  # Prevents actual logging output
-#     return logger
 
 # Create a dummy_logger with a real handler so our get_logger_directory function works
 @pytest.fixture
@@ -32,6 +27,12 @@ def dummy_logger():
         h.close()
         logger.removeHandler(h)
     shutil.rmtree(temp_dir)
+
+
+@pytest.fixture(autouse=True)
+def close_matplotlib_figures():
+    yield
+    plt.close('all')
 
 
 # see https://docs.pytest.org/en/stable/example/simple.html#control-skipping-of-tests-according-to-command-line-option

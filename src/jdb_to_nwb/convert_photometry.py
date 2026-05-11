@@ -1144,7 +1144,7 @@ def plot_processing_steps(raw, result, visits, sampling_rate, signal_label, fig_
         labels[2] = f"{step2_label} {signal_label} ({baseline})"
         labels[3] = f"Normalized {signal_label} ({norm})"
 
-    plot_photometry_signals(
+    return plot_photometry_signals(
         visits=visits, sampling_rate=sampling_rate,
         signals=signals_to_plot, signal_labels=labels,
         title=f"{signal_label} processing steps",

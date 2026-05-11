@@ -11,7 +11,7 @@ def plot_trial_time_histogram(trial_data, fig_dir=None):
     durations = [event['end_time'] - event['start_time'] for event in trial_data]
 
     # Plot histogram
-    plt.figure(figsize=(6, 4))
+    fig = plt.figure(figsize=(6, 4))
     plt.hist(durations, bins=40, color='skyblue', edgecolor='black')
     plt.xlabel('Trial duration (s)')
     plt.ylabel('Number of trials')
@@ -21,6 +21,8 @@ def plot_trial_time_histogram(trial_data, fig_dir=None):
     if fig_dir:
         plt.savefig(os.path.join(fig_dir, "histogram_of_trial_durations.png"), dpi=300, bbox_inches="tight")
         plt.close()
+
+    return fig
 
 
 def plot_maze_configurations(block_data, fig_dir=None):
@@ -59,3 +61,5 @@ def plot_maze_configurations(block_data, fig_dir=None):
         fig2.savefig(os.path.join(fig_dir, "maze_configurations_with_optimal_paths.png"), dpi=300, bbox_inches="tight")
         plt.close(fig1)
         plt.close(fig2)
+
+    return fig1, fig2

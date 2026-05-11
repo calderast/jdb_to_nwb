@@ -57,12 +57,12 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
     unrewarded_sem = sem(un_rewarded, axis=0)
 
     # First plot: Average signal response across all trials
-    plt.figure(figsize=(8, 5))
+    fig1 = plt.figure(figsize=(8, 5))
     plt.plot(time_vector, rewarded_mean, label=f"rewarded (n={n_rewarded})", color="red")
-    plt.fill_between(time_vector, rewarded_mean - rewarded_sem, 
+    plt.fill_between(time_vector, rewarded_mean - rewarded_sem,
                      rewarded_mean + rewarded_sem, color="red", alpha=0.3)
     plt.plot(time_vector, unrewarded_mean, label=f"unrewarded (n={n_unrewarded})", color="blue")
-    plt.fill_between(time_vector, unrewarded_mean - unrewarded_sem, 
+    plt.fill_between(time_vector, unrewarded_mean - unrewarded_sem,
                      unrewarded_mean + unrewarded_sem, color="blue", alpha=0.3)
     plt.axvline(0, linestyle="--", color="black", label="Poke In")
     plt.xlabel("Time (s)")
@@ -73,11 +73,11 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
 
     if fig_dir:
         save_path = os.path.join(fig_dir, f"{signal_name}_aligned_to_port_entry.png")
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig1.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig1)
 
     # Second plot: Full session signal trace
-    plt.figure(figsize=(20, 5))
+    fig2 = plt.figure(figsize=(20, 5))
     plt.plot(timestamps, signal_trace)
     for poke_in, reward in zip(poke_in_times, rewards):
         color = "red" if reward == 1 else "blue"
@@ -91,8 +91,10 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
 
     if fig_dir:
         save_path = os.path.join(fig_dir, f"{signal_name}_full_session_trace.png")
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()
+        fig2.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close(fig2)
+
+    return fig1, fig2
 
 
 def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
@@ -124,6 +126,7 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
 
     # Set up n_blocks x 2 plot to plot rat position by (first half, second half) of each block
     fig, axs = plt.subplots(n_blocks, 2, figsize=(8, 4 * n_blocks), sharex=True, sharey=True)
+    fig_fulls = []
 
     for row, block in enumerate(block_data.itertuples(index=False)):
         # Get maze configuration and reward probabilities for this block
@@ -166,6 +169,7 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
             save_path = os.path.join(fig_dir, f"{spatial_series_name}_block_{block.block}_heatmap.png")
             fig_full.savefig(save_path, dpi=300, bbox_inches="tight")
             plt.close(fig_full)
+        fig_fulls.append(fig_full)
 
         # Now do the same thing, but split into first/second half so we can see behavioral adaptation
 
@@ -205,3 +209,5 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
             save_path = os.path.join(fig_dir, f"{spatial_series_name}_all_blocks_heatmap.png")
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
+
+    return fig, fig_fulls
