@@ -7,6 +7,7 @@ import shutil
 
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
+from ndx_franklab_novela import AssociatedFiles
 
 from . import __version__
 from .utils import to_datetime, setup_logger
@@ -193,6 +194,31 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
 
     # Set the timestamps reference time equal to the session start time
     nwbfile.fields["timestamps_reference_time"] = nwbfile.fields["session_start_time"]
+
+    # Flush log handlers so all messages are on disk before we read them into the NWB
+    for handler in logger.handlers:
+        handler.flush()
+
+    # Save metadata YAML and log files as AssociatedFiles objects in the NWB so the NWB is self-contained
+    if "associated_files" not in nwbfile.processing:
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+
+    files_to_embed = [
+        ("metadata_yaml",  "Metadata YAML file used to create this NWB file", metadata_copy_file_path),
+        ("info_log",       "Info-level conversion log",                         info_log_file),
+        ("warning_log",    "Warning-level conversion log",                      warning_log_file),
+        ("debug_log",      "Debug-level conversion log",                        debug_log_file),
+    ]
+    for name, description, file_path in files_to_embed:
+        with open(file_path, "r") as f:
+            content = f.read()
+        nwbfile.processing["associated_files"].add(AssociatedFiles(
+            name=name,
+            description=description,
+            content=content,
+            task_epochs="0",
+        ))
+        logger.info(f"Saved {file_path.name} as AssociatedFiles object '{name}' in NWB")
 
     print("Writing file...")
     logger.info("Writing file...")
