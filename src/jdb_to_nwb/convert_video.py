@@ -1,5 +1,6 @@
 import os
 import csv
+import shutil
 import ffmpeg
 import numpy as np
 import pandas as pd
@@ -134,10 +135,33 @@ def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, pre
     preset (str): ffmpeg compression speed preset: \
         "ultrafast", "superfast", "fast", "medium", "slow", "slower", "veryslow"
     """
+    # Prefer the ffmpeg binary bundled with imageio-ffmpeg (portable, no system install needed).
+    # Fall back to system ffmpeg if imageio-ffmpeg is not installed.
+    # We have all of these options because ffmpeg wasn't being found on different systems 
+    # (see Github issues #147 and #188)
+    try:
+        # Try bundled ffmpeg binary, works without a system ffmpeg install
+        import imageio_ffmpeg
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        logger.debug(f"Using ffmpeg binary from imageio-ffmpeg: {ffmpeg_exe}")
+    except ImportError:
+        # If that didn't work, check for ffmpeg on PATH
+        ffmpeg_exe = shutil.which("ffmpeg")
+        logger.debug(f"imageio-ffmpeg not installed, falling back to system ffmpeg: {ffmpeg_exe}")
+
+    if ffmpeg_exe is None:
+        # Neither imageio-ffmpeg nor system ffmpeg (PATH) is available :(
+        # This shouldn't happen if you ran an up-to-date `pip install -e .` !!!
+        logger.error("FFmpeg not found! Run `pip install -e .` to install imageio-ffmpeg")
+        raise RuntimeError(
+            "FFmpeg not found! Run `pip install -e .` to install imageio-ffmpeg or add ffmpeg to your system PATH"
+            )
+
+    logger.debug(f"Using video compression settings: crf={crf}, preset={preset}")
     try:
         (
             ffmpeg.input(str(input_video_path)).output(str(output_video_path), vcodec="libx264", crf=crf, preset=preset)
-            .run(overwrite_output=True, capture_stdout=False, capture_stderr=True)
+            .run(cmd=ffmpeg_exe, overwrite_output=True, capture_stdout=False, capture_stderr=True)
         )
         logger.info(f"Compressed video at {input_video_path} to {output_video_path}")
         print(f"Compressed video at {input_video_path} to {output_video_path}")
