@@ -301,15 +301,11 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
     elif len(trial_data) > len(ground_truth_visit_times):
         arduino_visits = [trial['beam_break_start'] for trial in trial_data]
         n_extra = len(trial_data) - len(ground_truth_visit_times)
-        # Log it at CRITICAL and complain a lot so the user knows something is wrong!
         logger.critical(
             f"Found {n_extra} more trial(s) recorded by arduino ({len(trial_data)}) than "
             f"ground truth {ground_truth_time_source} visits ({len(ground_truth_visit_times)}). "
         )
         logger.critical(f"This should not happen and likely means that {ground_truth_time_source} crashed!!")
-        logger.critical("Attempting alignment by building interpolation function from "
-                       f"{len(ground_truth_visit_times)} matched {ground_truth_time_source} visits "
-                       f"and applying to all {len(trial_data)} trials (unmatched trial(s) will be extrapolated).")
 
         # Find the subset of arduino visit times that have corresponding ground truth pulses
         # by trimming to the length of ground_truth_visit_times
@@ -345,7 +341,7 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
                 )
             # Log each unmatched visit time + extrapolated counterpart at the start of the session
             for v, t in unmatched_before:
-                logger.debug(f"Prepending extrapolated ground truth visit time {t:.4f}s "
+                logger.debug(f"Prepending extrapolated `ground truth` visit time {t:.4f}s "
                                f"(arduino time {v:.4f}s) to the start of ground_truth_visit_times")
         # If unmatched after, log that we ended phot/ephys early
         for v, t in unmatched_after:
@@ -354,7 +350,7 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
                 f"This suggests {ground_truth_time_source} ended early. Check DEBUG log for extrapolated alignment."
                 )
             # Log each unmatched visit time + extrapolated counterpart at the end of the session
-            logger.debug(f"Appending extrapolated ground truth visit time {t:.4f}s "
+            logger.debug(f"Appending extrapolated `ground truth` visit time {t:.4f}s "
                            f"(arduino time {v:.4f}s) to the end of ground_truth_visit_times")
 
         # Add our extrapolated "ground truth" times so we can continue with alignment as normal
