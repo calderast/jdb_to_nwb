@@ -33,14 +33,17 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
     # Split by rewarded vs unrewarded trials
     rewarded, un_rewarded = [], []
 
+    # Get trace centered on poke_in
     for poke_in, reward in zip(poke_in_times, rewards):
 
-        # Extract signal trace centered on poke_in
-        idx = np.where(timestamps == poke_in)[0][0]
+        # Find the photometry sample closest to poke_in (nearest-sample rather than exact equality,
+        # because extrapolated visit times may not exactly match a photometry sample timestamp)
+        idx = np.argmin(np.abs(timestamps - poke_in))
         start_idx = max(0, idx - num_samples // 2)
         end_idx = start_idx + num_samples
 
-        if end_idx <= len(signal_trace):  # Ensure within bounds
+        # Exclude this trial from the average if we don't have photometry signal within bounds
+        if end_idx <= len(signal_trace):
             trace = signal_trace[start_idx:end_idx]
             (rewarded if reward == 1 else un_rewarded).append(trace)
 
