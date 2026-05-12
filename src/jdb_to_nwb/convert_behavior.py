@@ -335,12 +335,42 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
             logger.warning(f"Extrapolated `ground truth` visit time {fake_gt_time:.4f}s "
                            f"for unmatched arduino visit at {unmatched_arduino_time:.4f}s")
 
-        # Insert extrapolated time(s) into ground_truth_visit_times at the correct positions,
-        # keeping all existing ground truth visit times unchanged
-        ground_truth_visit_times = list(ground_truth_visit_times)
-        for i, (arduino_time, gt_time) in enumerate(zip(arduino_unmatched, extrapolated_gt_times)):
-            insert_idx = i + sum(1 for v in arduino_matched if v < arduino_time)
-            ground_truth_visit_times.insert(insert_idx, float(gt_time))
+        # Unmatched visits are always at the start or end (if we missed a pulse in the middle we have 
+        # bigger problems!! but this has never happened), so prepend/append extrapolated times accordingly.
+        # We expect unmatched visits to all be at the END (meaning phot/ephys crashed before behavior ended).
+        # Complain if any are at the start (that would mean we are confused or phot/ephys was started late instead).
+        unmatched_before = [(v, t) for v, t in zip(arduino_unmatched, extrapolated_gt_times) if v < arduino_matched[0]]
+        unmatched_after  = [(v, t) for v, t in zip(arduino_unmatched, extrapolated_gt_times) if v > arduino_matched[-1]]
+        # If unmatched before, log that we started phot/ephys late
+        if unmatched_before:
+            logger.critical(
+                f"Found {len(unmatched_before)} unmatched arduino visit(s) at the START of the session! "
+                f"This suggests {ground_truth_time_source} started late (bad!!), not that it crashed early."
+                )
+            logger.critical(
+                "This is unexpected. Confirm this matches known experimental setup "
+                "and carefully check DEBUG logs to confirm alignment is ok."
+                )
+            # Log each unmatched visit time + extrapolated counterpart at the start of the session
+            for v, t in unmatched_before:
+                logger.debug(f"Prepending extrapolated ground truth visit time {t:.4f}s "
+                               f"(arduino time {v:.4f}s) to the start of ground_truth_visit_times")
+        # If unmatched after, log that we ended phot/ephys early
+        for v, t in unmatched_after:
+            logger.warning(
+                f"Found {len(unmatched_after)} unmatched arduino visit(s) at the end of the session! "
+                f"This suggests {ground_truth_time_source} ended early. Check DEBUG log for extrapolated alignment."
+                )
+            # Log each unmatched visit time + extrapolated counterpart at the end of the session
+            logger.debug(f"Appending extrapolated ground truth visit time {t:.4f}s "
+                           f"(arduino time {v:.4f}s) to the end of ground_truth_visit_times")
+
+        # Add our extrapolated "ground truth" times so we can continue with alignment as normal
+        ground_truth_visit_times = (
+            [t for _, t in unmatched_before] 
+            + list(ground_truth_visit_times) 
+            + [t for _, t in unmatched_after]
+        )
 
     # Now that we have the correct number of ground truth visit times, replace arduino times with ground truth times
     for trial, visit_time in zip(trial_data, ground_truth_visit_times):
