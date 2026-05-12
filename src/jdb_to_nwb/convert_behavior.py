@@ -310,8 +310,7 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
         logger.critical("Attempting alignment by building interpolation function from "
                        f"{len(ground_truth_visit_times)} matched {ground_truth_time_source} visits "
                        f"and applying to all {len(trial_data)} trials (unmatched trial(s) will be extrapolated).")
-        logger.critical("Carefully check DEBUG conversion log and all created figures to make sure alignment is ok.")
-        
+
         # Find the subset of arduino visit times that have corresponding ground truth pulses
         # by trimming to the length of ground_truth_visit_times
         _, arduino_matched = trim_sync_pulses(ground_truth_visit_times, arduino_visits, logger)
@@ -330,10 +329,6 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
             ground_truth_visit_times=ground_truth_visit_times,
             logger=logger,
         )
-        # Log extrapolated "ground truth" visits at WARNING level bc this is a little sketchy
-        for unmatched_arduino_time, fake_gt_time in zip(arduino_unmatched, extrapolated_gt_times):
-            logger.warning(f"Extrapolated `ground truth` visit time {fake_gt_time:.4f}s "
-                           f"for unmatched arduino visit at {unmatched_arduino_time:.4f}s")
 
         # Unmatched visits are always at the start or end (if we missed a pulse in the middle we have 
         # bigger problems!! but this has never happened), so prepend/append extrapolated times accordingly.
@@ -346,10 +341,7 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
             logger.critical(
                 f"Found {len(unmatched_before)} unmatched arduino visit(s) at the START of the session! "
                 f"This suggests {ground_truth_time_source} started late (bad!!), not that it crashed early."
-                )
-            logger.critical(
-                "This is unexpected. Confirm this matches known experimental setup "
-                "and carefully check DEBUG logs to confirm alignment is ok."
+                "Confirm this matches known experimental setup and check DEBUG logs to confirm alignment is ok."
                 )
             # Log each unmatched visit time + extrapolated counterpart at the start of the session
             for v, t in unmatched_before:
