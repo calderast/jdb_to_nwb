@@ -312,16 +312,35 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
                        f"and applying to all {len(trial_data)} trials (unmatched trial(s) will be extrapolated).")
         logger.critical("Carefully check DEBUG conversion log and all created figures to make sure alignment is ok.")
         
-        # TODO: create extra "ground truth" visit time(s) via extrapolation
-        # so we have the same number of visit times and ground truth visit times
-        # this gets risky the more we are extrapolating, so log everything.
-        # make sure we don't mess with any of the exisiting ground truth visit times
-        ground_truth_visit_times = align_via_interpolation(
-            unaligned_timestamps=arduino_visits,
-            unaligned_visit_times=arduino_visits,
+        # Find the subset of arduino visit times that have corresponding ground truth pulses
+        # by trimming to the length of ground_truth_visit_times
+        _, arduino_matched = trim_sync_pulses(ground_truth_visit_times, arduino_visits, logger)
+
+        # Find arduino visit times without corresponding ground truth sync pulses from photometry/ephys
+        arduino_unmatched = [v for v in arduino_visits if v not in set(arduino_matched.tolist())]
+
+        # Extrapolate "ground truth" visit time(s) for unmatched arduino visit(s),
+        # using arduino_matched and ground_truth_visit_times to build the interpolation function
+        logger.debug(
+            "Building extrapolation function between matched arduino visit times and ground truth visit times "
+            "so we can create `ground truth` times for umatched arduino visits.")
+        extrapolated_gt_times = align_via_interpolation(
+            unaligned_timestamps=arduino_unmatched,
+            unaligned_visit_times=arduino_matched,
             ground_truth_visit_times=ground_truth_visit_times,
             logger=logger,
         )
+        # Log extrapolated "ground truth" visits at WARNING level bc this is a little sketchy
+        for unmatched_arduino_time, fake_gt_time in zip(arduino_unmatched, extrapolated_gt_times):
+            logger.warning(f"Extrapolated `ground truth` visit time {fake_gt_time:.4f}s "
+                           f"for unmatched arduino visit at {unmatched_arduino_time:.4f}s")
+
+        # Insert extrapolated time(s) into ground_truth_visit_times at the correct positions,
+        # keeping all existing ground truth visit times unchanged
+        ground_truth_visit_times = list(ground_truth_visit_times)
+        for i, (arduino_time, gt_time) in enumerate(zip(arduino_unmatched, extrapolated_gt_times)):
+            insert_idx = i + sum(1 for v in arduino_matched if v < arduino_time)
+            ground_truth_visit_times.insert(insert_idx, float(gt_time))
 
     # Now that we have the correct number of ground truth visit times, replace arduino times with ground truth times
     for trial, visit_time in zip(trial_data, ground_truth_visit_times):
