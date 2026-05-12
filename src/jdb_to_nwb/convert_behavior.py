@@ -548,6 +548,51 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
     logger.debug(f"The number of trials in each block sums to the total number of trials {len(trial_data)}")
 
 
+def reassign_block_boundaries(trial_data, block_data, switch_after_trials, logger):
+    """
+    Re-assign which trials belong to which block based on user-specified switch trial numbers.
+    Used when the arduino's block detection doesn't match when barriers were actually switched.
+
+    Args:
+    switch_after_trials (list[int]): Trial numbers after which the block switched.
+        For N blocks, there should be N-1 entries.
+        e.g. [42, 85] means block 1 = trials 1-42, block 2 = trials 43-85, block 3 = trials 86+
+    """
+    n_blocks = len(block_data)
+    if len(switch_after_trials) != n_blocks - 1:
+        logger.error(f"Expected {n_blocks - 1} switch point(s) for {n_blocks} blocks, "
+                     f"got {len(switch_after_trials)}: {switch_after_trials}")
+        raise ValueError(f"Expected {n_blocks - 1} switch point(s) for {n_blocks} blocks, "
+                         f"got {len(switch_after_trials)}")
+
+    logger.info(f"Reassigning block boundaries based on user-specified switch times: "
+                f"blocks switch after trials {switch_after_trials}")
+
+    # Re-assign block and trial_within_block for each trial
+    # trial_data is ordered by trial_within_session, so we can slice directly
+    boundaries = [0] + list(switch_after_trials) + [len(trial_data)]
+    for block_idx, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+        block_num = block_idx + 1
+        for trial_within_block, trial in enumerate(trial_data[start:end], start=1):
+            if trial['block'] != block_num:
+                logger.info(f"Reassigning trial {trial['trial_within_session']} "
+                            f"from block {trial['block']} to block {block_num}")
+            trial['block'] = block_num
+            trial['trial_within_block'] = trial_within_block
+
+    # Rebuild block start/end times and num_trials to match the new trial assignments
+    for block in block_data:
+        trials_in_block = [t for t in trial_data if t['block'] == block['block']]
+        block['num_trials'] = len(trials_in_block)
+        block['start_time'] = trials_in_block[0]['start_time']
+        block['end_time'] = trials_in_block[-1]['end_time']
+    # Block end time = start time of the next block (same convention as align_data_to_visits)
+    for block, next_block in zip(block_data, block_data[1:]):
+        block['end_time'] = next_block['start_time']
+
+    return trial_data, block_data
+
+
 def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """Add trial and block data to the nwbfile"""
     print("Adding behavior...")
@@ -633,6 +678,37 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
 
     # Align visit times to photometry/ephys
     trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
+
+    # We sometimes move the barriers at a different time than the trial indicated by the arduino output
+    # (to avoid moving a barrier right next to the rat, etc.)
+    # Re-assign block boundaries accordingly if the user specified "barrier_switch_trial_counts" in metadata
+    # e.g. arduino output = 66/63/67/61 trials per block, user specifies [67, 62, 68, 60], so we update things
+    # so blocks switch after trials [67, 129, 197] instead of [66, 129, 196]
+    if "barrier_switch_trial_counts" in metadata.get("behavior", {}):
+        if session_type != "barrier change":
+            logger.warning("'barrier_switch_trial_counts' is set in metadata but this is not a barrier change session!")
+            logger.warning(
+                "Information in 'barrier_switch_trial_counts' will be ignored. This should only be set in barrier"
+                "change sessions when the true barrier switch trials do not match the printed arduino output."
+                )
+        else:
+            user_block_trial_counts = metadata["behavior"]["barrier_switch_trial_counts"]
+            # User must specify the number of trials in each block (e.g. something like [67, 62, 68, 60] for 4 blocks)
+            if len(user_block_trial_counts) != len(block_data):
+                logger.error(f"Expected {len(block_data)} values in 'barrier_switch_trial_counts' (one per block),"
+                             f"got {len(user_block_trial_counts)}: {user_block_trial_counts}")
+            # The total number of user-specified trials must sum to the number of trials recorded by arduino
+            if sum(user_block_trial_counts) != len(trial_data):
+                logger.error(
+                    f"barrier_switch_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
+                    f"trials, but there are {len(trial_data)} total trials recorded by arduino!"
+                    )
+            else:
+                # Convert to switch_after_trial: cumulative sum of user_block_trial_counts (excluding last block)
+                switch_after_trials = [sum(user_block_trial_counts[:n+1]) for n in range(len(user_block_trial_counts) - 1)]
+                logger.info(f"Converted barrier_switch_trial_counts {user_block_trial_counts} to "
+                            f"switch_after_trials {switch_after_trials}")
+                trial_data, block_data = reassign_block_boundaries(trial_data, block_data, switch_after_trials, logger)
 
     # Do some checks on trial and block data before adding to the NWB
     logger.debug("Validating trial and block data...")
