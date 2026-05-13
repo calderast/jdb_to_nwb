@@ -639,6 +639,12 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps, logger)
     logger.info(f"There are {len(block_data)} blocks and {len(trial_data)} trials")
 
+    # Save original arduino visit times for alignment before we re-align to photometry/ephys
+    arduino_visit_times = [trial['beam_break_start'] for trial in trial_data]
+
+    # Align visit times to photometry/ephys
+    trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
+
     # Use block data to determine if this is a probability change or barrier change session
     session_type = determine_session_type(block_data)
     for block in block_data:
@@ -694,12 +700,6 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
                 f"There are {len(block_data)} blocks but {len(maze_configurations)} mazes "
                 f"in the maze configuration file (expected {n_expected})."
             )
-
-    # Save original arduino visit times for alignment before we re-align to photometry/ephys
-    arduino_visit_times = [trial['beam_break_start'] for trial in trial_data]
-
-    # Align visit times to photometry/ephys
-    trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
 
     # Re-assign block boundaries accordingly if the user specified "barrier_shift_trial_counts" in metadata
     # e.g. arduino output = 66/63/67/61 trials per block, user specifies [67, 62, 68, 60], so we update things
