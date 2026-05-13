@@ -38,7 +38,7 @@ dependencies = [
     "ffmpeg-python",
     "tables",  # used by pandas to read HDF5 files
     "opencv-python",
-    "hex-maze-neuro",
+    "hex-maze-neuro >= 1.1.2",
 ]
 dynamic = ["version"]
 
