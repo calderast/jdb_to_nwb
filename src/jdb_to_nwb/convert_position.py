@@ -5,7 +5,7 @@ from pynwb import NWBFile, TimeSeries
 from pynwb.behavior import Position
 from scipy.interpolate import interp1d
 from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
-from .plotting.plot_combined import plot_rat_position_heatmap
+from .plotting.plot_combined import plot_rat_position_heatmap, plot_rat_position_by_trial
 
 
 def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9, cam_fps=15):
@@ -59,7 +59,7 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9,
         position.loc[position.x.notnull(),['x','y']] = detect_and_replace_jumps(
         position.loc[position.x.notnull(),['x','y']].values, pixel_jump_cutoff)
 
-        # Fill the missing gaps
+        # Fill missing gaps with linear interpolation
         logger.debug("Filling missing gaps with interpolated position values")
         position.loc[:,['x','y']] = fill_missing_gaps(position.loc[:,['x','y']].values)
 
@@ -302,3 +302,4 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
         position_object = nwbfile.processing["behavior"].data_interfaces["position"]
         for name, spatial_series in position_object.spatial_series.items():
             plot_rat_position_heatmap(nwbfile=nwbfile, spatial_series_name=name, fig_dir=fig_dir)
+            plot_rat_position_by_trial(nwbfile=nwbfile, spatial_series_name=name, fig_dir=fig_dir)

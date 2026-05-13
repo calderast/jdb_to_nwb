@@ -8,9 +8,21 @@ from hexmaze import plot_hex_maze
 
 def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=None):
     """
-    Plots an average photometry signal (DA or ACh) aligned to port entry, 
-    split by rewarded and unrewarded trials. Also plots the full-session signal trace
-    with rewarded and unrewarded poke times indicated.
+    Plot a photometry signal (DA or ACh) aligned to port entry, split by rewarded vs. unrewarded trials.
+
+    Produces two figures:
+    1. Mean ± SEM signal in a ±3 s window around poke-in, separately for rewarded and unrewarded trials.
+    2. Full-session processed signal trace with vertical lines marking each poke-in (red = rewarded, blue = unrewarded).
+
+    Parameters:
+        nwbfile: NWBFile object containing trials and photometry data.
+        signal_name (str): Key in nwbfile.acquisition for the processed photometry TimeSeries
+            (e.g. "dLight1.3b_dFF").
+        fig_dir (str): Optional directory to save figures. Saved as
+            {signal_name}_aligned_to_port_entry.png and {signal_name}_full_session_trace.png.
+
+    Returns:
+        tuple[plt.Figure, plt.Figure]: (aligned average figure, full session trace figure).
     """
     session_id = nwbfile.session_id
 
@@ -102,9 +114,23 @@ def plot_photometry_signal_aligned_to_port_entry(nwbfile, signal_name, fig_dir=N
 
 def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
     """
-    For each block, create a heatmap of rat position overlaid on the hex maze.
-    Also create one big plot for the session where position is split by first vs second half
-    of each block, to (hopefully) see refinement of trajectories as the rat adapts to the new config.
+    Plot 2D heatmaps of rat position overlaid on the hex maze, one per block.
+
+    Produces two sets of figures per block:
+    1. One full-block heatmap per block (log-scaled 2D histogram overlaid on maze layout).
+    2. A single session-level figure with each block split into first and second half,
+       to (theoretically) visualize trajectory refinement as the rat adapts to each maze configuration.
+
+    Parameters:
+        nwbfile: NWBFile object containing behavior, position, and block data.
+        spatial_series_name (str): Name of the SpatialSeries in the behavior position module
+            (e.g. "cap_front").
+        fig_dir (str): Optional directory to save figures. Per-block full heatmaps are saved as
+            {spatial_series_name}_block_{N}_heatmap.png; the session summary is saved as
+            {spatial_series_name}_all_blocks_heatmap.png.
+
+    Returns:
+        tuple[plt.Figure, list[plt.Figure]]: (session summary figure, list of per-block figures).
     """
     session_id = nwbfile.session_id
 
@@ -214,3 +240,101 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
             plt.close(fig)
 
     return fig, fig_fulls
+
+
+def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
+    """
+    For each block, plot the rat's position trajectory for every individual trial
+    on a grid of subplots overlaid on the hex maze.
+
+    Parameters:
+        nwbfile: NWBFile object containing behavior, position, block, and trial data.
+        spatial_series_name (str): Name of the SpatialSeries in the behavior position module
+            (e.g. "cap_front").
+        fig_dir (str): Optional directory to save figures. Each block is saved as a separate
+            file named {spatial_series_name}_block_{N}_position_by_trial.png.
+
+    Returns:
+        list[plt.Figure]: One figure per block.
+    """
+    session_id = nwbfile.session_id
+
+    # Get hex centroids and convert to a dict so we can plot the hex maze with custom centroids
+    behavior_module = nwbfile.processing["behavior"]
+    if "hex_centroids" in behavior_module.data_interfaces:
+        centroids_df = behavior_module.data_interfaces["hex_centroids"].to_dataframe()
+        centroids_dict = centroids_df.set_index('hex')[['x', 'y']].apply(tuple, axis=1).to_dict()
+    else:
+        # If we have no centroids, still make the plot, just without the maze background
+        # (It is way worse this way... but I'll still allow it I guess)
+        centroids_dict = None
+
+    # Get position data for the given spatial series
+    position = behavior_module.data_interfaces["position"].spatial_series[spatial_series_name]
+    position_df = pd.DataFrame(position.data, columns=["x", "y"]) 
+    position_df["timestamp"] = position.timestamps
+
+    # Get block and trial data
+    block_data = nwbfile.intervals["block"].to_dataframe()
+    trial_data = nwbfile.intervals["trials"].to_dataframe()
+
+    figs = []
+    for i, block in enumerate(block_data.itertuples(index=False)):
+        # Get maze configuration and reward probabilities for this block
+        maze = block.maze_configuration
+        reward_probs = [block.pA, block.pB, block.pC]
+
+        # Filter trials to only those in this block
+        block_trials = trial_data[trial_data["block"] == block.block]
+        n_trials = len(block_trials)
+
+        # Set up square-ish grid for trials
+        ncols = int(np.ceil(np.sqrt(n_trials)))
+        nrows = int(np.ceil(n_trials / ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows))
+
+        # Make sure axes is 1D so flatten doesn't break
+        if isinstance(axes, plt.Axes):
+            axes = np.array([axes])
+        else:
+            axes = np.array(axes).flatten()
+
+        # Loop over trials in this block
+        for i, trial in enumerate(block_trials.itertuples(index=False)):
+            # Get trial start/end
+            start, end = trial.start_time, trial.end_time
+            df_trial = position_df[
+                (position_df["timestamp"] >= start) & (position_df["timestamp"] <= end)
+            ]
+
+            axes[i].set_title(f"Trial {i+1}")
+            plot_hex_maze(
+                ax=axes[i],
+                barriers=maze,
+                centroids=centroids_dict,
+                snap_centroids=True,
+                invert_yaxis=True,
+                show_barriers=False,
+                show_hex_labels=False,
+                show_stats=True,
+                reward_probabilities=reward_probs,
+            )
+
+            # Plot rat position for this trial in black
+            axes[i].scatter(df_trial["x"], df_trial["y"], s=1, color='k')
+
+        # Hide unused axes
+        for j in range(n_trials, len(axes)):
+            axes[j].axis("off")
+
+        fig.suptitle(f"{session_id} rat position by trial (block {block.block})", fontsize=16)
+        fig.tight_layout()
+
+        if fig_dir:
+            save_path = os.path.join(fig_dir, f"{spatial_series_name}_block_{block.block}_position_by_trial.png")
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+
+        figs.append(fig)
+
+    return figs
