@@ -548,6 +548,58 @@ def validate_trial_and_block_data(trial_data: list, block_data: list, logger):
     logger.debug(f"The number of trials in each block sums to the total number of trials {len(trial_data)}")
 
 
+def reassign_block_boundaries(trial_data, block_data, switch_after_trials, maze_configurations, logger):
+    """
+    Re-assign which trials belong to which block based on user-specified barrier switch trial numbers.
+
+    The number of user-specified blocks (len(switch_after_trials) + 1) may differ from the number of
+    arduino-detected blocks. maze_configurations must have one entry per user-specified block.
+
+    Args:
+    switch_after_trials (list[int]): Trial numbers after which the block switched.
+        For N blocks, there should be N-1 entries.
+        e.g. [66, 61] means block 1 is trials 1-66, block 2 is trials 67-127, block 3 is trials 128+
+    maze_configurations (list[str]): Maze configuration string for each user-specified block, in order.
+    """
+    n_new_blocks = len(switch_after_trials) + 1
+    logger.info("Reassigning block boundaries based on user-specified barrier shift times: "
+                f"blocks switch after trials {switch_after_trials}")
+    if n_new_blocks != len(block_data):
+        logger.warning(f"Number of blocks changing from {len(block_data)} (arduino) "
+                    f"to {n_new_blocks} (user-specified)")
+
+    # Re-assign block and trial_within_block for each trial
+    # trial_data is ordered by trial_within_session, so we can slice directly
+    boundaries = [0] + list(switch_after_trials) + [len(trial_data)]
+    for block_num, (start, end) in enumerate(zip(boundaries, boundaries[1:]), start=1):
+        for trial_within_block, trial in enumerate(trial_data[start:end], start=1):
+            if trial['block'] != block_num:
+                logger.debug(f"Reassigning trial {trial['trial_within_session']} "
+                            f"from block {trial['block']} to block {block_num}")
+            trial['block'] = block_num
+            trial['trial_within_block'] = trial_within_block
+
+    # Re-assign maze_configuration, num_trials, and start/end time for the updated block boundaries
+    # pA/pB/pC and task_type are the same for all blocks in a barrier change session.
+    new_block_data = []
+    for block_idx, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+        block_num = block_idx + 1
+        block_trials = trial_data[start:end]
+        new_block_data.append({
+            'block': block_num,
+            'pA': block_data[0]['pA'],
+            'pB': block_data[0]['pB'],
+            'pC': block_data[0]['pC'],
+            'task_type': block_data[0]['task_type'],
+            'maze_configuration': maze_configurations[block_idx],
+            'num_trials': len(block_trials),
+            'start_time': block_trials[0]['start_time'],
+            'end_time': block_trials[-1]['end_time'],
+        })
+
+    return trial_data, new_block_data
+
+
 def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """Add trial and block data to the nwbfile"""
     print("Adding behavior...")
@@ -587,6 +639,12 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     trial_data, block_data = parse_arduino_text(arduino_text, arduino_timestamps, logger)
     logger.info(f"There are {len(block_data)} blocks and {len(trial_data)} trials")
 
+    # Save original arduino visit times for alignment before we re-align to photometry/ephys
+    arduino_visit_times = [trial['beam_break_start'] for trial in trial_data]
+
+    # Align visit times to photometry/ephys
+    trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
+
     # Use block data to determine if this is a probability change or barrier change session
     session_type = determine_session_type(block_data)
     for block in block_data:
@@ -597,42 +655,90 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     maze_configurations = load_maze_configurations(maze_configuration_file_path)
     logger.debug(f"Found {len(maze_configurations)} maze(s) in the maze configuration file")
 
-    # Make sure the number of blocks matches the number of loaded maze configurations
-    if len(block_data) != len(maze_configurations):
+    # Convert each maze config from a set to a sorted, comma separated string
+    # for compatibility with NWB and spyglass
+    def barrier_set_to_string(maze_set):
+        return ",".join(map(str, sorted(maze_set)))
+
+    maze_config_strings = [barrier_set_to_string(maze) for maze in maze_configurations]
+    
+    # We sometimes move the barriers at a different time than the trial indicated by the arduino output
+    # (to avoid moving a barrier right next to the rat, etc.). 
+    # If so, "barrier_shift_trial_counts" in metadata specifies the actual number of trials in each block
+    user_block_trial_counts = metadata.get("behavior", {}).get("barrier_shift_trial_counts")
+    if user_block_trial_counts is not None:
+        logger.info(f"Detected user-specified `barrier_shift_trial_counts`: {user_block_trial_counts}")
+
+    # Validate maze configurations based on session type
+    if session_type == "probability change":
         # If this is a probability change session, we may have a single maze configuration
         # to be used for all blocks. If so, duplicate it so we have one maze per block.
-        if len(maze_configurations) == 1 and session_type == "probability change":
-            maze_configurations = maze_configurations * len(block_data)
-        else:
+        if len(maze_configurations) == 1:
+            maze_config_strings = maze_config_strings * len(block_data)
+        # Otherwise, the number of mazes in the file must match the number of blocks
+        elif len(maze_configurations) != len(block_data):
             logger.error(
-                f"There are {len(block_data)} blocks in the arduino text file, "
-                f"but {len(maze_configurations)} mazes in the maze configuration file. "
+                f"Probability change session has {len(block_data)} blocks but "
+                f"{len(maze_configurations)} mazes in the maze configuration file. "
+                "Expected 1 (shared across all blocks) or one per block."
             )
             raise ValueError(
-                f"There are {len(block_data)} blocks in the arduino text file, "
-                f"but {len(maze_configurations)} mazes in the maze configuration file. "
-                "There should be exactly one maze configuration per block, "
-                "or a single maze configuration if this is a probability change session."
+                f"Probability change session has {len(block_data)} blocks but "
+                f"{len(maze_configurations)} mazes in the maze configuration file. "
+                "Expected 1 (shared across all blocks) or one per block."
+            )
+    else:
+        # If this is a barrier change session, we must have one maze per arduino block,
+        # or one maze per user-specified block (if barrier_shift_trial_counts is set)
+        n_expected = len(user_block_trial_counts) if user_block_trial_counts is not None else len(block_data)
+        if len(maze_configurations) != n_expected:
+            logger.error(
+                f"There are {len(block_data)} blocks but {len(maze_configurations)} mazes "
+                f"in the maze configuration file (expected {n_expected})."
+            )
+            raise ValueError(
+                f"There are {len(block_data)} blocks but {len(maze_configurations)} mazes "
+                f"in the maze configuration file (expected {n_expected})."
             )
 
-    # Convert each maze config from a set to a sorted, comma separated string 
-    # for compatibility with NWB and spyglass
-    def barrier_set_to_string(set):
-        return ",".join(map(str, sorted(set)))
+    # Re-assign block boundaries accordingly if the user specified "barrier_shift_trial_counts" in metadata
+    # e.g. arduino output = 66/63/67/61 trials per block, user specifies [67, 62, 68, 60], so we update things
+    # so blocks switch after trials [67, 129, 197] instead of [66, 129, 196]
+    if user_block_trial_counts is not None:
+        if session_type != "barrier change":
+            logger.warning(
+                "'barrier_shift_trial_counts' is set in metadata but this is not a barrier change session!"
+                )
+            logger.warning(
+                "Information in 'barrier_shift_trial_counts' will be ignored. This should only be set in barrier"
+                "change sessions when the true barrier shift trials do not match the printed arduino output."
+                )
+        else:
+            # The total number of user-specified trials must sum to the number of trials recorded by arduino
+            if sum(user_block_trial_counts) != len(trial_data):
+                logger.error(
+                    f"barrier_shift_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
+                    f"trials, but there are {len(trial_data)} total trials recorded by arduino!"
+                    )
+                raise ValueError(
+                    f"barrier_shift_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
+                    f"trials, but there are {len(trial_data)} total trials recorded by arduino!"
+                    )
+            else:
+                # Convert trials per block to switch_after_trials (which trial_in_session marks the barrier switch)
+                switch_after_trials = [sum(user_block_trial_counts[:n+1]) 
+                                       for n in range(len(user_block_trial_counts) - 1)]
+                trial_data, block_data = reassign_block_boundaries(
+                    trial_data, block_data, switch_after_trials, maze_config_strings, logger
+                )
+    else:
+        # No reassignment: assign maze configurations to arduino block_data directly
+        for block, maze_str in zip(block_data, maze_config_strings):
+            block["maze_configuration"] = maze_str
+        logger.debug(f"Maze configurations: {[block['maze_configuration'] for block in block_data]}")
 
-    # Add the maze configuration to the metadata for each block
-    for i, (block, maze) in enumerate(zip(block_data, maze_configurations), start=1):
-        logger.debug(f"Block {i} maze: {barrier_set_to_string(maze)}")
-        block["maze_configuration"] = barrier_set_to_string(maze)
-
-    # Plot maze configurations for each block
+    # Plot maze configurations for each block (after any reassignment so the plot reflects final block structure)
     plot_maze_configurations(block_data=block_data, fig_dir=fig_dir)
-
-    # Save original arduino visit times for alignment before we re-align to photometry/ephys  
-    arduino_visit_times = [trial['beam_break_start'] for trial in trial_data]
-
-    # Align visit times to photometry/ephys
-    trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
 
     # Do some checks on trial and block data before adding to the NWB
     logger.debug("Validating trial and block data...")

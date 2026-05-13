@@ -173,6 +173,16 @@ behavior:
   # For probability change sessions, this can be a single line that will be used for all blocks.
   # Any lines starting with `#` in the file will be ignored, so feel free to add comments as well.
   maze_configuration_file_path: "path/to/barriers.txt"
+  
+  # OPTIONAL - If the barriers were shifted at a different trial than the arduino printout, use this field to
+  # specify the actual number of trials in each block. The values must sum to the total number of trials in the 
+  # session. For example, if the arduino output has 3 blocks with 68/66/54 trials, but the first barrier shift 
+  # happened one trial late, specify [69, 65, 54]. 
+  # The number of mazes in the maze configuration file (barriers.txt) must match the number of blocks here.
+  # For example, if arduino recorded 68/66/67/2 (e.g. you didn't stop the recording in time, but didn't shift 
+  # the barrier at the end), you could specify 68/66/69 and the 3 mazes you actually used to end up with 3 blocks.
+  # This field will be ignored for probability change sessions.
+  barrier_shift_trial_counts: [69, 65, 54]
 
 video:
   # The video and video timestamps files are auto-generated while running the task
