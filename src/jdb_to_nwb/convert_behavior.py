@@ -658,8 +658,10 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     
     # We sometimes move the barriers at a different time than the trial indicated by the arduino output
     # (to avoid moving a barrier right next to the rat, etc.). 
-    # If so, "barrier_switch_trial_counts" in metadata specifies the actual number of trials in each block
-    user_block_trial_counts = metadata.get("behavior", {}).get("barrier_switch_trial_counts")
+    # If so, "barrier_shift_trial_counts" in metadata specifies the actual number of trials in each block
+    user_block_trial_counts = metadata.get("behavior", {}).get("barrier_shift_trial_counts")
+    if user_block_trial_counts is not None:
+        logger.info(f"Detected user-specified `barrier_shift_trial_counts`: {user_block_trial_counts}")
 
     # Validate maze configurations based on session type
     if session_type == "probability change":
@@ -681,7 +683,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             )
     else:
         # If this is a barrier change session, we must have one maze per arduino block,
-        # or one maze per user-specified block (if barrier_switch_trial_counts is set)
+        # or one maze per user-specified block (if barrier_shift_trial_counts is set)
         n_expected = len(user_block_trial_counts) if user_block_trial_counts is not None else len(block_data)
         if len(maze_configurations) != n_expected:
             logger.error(
@@ -699,27 +701,27 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     # Align visit times to photometry/ephys
     trial_data, block_data = align_data_to_visits(trial_data, block_data, metadata, logger)
 
-    # Re-assign block boundaries accordingly if the user specified "barrier_switch_trial_counts" in metadata
+    # Re-assign block boundaries accordingly if the user specified "barrier_shift_trial_counts" in metadata
     # e.g. arduino output = 66/63/67/61 trials per block, user specifies [67, 62, 68, 60], so we update things
     # so blocks switch after trials [67, 129, 197] instead of [66, 129, 196]
     if user_block_trial_counts is not None:
         if session_type != "barrier change":
             logger.warning(
-                "'barrier_switch_trial_counts' is set in metadata but this is not a barrier change session!"
+                "'barrier_shift_trial_counts' is set in metadata but this is not a barrier change session!"
                 )
             logger.warning(
-                "Information in 'barrier_switch_trial_counts' will be ignored. This should only be set in barrier"
-                "change sessions when the true barrier switch trials do not match the printed arduino output."
+                "Information in 'barrier_shift_trial_counts' will be ignored. This should only be set in barrier"
+                "change sessions when the true barrier shift trials do not match the printed arduino output."
                 )
         else:
             # The total number of user-specified trials must sum to the number of trials recorded by arduino
             if sum(user_block_trial_counts) != len(trial_data):
                 logger.error(
-                    f"barrier_switch_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
+                    f"barrier_shift_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
                     f"trials, but there are {len(trial_data)} total trials recorded by arduino!"
                     )
                 raise ValueError(
-                    f"barrier_switch_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
+                    f"barrier_shift_trial_counts {user_block_trial_counts} sums to {sum(user_block_trial_counts)} "
                     f"trials, but there are {len(trial_data)} total trials recorded by arduino!"
                     )
             else:

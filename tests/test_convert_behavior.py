@@ -112,9 +112,9 @@ def test_convert_behavior(dummy_logger):
     assert trial_blocks[134] == 3  # trial 135 is block 3
 
 
-def test_barrier_switch_trial_counts(dummy_logger):
+def test_barrier_shift_trial_counts(dummy_logger):
     """
-    Test that barrier_switch_trial_counts in metadata correctly re-assigns block boundaries.
+    Test that barrier_shift_trial_counts in metadata correctly re-assigns block boundaries.
 
     The test session has blocks with 68/66/54 trials (188 trials total).
     We specify [69, 64, 55] as the user-specified trial counts per block (must sum to 188).
@@ -124,7 +124,7 @@ def test_barrier_switch_trial_counts(dummy_logger):
     metadata["behavior"]["arduino_text_file_path"] = "tests/test_data/behavior/arduinoraw0.txt"
     metadata["behavior"]["arduino_timestamps_file_path"] = "tests/test_data/behavior/ArduinoStamps0.csv"
     metadata["behavior"]["maze_configuration_file_path"] = "tests/test_data/behavior/barriers.txt"
-    metadata["behavior"]["barrier_switch_trial_counts"] = [69, 64, 55]
+    metadata["behavior"]["barrier_shift_trial_counts"] = [69, 64, 55]
 
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -162,14 +162,14 @@ def test_barrier_switch_trial_counts(dummy_logger):
     assert trial_blocks[133] == 3  # trial 134 is block 3
 
 
-def test_barrier_switch_wrong_trial_sum(dummy_logger):
-    """If barrier_switch_trial_counts doesn't sum to total trials, raise ValueError."""
+def test_barrier_shift_wrong_trial_sum(dummy_logger):
+    """If barrier_shift_trial_counts doesn't sum to total trials, raise ValueError."""
     metadata = {}
     metadata["behavior"] = {}
     metadata["behavior"]["arduino_text_file_path"] = "tests/test_data/behavior/arduinoraw0.txt"
     metadata["behavior"]["arduino_timestamps_file_path"] = "tests/test_data/behavior/ArduinoStamps0.csv"
     metadata["behavior"]["maze_configuration_file_path"] = "tests/test_data/behavior/barriers.txt"
-    metadata["behavior"]["barrier_switch_trial_counts"] = [70, 64, 55]  # sums to 189, not 188
+    metadata["behavior"]["barrier_shift_trial_counts"] = [70, 64, 55]  # sums to 189, not 188
 
     nwbfile = NWBFile(
         session_description="Mock session",
@@ -182,7 +182,7 @@ def test_barrier_switch_wrong_trial_sum(dummy_logger):
         add_behavior(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
 
 
-def test_barrier_switch_wrong_maze_count(dummy_logger, tmp_path):
+def test_barrier_shift_wrong_maze_count(dummy_logger, tmp_path):
     """If maze config file has the wrong number of mazes for the user-specified block count, raise ValueError."""
 
     metadata = {}
@@ -190,7 +190,7 @@ def test_barrier_switch_wrong_maze_count(dummy_logger, tmp_path):
     metadata["behavior"]["arduino_text_file_path"] = "tests/test_data/behavior/arduinoraw0.txt"
     metadata["behavior"]["arduino_timestamps_file_path"] = "tests/test_data/behavior/ArduinoStamps0.csv"
     metadata["behavior"]["maze_configuration_file_path"] = "tests/test_data/behavior/barriers.txt"
-    metadata["behavior"]["barrier_switch_trial_counts"] = [69, 64, 30, 25]  # expects 4 mazes, file has 3
+    metadata["behavior"]["barrier_shift_trial_counts"] = [69, 64, 30, 25]  # expects 4 mazes, file has 3
 
     nwbfile = NWBFile(
         session_description="Mock session",
