@@ -102,7 +102,19 @@ exclude = [
 # verbose = 1
 
 [tool.codespell]
-skip = "htmlcov,.git,.mypy_cache,.pytest_cache,.coverage,*.pdf,*.svg,venvs,./tests/test_data/*,*.h264"
+skip = """
+    htmlcov,
+    .git,
+    .mypy_cache,
+    .pytest_cache,
+    .coverage,
+    *.pdf,
+    *.svg,
+    venvs,
+    ./tests/test_data/*,
+    *.h264,
+    Get_Hex_Centroids.ipynb,
+"""
 ignore-words-list = "datas,assertIn,lockin,SEMs"
 
 [tool.coverage.run]
