@@ -8,7 +8,12 @@ from pynwb import NWBFile
 from hdmf.common.table import DynamicTable, VectorData
 from ndx_franklab_novela import AssociatedFiles
 from .timestamps_alignment import trim_sync_pulses, align_via_interpolation, handle_timestamps_reset
-from .plotting.plot_behavior import plot_maze_configurations, plot_trial_time_histogram
+from .plotting.plot_behavior import (
+    plot_maze_configurations, 
+    plot_trial_time_histogram, 
+    plot_port_choices, 
+    plot_port_choices_by_block,
+)
 
 
 def load_maze_configurations(maze_configuration_file_path: Path):
@@ -747,6 +752,10 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
 
     # Plot histogram of trial times
     plot_trial_time_histogram(trial_data=trial_data, fig_dir=fig_dir)
+
+    # Plot port choices across all trials
+    plot_port_choices(trial_data=trial_data, fig_dir=fig_dir)
+    plot_port_choices_by_block(trial_data=trial_data, fig_dir=fig_dir)
 
     # Add columns for block data to the NWB file
     block_table = nwbfile.create_time_intervals(
