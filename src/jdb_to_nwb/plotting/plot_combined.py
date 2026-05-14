@@ -1,4 +1,5 @@
 import os
+import cv2
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -179,8 +180,14 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
         # Plot maze layout (open hexes only) using custom centroids if they exist
         if centroids_dict is not None:
             plot_hex_maze(
-                barriers=maze, centroids=centroids_dict, ax=ax_full, show_hex_labels=False,
-                show_barriers=False, show_choice_points=False, reward_probabilities=reward_probs,
+                ax=ax_full,
+                barriers=maze,
+                centroids=centroids_dict,
+                snap_centroids=True,
+                show_hex_labels=False,
+                show_barriers=False,
+                show_choice_points=False,
+                reward_probabilities=reward_probs,
                 invert_yaxis=True
             )
         # Plot rat position heatmap on top of the hexes
@@ -217,8 +224,14 @@ def plot_rat_position_heatmap(nwbfile, spatial_series_name, fig_dir=None):
             # Plot maze layout (open hexes only) using custom centroids if they exist
             if centroids_dict is not None:
                 plot_hex_maze(
-                    barriers=maze, centroids=centroids_dict, ax=ax, show_hex_labels=False,
-                    show_barriers=False, show_choice_points=False, reward_probabilities=reward_probs,
+                    ax=ax,
+                    barriers=maze,
+                    centroids=centroids_dict,
+                    snap_centroids=True,
+                    show_hex_labels=False,
+                    show_barriers=False,
+                    show_choice_points=False,
+                    reward_probabilities=reward_probs,
                     invert_yaxis=True
                 )
             # Plot rat position heatmap on top of the hexes
@@ -250,14 +263,13 @@ def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
     Parameters:
         nwbfile: NWBFile object containing behavior, position, block, and trial data.
         spatial_series_name (str): Name of the SpatialSeries in the behavior position module
-            (e.g. "cap_front").
+            (e.g. "cap_front_position", "cap_back_position").
         fig_dir (str): Optional directory to save figures. Each block is saved as a separate
             file named {spatial_series_name}_block_{N}_position_by_trial.png.
 
     Returns:
         list[plt.Figure]: One figure per block.
     """
-    session_id = nwbfile.session_id
 
     # Get hex centroids and convert to a dict so we can plot the hex maze with custom centroids
     behavior_module = nwbfile.processing["behavior"]
@@ -302,7 +314,7 @@ def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
         # Loop over trials in this block
         for i, trial in enumerate(block_trials.itertuples(index=False)):
             # Get trial start/end
-            start, end = trial.start_time, trial.end_time
+            start, end = trial.start_time, trial.stop_time
             df_trial = position_df[
                 (position_df["timestamp"] >= start) & (position_df["timestamp"] <= end)
             ]
@@ -327,12 +339,113 @@ def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
         for j in range(n_trials, len(axes)):
             axes[j].axis("off")
 
-        fig.suptitle(f"{session_id} rat position by trial (block {block.block})", fontsize=16)
+        fig.suptitle(f"{nwbfile.session_id} rat position by trial (block {block.block})", fontsize=16)
+        fig.tight_layout(rect=[0, 0, 1, 0.97])
+
+        if fig_dir:
+            save_path = os.path.join(fig_dir, f"{spatial_series_name}_block_{block.block}_by_trial.png")
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+
+        figs.append(fig)
+
+    return figs
+
+
+def plot_maze_on_video_frame(nwbfile, video_file_path, fig_dir=None):
+    """
+    For each block, plot the hex maze layout (using the stored hex centroids) overlaid on a video frame.
+
+    The frame chosen for each block is the one closest to the block's midpoint in time,
+    using the aligned video timestamps stored in the NWB. For probability change sessions, 
+    we use the midpoint of the entire session (because the maze config does not change).
+
+    Useful for verifying that hex centroids are correctly aligned with the camera view
+    and that the maze configuration matches the actual maze used.
+
+    Parameters:
+        nwbfile: NWBFile object containing hex_centroids, block data, and video timestamps.
+        video_file_path (str): Full path to the behavior video file (.avi or .mp4).
+            The NWB only stores the video filename without path, so this must be provided explicitly.
+        fig_dir (str): Optional directory to save figures as maze_overlay_block_{N}.png.
+
+    Returns:
+        list[plt.Figure]: One figure per block.
+    """
+    session_id = nwbfile.session_id
+    behavior_module = nwbfile.processing["behavior"]
+
+    # Get hex centroids in pixel coordinates
+    if "hex_centroids" not in behavior_module.data_interfaces:
+        raise ValueError("No hex_centroids found in nwbfile!")
+    centroids_df = behavior_module.data_interfaces["hex_centroids"].to_dataframe()
+    centroids_dict = centroids_df.set_index("hex")[["x", "y"]].apply(tuple, axis=1).to_dict()
+
+    # Get aligned video timestamps from NWB to map block times to frame indices
+    video_timestamps = nwbfile.processing["video_files"]["video"]["behavior_video"].timestamps[:]
+    block_data = nwbfile.intervals["block"].to_dataframe()
+
+    # For probability change sessions the maze config is the same every block,
+    # so one plot (using the session midpoint) is sufficient.
+    is_prob_change = block_data["task_type"].iloc[0] == "probability change"
+    blocks_to_plot = block_data.iloc[:1] if is_prob_change else block_data
+
+    figs = []
+    for _, block in blocks_to_plot.iterrows():
+        maze = block["maze_configuration"]
+        block_num = int(block["block"])
+        # Don't add reward probs for prob change sessions because we are only plotting one block and they change
+        reward_probs = [block["pA"], block["pB"], block["pC"]] if not is_prob_change else None
+
+        # Pick the frame closest to the midpoint of this block (or whole session for prob-change)
+        if is_prob_change:
+            session_mid = (block_data["start_time"].iloc[0] + block_data["stop_time"].iloc[-1]) / 2
+            frame_idx = int(np.argmin(np.abs(video_timestamps - session_mid)))
+        else:
+            block_mid = (block["start_time"] + block["stop_time"]) / 2
+            frame_idx = int(np.argmin(np.abs(video_timestamps - block_mid)))
+
+        cap = cv2.VideoCapture(video_file_path)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            continue
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.imshow(frame_rgb)
+
+        # Overlay maze in pixel coordinates
+        plot_hex_maze(
+            barriers=maze,
+            centroids=centroids_dict,
+            ax=ax,
+            show_hex_labels=True,
+            show_barriers=True,
+            reward_probabilities=reward_probs,
+            invert_yaxis=False,
+        )
+        # Make hex fills translucent so the video frame is visible underneath.
+        # Edges stay fully opaque so the maze outline is clear.
+        for patch in ax.patches:
+            fc = patch.get_facecolor()
+            patch.set_facecolor((*fc[:3], 0.3))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        title = (
+            f"{session_id} maze configuration overlay" if is_prob_change 
+            else f"{session_id} maze configuration overlay (block {block_num})"
+        )
+        ax.set_title(title)
         fig.tight_layout()
 
         if fig_dir:
-            save_path = os.path.join(fig_dir, f"{spatial_series_name}_block_{block.block}_position_by_trial.png")
-            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            fname = (
+                "maze_config_video_overlay.png" if is_prob_change 
+                else f"maze_config_video_overlay_block_{block_num}.png"
+            )
+            fig.savefig(os.path.join(fig_dir, fname), dpi=300, bbox_inches="tight")
             plt.close(fig)
 
         figs.append(fig)
