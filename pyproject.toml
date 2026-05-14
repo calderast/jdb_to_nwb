@@ -113,7 +113,7 @@ skip = """
     venvs,
     ./tests/test_data/*,
     *.h264,
-    resources/Get_Hex_Centroids.ipynb
+    Get_Hex_Centroids.ipynb,
 """
 ignore-words-list = "datas,assertIn,lockin,SEMs"
 
