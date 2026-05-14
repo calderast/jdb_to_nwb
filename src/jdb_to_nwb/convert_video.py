@@ -320,6 +320,6 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger, fig_d
     nwbfile.processing["video_files"].add(video)
     logger.info("Created nwb processing module for video files and added behavior_video as an nwb ImageSeries")
 
-    # If we have hex centroids, plot the centroids overlayed on the video so we can check that they line up
+    # If we have hex centroids, plot the centroids overlaid on the video so we can check that they line up
     if fig_dir is not None and "hex_centroids_file_path" in metadata.get("video", {}):
         plot_maze_on_video_frame(nwbfile=nwbfile, video_file_path=video_file_path, fig_dir=fig_dir)
