@@ -17,6 +17,7 @@ from .convert_raw_ephys import add_raw_ephys
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
+from .plotting.plot_ephys import plot_raw_ephys_snippet
 
 from .plotting.plot_combined import plot_photometry_signal_aligned_to_port_entry
 
@@ -178,6 +179,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     if photometry_data_dict.get('signals_to_plot') is not None:
         for signal in photometry_data_dict.get('signals_to_plot'):
             plot_photometry_signal_aligned_to_port_entry(nwbfile=nwbfile, signal_name=signal, fig_dir=fig_dir)
+
+    # Plot a raw ephys snippet centered on the 5th rewarded poke, if trials and ephys exists
+    plot_raw_ephys_snippet(nwbfile=nwbfile, fig_dir=fig_dir)
 
     # If we have an exact photometry start time, use that as the session start time
     if photometry_start is not None:
