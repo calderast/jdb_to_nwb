@@ -267,7 +267,7 @@ def plot_raw_ephys_traces(nwbfile, start_time=100.0, duration=1.5, fig_dir=None)
     return fig
 
 
-def plot_raw_ephys_snippet(nwbfile, fig_dir=None, logger=None):
+def plot_raw_ephys_snippet(nwbfile, fig_dir=None):
     """
     Plot a raw ephys trace snippet around the 5th rewarded poke. Called during NWB conversion.
 
@@ -291,8 +291,6 @@ def plot_raw_ephys_snippet(nwbfile, fig_dir=None, logger=None):
 
     poke_time = float(rewarded.iloc[4]["poke_in"])
     start_time = max(0.0, poke_time - 0.5)
-    if logger:
-        logger.info(f"Plotting raw ephys traces around 5th rewarded poke at t={poke_time:.2f}s")
     plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=1.5, fig_dir=fig_dir)
 
 
