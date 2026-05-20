@@ -114,6 +114,7 @@ skip = """
     ./tests/test_data/*,
     *.h264,
     Get_Hex_Centroids.ipynb,
+    preview_ephys.ipynb,
 """
 ignore-words-list = "datas,assertIn,lockin,SEMs"
 

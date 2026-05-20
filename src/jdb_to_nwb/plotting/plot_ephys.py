@@ -41,7 +41,8 @@ def _draw_traces(ax, t, data_slice, elec_sorted, scale):
     # Labels: electrode name left-padded to 6 chars, channel number right-padded to 3 digits
     # ytick i sits at y=i; row_pos r is plotted at y=n-1-r, so label for ytick i = row n-1-i
     tick_labels = [
-        f"{elec_sorted.iloc[n - 1 - i]['electrode_name']:<6}  {int(elec_sorted.iloc[n - 1 - i]['intan_channel']) + 1:>3}"
+        f"{elec_sorted.iloc[n - 1 - i]['electrode_name']:<6}  "
+        f"{int(elec_sorted.iloc[n - 1 - i]['intan_channel']) + 1:>3}"
         for i in range(n)
     ]
     ax.set_yticks(range(n))
