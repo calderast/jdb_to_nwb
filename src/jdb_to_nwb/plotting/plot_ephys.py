@@ -238,8 +238,18 @@ def plot_raw_ephys_traces(nwbfile, start_time=100.0, duration=1.5, fig_dir=None)
     end_frame = int(np.searchsorted(timestamps, start_time + duration))
     t = timestamps[start_frame:end_frame] - timestamps[start_frame]
 
-    # Load the data window: shape (n_time, n_channels), in uV
-    data_slice = np.array(eseries.data[start_frame:end_frame, :], dtype=float)
+    # Load the data window: shape (n_time, n_channels), in uV.
+    # When loaded from HDF5, eseries.data is an h5py.Dataset (subscriptable).
+    # During conversion it is H5DataIO(MicrovoltsSpikeInterfaceRecordingDataChunkIterator),
+    # and H5DataIO.__getitem__ delegates to the iterator which is not subscriptable.
+    try:
+        data_slice = np.array(eseries.data[start_frame:end_frame, :], dtype=float)
+    except TypeError:
+        inner = getattr(eseries.data, 'data', eseries.data)
+        if not hasattr(inner, 'conversion_factor_uv'):
+            return None
+        raw = inner.recording.get_traces(start_frame=start_frame, end_frame=end_frame, return_scaled=False)
+        data_slice = raw.astype(float) * inner.conversion_factor_uv
 
     # Build per-column electrode info using the electrode table region.
     # eseries.electrodes.data[c] = electrode table row for data column c.
@@ -290,8 +300,8 @@ def plot_raw_ephys_snippet(nwbfile, fig_dir=None):
         return
 
     poke_time = float(rewarded.iloc[4]["poke_in"])
-    start_time = max(0.0, poke_time - 0.5)
-    plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=1.5, fig_dir=fig_dir)
+    start_time = max(0.0, poke_time - 1)
+    plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=2, fig_dir=fig_dir)
 
 
 def plot_channel_map(probe_name, channel_coords, fig_dir=None):
