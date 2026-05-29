@@ -198,8 +198,12 @@ def plot_raw_ephys_traces_from_metadata(metadata, start_time=100.0, duration=1.5
 
     # data_slice columns are indexed by intan_channel directly
     elec_sorted["data_col"] = elec_sorted["intan_channel"]
+    
+    # Set scale based on good channels only
+    good_cols = elec_sorted.loc[elec_sorted["bad_channel"] == 0, "data_col"].astype(int).values
+    good_data = data_slice[:, good_cols] if len(good_cols) > 0 else data_slice
+    scale = max(np.nanstd(good_data) * 4, 1.0)
 
-    scale = max(np.nanstd(data_slice) * 4, 1.0)
     fig = _make_trace_figure(t, data_slice, elec_sorted, scale, start_time, duration)
 
     if fig_dir:
@@ -267,7 +271,11 @@ def plot_raw_ephys_traces(nwbfile, start_time=100.0, duration=1.5, fig_dir=None)
         "probe_shank": "shank", "rel_y": "y_um", "intan_channel_number": "intan_channel"
     })
 
-    scale = max(np.nanstd(data_slice) * 4, 1.0)
+    # Set scale based on good channels only
+    good_cols = elec_sorted.loc[elec_sorted["bad_channel"] == 0, "data_col"].astype(int).values
+    good_data = data_slice[:, good_cols] if len(good_cols) > 0 else data_slice
+    scale = max(np.nanstd(good_data) * 4, 1.0)
+
     fig = _make_trace_figure(t, data_slice, elec_sorted, scale, start_time, duration)
 
     if fig_dir:
@@ -354,15 +362,20 @@ def plot_channel_impedances(probe_name, electrode_info, min_impedance, max_imped
     """
 
     def get_color(imp):
-        if imp < min_impedance: 
+        if imp < min_impedance:
             return 'blue'
-        if imp > max_impedance: 
+        if imp > max_impedance:
             return 'black'
         return 'green'
 
     # Get impedances and corresponding color
     impedance = electrode_info["Impedance Magnitude at 1000 Hz (ohms)"]
     colors = impedance.apply(get_color)
+
+    # Channels without electrode coordinates appear in the impedance scatter but not the channel map
+    # Mark them with an orange outline so we can distinguish them from recording electrodes
+    has_coords = electrode_info[["x_um", "y_um"]].notna().all(axis=1)
+    edge_colors = has_coords.map({True: 'k', False: 'orange'})
 
     fig, axes = plt.subplots(2, 1, figsize=(16, 12))
 
@@ -378,7 +391,7 @@ def plot_channel_impedances(probe_name, electrode_info, min_impedance, max_imped
     axes[0].set_ylim(electrode_info["y_um"].min() - 100, electrode_info["y_um"].max() + 150)
 
     # Plot impedance for each channel
-    axes[1].scatter(electrode_info["intan_channel"], impedance, c=colors, s=40, edgecolors='k', linewidths=0.3)
+    axes[1].scatter(electrode_info["intan_channel"], impedance, c=colors, s=40, edgecolors=edge_colors, linewidths=1)
     axes[1].axhline(min_impedance, color='blue', linestyle='--', lw=0.8)
     axes[1].axhline(max_impedance, color='black', linestyle='--', lw=0.8)
     axes[1].set_xlabel("Intan Channel Number")
