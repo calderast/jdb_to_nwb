@@ -1294,10 +1294,11 @@ def test_process_single_signal_gach_ratiometric(ppd_gach_rda_ref, dummy_logger):
         err_msg="Highpass baseline-subtracted ratio mismatch",
     )
     # np.mean/std use platform-specific SIMD summation (AVX/SSE on x86 vs NEON on ARM),
-    # producing ~1e-8 differences in z-score when computed from a recomputed (vs stored) array.
-    # We'll test with atol=1e-7 so tests pass on Github actions.
+    # producing differences in z-score when computed from a recomputed (vs stored) array.
+    # The highpass filter also accumulates ~1e-9 platform differences which compound here.
+    # Max observed diff on GHA: ~1.75e-7, so use atol=1e-6 for GHA compatibility.
     # For the record, on Stephanie's Mac, tests pass locally with atol=1e-10
     np.testing.assert_allclose(
-        result["normalized"], ppd_gach_rda_ref["ratio_zscored"], atol=1e-7,
+        result["normalized"], ppd_gach_rda_ref["ratio_zscored"], atol=1e-6,
         err_msg="Z-scored ratio mismatch",
     )
