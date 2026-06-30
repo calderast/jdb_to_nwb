@@ -179,6 +179,24 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
                     trial_within_session += 1
                     trial_within_block += 1
 
+                    # If the short beam break we just closed triggered a new block, 
+                    # handle the transition now before creating the next trial. 
+                    # This ensures the next trial gets trial_within_block = 1 and is 
+                    # assigned to the correct (new) block. This happens when a very short poke 
+                    # (one beam break line) triggers a block change: the block header prints,
+                    # but the beam break ends before a 1s gap occurs, so the normal block-transition 
+                    # check (below) never runs for this trial.
+                    # See Github issue https://github.com/calderast/jdb_to_nwb/issues/212
+                    if not current_block["start_time"]:
+                        current_block["start_time"] = float(previous_trial["end_time"])
+                        previous_block["end_time"] = float(previous_trial["end_time"])
+                        previous_block["num_trials"] = previous_trial.get("trial_within_block")
+                        logger.debug("This trial triggered a new block.")
+                        logger.debug(f"Adding previous block: {previous_block}")
+                        block_data.append(previous_block)
+                        previous_block = current_block
+                        trial_within_block = 1
+
                     # Start new trial at this port
                     current_trial = {
                         "start_time": float(previous_trial["end_time"]),
@@ -249,7 +267,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
                         # Make the current block (the new block that this trial started) empty
                         # so we don't add it. 
                         current_block = {}
-    
+
     # Append the last trial if it exists
     if current_trial:
         trial_data.append(current_trial)
