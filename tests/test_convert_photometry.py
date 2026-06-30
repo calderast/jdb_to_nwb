@@ -1221,8 +1221,10 @@ def test_apply_highpass_filter_gach(ppd_gach_rda_ref):
         ("ratio_lowpass", "ratio_highpass"),
     ]:
         result = apply_highpass_filter(ppd_gach_rda_ref[lowpass_key], sampling_rate=sampling_rate)
+        # Butterworth filter accumulation order varies across scipy versions/platforms (~1e-10 diffs),
+        # so use atol=1e-9 for GHA compatibility (passes at atol=1e-10 locally on Steph's Mac)
         np.testing.assert_allclose(
-            result, ppd_gach_rda_ref[highpass_key], atol=1e-10,
+            result, ppd_gach_rda_ref[highpass_key], atol=1e-9,
             err_msg=f"Highpass filter mismatch for {lowpass_key}",
         )
 
@@ -1285,8 +1287,10 @@ def test_process_single_signal_gach_ratiometric(ppd_gach_rda_ref, dummy_logger):
         result["smoothed"], ppd_gach_rda_ref["ratio_lowpass"], atol=1e-10,
         err_msg="Lowpass-smoothed ratio mismatch",
     )
+    # Butterworth filter accumulation order varies across scipy versions/platforms (~1e-10 diffs),
+    # so use atol=1e-9 for GHA compatibility (passes at atol=1e-10 locally on Steph's Mac)
     np.testing.assert_allclose(
-        result["baseline_subtracted"], ppd_gach_rda_ref["ratio_highpass"], atol=1e-10,
+        result["baseline_subtracted"], ppd_gach_rda_ref["ratio_highpass"], atol=1e-9,
         err_msg="Highpass baseline-subtracted ratio mismatch",
     )
     # np.mean/std use platform-specific SIMD summation (AVX/SSE on x86 vs NEON on ARM),
