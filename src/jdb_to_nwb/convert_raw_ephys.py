@@ -5,13 +5,13 @@
 import os
 import re
 import glob
+import json
 import yaml
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from collections import Counter
 import xml.etree.ElementTree as ET
 from importlib.resources import files
 from hdmf.backends.hdf5 import H5DataIO
@@ -160,7 +160,70 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     return {"settings_file": settings_xml_file, "recording_files": continuous_dat_files}
 
 
-def get_port_visits(continuous_dat_file_path: Path, 
+def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
+    """
+    Read per-stream recording parameters from the structure.oebin file.
+
+    The structure.oebin is a JSON file at the recording level (the same folder that contains the
+    'continuous' folder). It describes every continuous stream (probe streams and the ADC stream),
+    including the number of channels, sampling rate, and the per-channel bit_volts conversion factor.
+    This works the same for Berke Lab probes and Neuropixels.
+
+    Note: structure.oebin does NOT contain the bandpass filtering info (LowCut/HighCut) -
+    afaik that lives only in settings.xml, so filtering info still comes from read_open_ephys_settings_xml.
+
+    Parameters:
+        continuous_dat_file_path (Path):
+            Path to a 'continuous.dat' file. The structure.oebin is found relative to it
+            (.../recording{n}/continuous/<stream>/continuous.dat -> .../recording{n}/structure.oebin)
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        dict:
+            Params for the stream matching this continuous.dat:
+            "channel_count" (int), "sample_rate" (float), "bit_volts" (float, the uV conversion
+            factor, shared across channels), and "channel_names" (list[str])
+    """
+    continuous_dat_file_path = Path(continuous_dat_file_path)
+    # .../recording{n}/continuous/<stream folder>/continuous.dat -> stream folder name and oebin path
+    stream_folder_name = continuous_dat_file_path.parent.name
+    oebin_path = continuous_dat_file_path.parent.parent.parent / "structure.oebin"
+    if not oebin_path.exists():
+        raise FileNotFoundError(f"Could not find structure.oebin at expected location {oebin_path}")
+
+    with open(oebin_path, "r") as f:
+        oebin = json.load(f)
+
+    # Find the continuous stream whose folder_name matches this continuous.dat's stream folder
+    # (oebin folder_name has a trailing slash, e.g. "Rhythm_FPGA-100.0/", so strip it to compare)
+    for stream in oebin["continuous"]:
+        if stream["folder_name"].rstrip("/") == stream_folder_name:
+            break
+    else:
+        raise ValueError(
+            f"Could not find a continuous stream matching '{stream_folder_name}' in {oebin_path}. "
+            f"Available streams: {[s['folder_name'] for s in oebin['continuous']]}"
+        )
+
+    # bit_volts (the uV conversion factor) should be the same for every channel in the stream
+    bit_volts_per_channel = {ch["bit_volts"] for ch in stream["channels"]}
+    if len(bit_volts_per_channel) != 1:
+        logger.warning(f"Stream '{stream_folder_name}' has multiple bit_volts values: {bit_volts_per_channel}")
+    bit_volts = float(stream["channels"][0]["bit_volts"])
+
+    params = {
+        "channel_count": int(stream["num_channels"]),
+        "sample_rate": float(stream["sample_rate"]),
+        "bit_volts": bit_volts,
+        "channel_names": [ch["channel_name"] for ch in stream["channels"]],
+    }
+    logger.debug(f"Read oebin params for stream '{stream_folder_name}': "
+                 f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
+    return params
+
+
+def get_port_visits(continuous_dat_file_path: Path,
                     total_channels: int, 
                     port_visits_channel_num: int, 
                     logger) -> list[float]:
@@ -210,7 +273,8 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Downsampling data to from {openephys_fs} Hz to {downsampled_fs} Hz so it isn't huge")
 
     # Extract the channel that records port visits and downsample so the data isn't massive
-    visits_channel_data = data_for_all_channels[:, port_visits_channel_num]
+    # Force a contiguous copy of just the one channel up front (much faster than slicing the memmap column)
+    visits_channel_data = np.array(data_for_all_channels[:, port_visits_channel_num])  # copies into RAM contiguously
     visits_channel_data = visits_channel_data[::int(openephys_fs / downsampled_fs)]
 
     # Find indices where the visits channel is high (aka port visit times)
@@ -1103,12 +1167,18 @@ def add_raw_ephys(
     logger.info("Adding probe...")
     probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=logger)
     
+    # Read recording params (channel count, sample rate, conversion factor) from structure.oebin
+    # This works the same for Berke lab probes and Neuropixels
+    oebin_params = read_oebin_params(continuous_dat_file_path=continuous_dat_file_path, logger=logger)
+    total_channels = oebin_params["channel_count"]
+
     # We have different information in different places for Berke Lab probes vs other probe types (Neuropixels).
     # This is a bit messy because our old code assumed Berke Lab probes only. But is ok for now.
     if probe_metadata["name"] in BERKE_LAB_PROBES:
-        # For Berke Lab probes:
-        total_channels = 264  # 256 "CH" + 8 "ADC"
+        # For Berke Lab probes, port visits are recorded on ADC1, which lives in the same continuous.dat
+        # as the neural data channels (256 "CH" + 8 "ADC" = 264 total channels)
         port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
+        port_visits_dat_file_path = continuous_dat_file_path
 
         # Read the settings.xml file to get filtering info
         filtering_info = read_open_ephys_settings_xml(settings_file_path=settings_file_path, logger=logger)
@@ -1128,26 +1198,22 @@ def add_raw_ephys(
         exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
-        # For Neuropixels (NOTE these are fake placeholder values):
-        total_channels = 392 # I actually have no idea. Guessing 384 "CH" + 8(??) "ADC" ?
-        port_visits_channel_num = 384 # Also no idea. 
-
-        # Read the settings.xml file to get channel map
-        channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path, 
-                                                   logger=logger, 
+        # For Neuropixels, port visits are recorded on a SEPARATE OneBox-ADC stream (its own continuous.dat),
+        # not in the probe's continuous.dat
+        channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path,
+                                                   logger=logger,
                                                    fig_dir=fig_dir)
 
         logger.debug("Neuropixels channel info:")
         logger.debug(channel_info)
         # TODO: Use channel map to add electrode data to the nwbfile
-        # Figure out impedance and filtering info - not sure where that lives
+        # Read port visits from the OneBox-ADC continuous.dat (threshold in volts)
         # Work with Sam to figure out how to name the probe and create custom electrode groups
-        # based on the geometry of each channel map
         raise NotImplementedError("Full processing for Neuropixels not yet implemented.")
 
     # Get port visits recorded by Open Ephys for timestamp alignment
     logger.info("Getting port visits recorded by Open Ephys...")
-    ephys_visit_times, samples_to_remove = get_port_visits(continuous_dat_file_path=continuous_dat_file_path, 
+    ephys_visit_times, samples_to_remove = get_port_visits(continuous_dat_file_path=port_visits_dat_file_path,
                                                            total_channels=total_channels,
                                                            port_visits_channel_num=port_visits_channel_num,
                                                            logger=logger)
