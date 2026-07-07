@@ -23,7 +23,7 @@ from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
-from .utils import get_logger_directory
+from .utils import get_logger_directory, log_and_print
 from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
 from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
@@ -326,13 +326,11 @@ def get_raw_ephys_data(
     channel_conversion_factors_uv = recording_sliced.get_channel_gains()
     # Warn if the channel conversion factors are not the same for all channels
     if not all(channel_conversion_factors_uv == channel_conversion_factors_uv[0]):
-        print(
+        log_and_print(
+            logger,
             "The channel conversion factors are not the same for all channels. "
-            "This is unexpected and may indicate a problem with the conversion factors."
-        )
-        logger.warning(
-            "The channel conversion factors are not the same for all channels. "
-            "This is unexpected and may indicate a problem with the conversion factors."
+            "This is unexpected and may indicate a problem with the conversion factors.",
+            level="warning",
         )
     # Just grab the first one, because it should be the same for all channels
     channel_conversion_factor_uv = channel_conversion_factors_uv[0]
@@ -1187,28 +1185,23 @@ def add_raw_ephys(
     """
 
     if "ephys" not in metadata:
-        print("No ephys metadata found for this session. Skipping ephys conversion.")
-        logger.info("No ephys metadata found for this session. Skipping ephys conversion.")
+        log_and_print(logger, "No ephys metadata found for this session. Skipping ephys conversion.")
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys
     required_ephys_keys = {"openephys_folder_path", "probe", "impedance_file_path"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
-        print(
+        log_and_print(
+            logger,
             "The required ephys subfields do not exist in the metadata dictionary.\n"
             "Remove the 'ephys' field from metadata if you do not have ephys data "
-            f"for this session, \nor specify the following missing subfields: {missing_keys}"
-        )
-        logger.warning(
-            "The required ephys subfields do not exist in the metadata dictionary.\n"
-            "Remove the 'ephys' field from metadata if you do not have ephys data "
-            f"for this session, \nor specify the following missing subfields: {missing_keys}"
+            f"for this session, \nor specify the following missing subfields: {missing_keys}",
+            level="warning",
         )
         return {}
 
-    print("Adding raw ephys...")
-    logger.info("Adding raw ephys...")
+    log_and_print(logger, "Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
 
     # Get Open Ephys start time as datetime object based on the time specified in the folder name
@@ -1291,8 +1284,7 @@ def add_raw_ephys(
                                                            total_channels=total_channels,
                                                            port_visits_channel_num=port_visits_channel_num,
                                                            logger=logger)
-    print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
-    logger.info(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
+    log_and_print(logger, f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
     logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
 
     # Get raw ephys data (with times before bonsai start removed)
