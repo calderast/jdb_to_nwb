@@ -203,6 +203,12 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
     with open(oebin_path, "r") as f:
         oebin = json.load(f)
 
+    # Log a summary of every continuous stream in the oebin 
+    logger.debug(f"structure.oebin at {oebin_path} (Open Ephys GUI version {oebin.get('GUI version', '?')})")
+    for s in oebin["continuous"]:
+        logger.debug(f"  continuous stream: folder_name={s['folder_name']!r} "
+                     f"num_channels={s['num_channels']} sample_rate={s['sample_rate']}")
+
     # Find the continuous stream whose folder_name matches this continuous.dat's stream folder
     # (oebin folder_name has a trailing slash, e.g. "Rhythm_FPGA-100.0/", so strip it to compare)
     for stream in oebin["continuous"]:
@@ -229,6 +235,8 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
     }
     logger.info(f"Read oebin params for stream '{stream_folder_name}': "
                 f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
+    # List every channel name found in this stream
+    logger.debug(f"structure.oebin channel names for '{stream_folder_name}': {params['channel_names']}")
     return params
 
 
@@ -420,7 +428,7 @@ def get_raw_ephys_data(
     assert len(streams_without_adc) == 1, \
         (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
 
-    # TODO: For bilateral Neuropixels we will have 2 streams without ADC (one for each probe)
+    # NOTE: For bilateral Neuropixels we will have 2 streams without ADC (one for each probe)
     # We will deal with this later. Probably just do all of the following in a loop (once per probe)?
 
     # Ignore the "ADC" channels
@@ -489,9 +497,10 @@ def get_raw_ephys_data(
 
 
 def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: str, logger,
-                        task_epochs: str = "0") -> None:
+                        task_epochs: str = "0", log_filename: str = None) -> None:
     """
-    Add a file to the nwbfile's 'associated_files' processing module (creating the module if needed).
+    Add a file to the nwbfile's 'associated_files' processing module (creating the module if needed),
+    and optionally save a copy of it alongside the log files
 
     We save several raw provenance files this way (the Open Ephys settings.xml and structure.oebin, the
     electrode info CSV, etc). This helper centralizes the boilerplate and logs each save.
@@ -502,7 +511,9 @@ def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: 
         description (str): Human-readable description of the file
         content (str): The file contents as a string
         logger (Logger): Logger to track conversion progress
-        task_epochs (str): Task epoch the file belongs to. Defaults to "0" (Berke Lab has one epoch/day)
+        task_epochs (str): Task epoch the file belongs to. Defaults to "0" (Berke Lab has one epoch per day)
+        log_filename (str): Optional. If given, also write a copy of the content to the log directory
+            under this filename (e.g. "settings.xml"). Skipped if the logger has no logfile.
     """
     if "associated_files" not in nwbfile.processing:
         logger.debug("Creating nwb processing module for associated files")
@@ -514,6 +525,19 @@ def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: 
         content=content,
         task_epochs=task_epochs,
     ))
+
+    # Also save a copy to the logging directory
+    # Skip if the logger writes only to stdout (no log directory)
+    if log_filename is not None:
+        try:
+            log_dir = get_logger_directory(logger)
+        except ValueError:
+            logger.debug(f"No log directory available; not saving a copy of '{log_filename}' alongside logs")
+            return
+        save_path = os.path.join(log_dir, log_filename)
+        with open(save_path, "w") as f:
+            f.write(content)
+        logger.info(f"Saved a copy of '{log_filename}' to the log directory: {save_path}")
 
 
 def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
@@ -802,12 +826,6 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
     plot_channel_impedances(probe_name=probe_name, electrode_info=full_electrode_info_df, 
                             min_impedance=min_impedance, max_impedance=max_impedance, fig_dir=fig_dir)
 
-    # Save electrode info to the log directory
-    log_dir = get_logger_directory(logger)
-    save_path = os.path.join(log_dir, "electrode_info.csv")
-    full_electrode_info_df.to_csv(save_path, index=False)
-    logger.info(f"Saved electrode info to {save_path}")
-
     return full_electrode_info_df
 
 
@@ -849,13 +867,14 @@ def add_electrode_data_berke_probe(
     # Get dataframe of electrode information (channel map, x/y coordinates, and impedance info)
     electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
 
-    # Save electrode info as an AssociatedFiles object in the NWB
+    # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory)
     add_associated_file(
         nwbfile,
         name="electrode_info",
         description="Electrode channel map and impedance information (CSV)",
         content=electrode_info.to_csv(index=False),
         logger=logger,
+        log_filename="electrode_info.csv",
     )
 
     # Get general metadata for the Probe
@@ -1172,6 +1191,10 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dic
 
         assert len(merged) == 384, f"Expected 384 channels, got {len(merged)}"
         logger.info(f"Neuropixels {probe_id}: all {len(merged)} channels matched to electrodes successfully!")
+        logger.debug(f"{probe_id}: recording channels per shank: {merged.groupby('shank').size().to_dict()}")
+        logger.debug(f"{probe_id}: electrode index range {int(merged['electrode'].min())}-"
+                     f"{int(merged['electrode'].max())}, y range {int(merged['y_um'].min())}-"
+                     f"{int(merged['y_um'].max())} um")
         neuropixels_channel_data[probe_id] = merged
 
         # Plot the electrode layout and channel info for this probe
@@ -1214,13 +1237,14 @@ def add_electrode_data_neuropixels(
         logger (Logger):
             Logger to track conversion progress
     """
-    # Save channel info as an AssociatedFiles object in the NWB
+    # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory)
     add_associated_file(
         nwbfile,
         name="electrode_info",
         description="Neuropixels channel map (recording channel -> electrode geometry) (CSV)",
         content=channel_info.to_csv(index=False),
         logger=logger,
+        log_filename="electrode_info.csv",
     )
 
     # General metadata for the electrode groups
@@ -1332,6 +1356,9 @@ def add_electrode_data_neuropixels(
     # Add each populated Shank to the Probe
     for shank in shanks_by_shank.values():
         probe_obj.add_shank(shank)
+
+    logger.info(f"Added {len(channel_info)} Neuropixels electrodes across {len(electrode_groups_by_shank)} "
+                f"shank ElectrodeGroup(s): {sorted(electrode_groups_by_shank)}")
 
 
 def add_raw_ephys(
@@ -1505,6 +1532,9 @@ def add_raw_ephys(
 
     # Get port visits recorded by Open Ephys for timestamp alignment
     logger.info("Getting port visits recorded by Open Ephys...")
+    logger.debug(f"Port visit source: channel {port_visits_channel_num} of {port_visits_dat_file_path} "
+                 f"({port_visits_total_channels} channels @ {port_visits_sample_rate} Hz, "
+                 f"threshold {pulse_high_threshold:.0f} raw int16)")
     ephys_visit_times, bonsai_start_time = get_port_visits(continuous_dat_file_path=port_visits_dat_file_path,
                                                            total_channels=port_visits_total_channels,
                                                            port_visits_channel_num=port_visits_channel_num,
@@ -1617,6 +1647,7 @@ def add_raw_ephys(
         description="Raw settings.xml file from OpenEphys",
         content=raw_settings_xml,
         logger=logger,
+        log_filename="settings.xml",
     )
 
     with open(oebin_params["oebin_path"], "r") as oebin_file:
@@ -1628,6 +1659,7 @@ def add_raw_ephys(
                     "bit_volts, sample rates)",
         content=raw_structure_oebin,
         logger=logger,
+        log_filename="structure.oebin",
     )
 
     log_and_print(logger, "Finished adding raw ephys to the nwb.")
