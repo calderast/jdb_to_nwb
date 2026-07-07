@@ -126,6 +126,22 @@ def setup_stdout_logger(log_name: str) -> logging.Logger:
     return logger
 
 
+def log_and_print(logger: logging.Logger, message: str, level: str = "info") -> None:
+    """
+    Print a message to stdout and log it at the given level.
+
+    We often want the user to see a message at the console AND have it saved to the logfile,
+    which otherwise means writing the same string twice. This helper does both.
+
+    Parameters:
+        logger (logging.Logger): Logger to track conversion progress
+        message (str): The message to print and log
+        level (str): Log level to use ("info", "warning", "error", or "debug"). Defaults to "info"
+    """
+    print(message)
+    getattr(logger, level)(message)
+
+
 def get_logger_directory(logger: logging.Logger) -> str:
     """
     Helper to get the directory path where the first FileHandler of the logger writes logs.
