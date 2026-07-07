@@ -1,5 +1,8 @@
 # Electrophysiology resources
 
+## Plot ephys traces or electrode impedances for a quick quality check
+After we implant the probe, we do a week or so of impedance checks and driving without running an actual session. To plot a snippet of raw traces and electrode impedances for this case, see `preview_ephys.ipynb`. (You can of course also use this to preview traces and ephys for a regular session).
+
 ## Probes:
 All probes used by the Berke Lab in the hex maze task are listed in `ephys_devices.yaml`. Berke Lab currently uses custom silicon probes designed by Daniel Egert for high-density hippocampal recordings. 
 

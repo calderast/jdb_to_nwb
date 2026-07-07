@@ -39,6 +39,7 @@ dependencies = [
     "tables",  # used by pandas to read HDF5 files
     "opencv-python",
     "hex-maze-neuro >= 1.1.2",
+    "hdf5plugin",  # provides blosc-zstd compression for raw ephys (faster + smaller than gzip)
 ]
 dynamic = ["version"]
 
