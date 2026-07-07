@@ -34,9 +34,10 @@ VOLTS_PER_MICROVOLT = 1e-6
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
 
-# Neuropixels port visits are recorded on the separate OneBox-ADC stream (in volts). By default the pulses
-# are on ADC0 (settings.xml marks ADC channel 0 as "selected"). Both are overridable via metadata["ephys"].
-NPX_DEFAULT_PORT_VISITS_ADC_CHANNEL = 0
+# Neuropixels port visits are recorded on the separate OneBox-ADC stream on ADC2 (in volts)
+# (ADC0 carries a 1 Hz sync clock, ADC1 is used for future optotagging)
+# Both the channel and the threshold are overridable via metadata["ephys"]
+NPX_DEFAULT_PORT_VISITS_ADC_CHANNEL = 2
 NPX_PORT_VISITS_THRESHOLD_VOLTS = 4.0
 
 # Get the location of the resources directory when the package is installed from pypi
@@ -280,9 +281,13 @@ def get_port_visits(continuous_dat_file_path: Path,
     the port visits live on, plus the sample rate and threshold:
       - Berke Lab probes: port visits are on ADC1 (channel 256) of the probe's own continuous.dat
         (264 channels, 30000 Hz, raw int16 threshold ~10000).
-      - Neuropixels (OneBox): port visits are on the SEPARATE OneBox-ADC continuous.dat (e.g. ADC0,
+      - Neuropixels (OneBox): port visits are on the SEPARATE OneBox-ADC continuous.dat (ADC2,
         12 channels, 30300.5 Hz). ADC data is stored as raw int16 like everything else, so pass a
         threshold in raw int16 units (volts / bit_volts).
+        
+    NOTE: We return a time (not a sample count) of bonsai start because the neuropixels port visit file 
+    (e.g. the OneBox-ADC at 30300.5 Hz) has a different sample rate than the probe file (30000 Hz). 
+    Sample rates are same for Berke Lab probes (ADC1 lives in the same contimnuous.dat file as neural data)
 
     Parameters:
         continuous_dat_file_path (Path):
@@ -300,10 +305,11 @@ def get_port_visits(continuous_dat_file_path: Path,
 
     Returns:
         port_visits (list[float]):
-            List of port visit times in seconds
-        samples_to_remove (int):
-            Index of start pulse marking bonsai start time (in the original sample rate).
-            Samples before this time will be trimmed from ephys data
+            List of port visit times in seconds (relative to the bonsai start pulse)
+        bonsai_start_time (float):
+            Time (seconds) of the start pulse marking bonsai start, relative to the start of this
+            continuous.dat. The caller converts this to a sample count in the neural recording's
+            sample rate to trim data before bonsai start
     """
     # Downsample to ~1000 Hz before searching for pulses. 1000ish is low enough to speed things up
     # (this takes ~2mins on my machine) but high enough that we definitely don't miss any port visit pulses.
@@ -329,9 +335,9 @@ def get_port_visits(continuous_dat_file_path: Path,
     logger.debug(f"Recording times the channel is high (>{pulse_high_threshold})")
     pulse_above_threshold = np.where(visits_channel_data > pulse_high_threshold)[0]
 
-    # If no port visits were found, return an empty list of visits and 0 samples to remove
+    # If no port visits were found, return an empty list of visits and bonsai start time 0
     if pulse_above_threshold.size == 0:
-        return [], 0
+        return [], 0.0
 
     # Find pulse boundaries (breaks in the sequence of threshold crossings)
     breaks = np.where(np.diff(pulse_above_threshold) != 1)[0] + 1
@@ -356,17 +362,17 @@ def get_port_visits(continuous_dat_file_path: Path,
     if pulse_durations[0] < 300:
         logger.warning("Expected the first pulse marking the start time to have duration >= 300! "
                        f"Got pulse duration {pulse_durations[0]} - this may indicate a problem with the start pulse!")
-    logger.info(f"Bonsai start time occurred {pulse_starts[0] / downsampled_fs}s after ephys was started.")
+
+    # Bonsai start time (seconds) relative to the start of this continuous.dat
+    bonsai_start_time = float(pulse_starts[0] / downsampled_fs)
+    logger.info(f"Bonsai start time occurred {bonsai_start_time}s after ephys was started.")
     logger.info("This will be set to time=0 and samples before this will be removed.")
 
     # Convert port visit times to seconds relative to bonsai start pulse
     port_visits = pulse_starts[1:] - pulse_starts[0]
     port_visits = [float(visit / downsampled_fs) for visit in port_visits]
 
-    # Convert bonsai start pulse index from the downsampled rate back to the original sample rate
-    # This is the number of samples to remove from the start of the raw ephys data
-    samples_to_remove = int(pulse_starts[0] * decimation)
-    return port_visits, samples_to_remove
+    return port_visits, bonsai_start_time
 
 
 def get_raw_ephys_data(
@@ -1471,7 +1477,7 @@ def add_raw_ephys(
 
     # Get port visits recorded by Open Ephys for timestamp alignment
     logger.info("Getting port visits recorded by Open Ephys...")
-    ephys_visit_times, samples_to_remove = get_port_visits(continuous_dat_file_path=port_visits_dat_file_path,
+    ephys_visit_times, bonsai_start_time = get_port_visits(continuous_dat_file_path=port_visits_dat_file_path,
                                                            total_channels=port_visits_total_channels,
                                                            port_visits_channel_num=port_visits_channel_num,
                                                            sample_rate=port_visits_sample_rate,
@@ -1479,6 +1485,14 @@ def add_raw_ephys(
                                                            pulse_high_threshold=pulse_high_threshold)
     log_and_print(logger, f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
     logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
+
+    # Convert the bonsai start time (seconds) to a number of samples in the probe's sample rate.
+    # This matters for Neuropixels: port visits come from the OneBox-ADC (30300.5 Hz) but we trim the
+    # probe data (30000 Hz), so we need to convert
+    probe_sample_rate = oebin_params["sample_rate"]
+    samples_to_remove = round(bonsai_start_time * probe_sample_rate)
+    logger.debug(f"Trimming {samples_to_remove} samples ({bonsai_start_time}s at {probe_sample_rate} Hz) "
+                 "from the start of the probe data")
 
     # Get raw ephys data (with times before bonsai start removed)
     (
