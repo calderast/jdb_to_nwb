@@ -12,6 +12,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from collections import Counter
 import xml.etree.ElementTree as ET
 from importlib.resources import files
 from hdmf.backends.hdf5 import H5DataIO
@@ -221,6 +222,44 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
     logger.debug(f"Read oebin params for stream '{stream_folder_name}': "
                  f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
     return params
+
+
+def validate_oebin_channel_names(channel_names: list[str], expected_channel_names: set[str], logger) -> None:
+    """
+    Sanity-check the channel names read from structure.oebin against what we expect for this probe.
+
+    We source this from structure.oebin (which lists each channel's name) rather than settings.xml,
+    since oebin is format-independent and we already read it. Logs warnings but does NOT raise on a
+    mismatch: a few missing/unexpected channels usually just get excluded downstream by impedance
+    anyway (e.g. IM-1875 is missing CH1-CH8, replaced by duplicated ADC1-ADC8).
+
+    Parameters:
+        channel_names (list[str]):
+            Ordered channel names from structure.oebin (from read_oebin_params)
+        expected_channel_names (set[str]):
+            The channel names we expect for this probe (e.g. CH1-CH256 + ADC1-ADC8 for a Berke probe)
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    found_channel_names = set(channel_names)
+
+    # Check for missing or unexpected channel names
+    missing_channel_names = expected_channel_names - found_channel_names
+    unexpected_channel_names = found_channel_names - expected_channel_names
+    if missing_channel_names or unexpected_channel_names:
+        logger.warning("Channel names in structure.oebin do not match expectations!!!!")
+        if missing_channel_names:
+            logger.warning(f"Missing channel names: {sorted(missing_channel_names)}")
+        if unexpected_channel_names:
+            logger.warning(f"Unexpected channel names: {sorted(unexpected_channel_names)}")
+    else:
+        logger.info(f"All {len(expected_channel_names)} expected channel names found in structure.oebin")
+
+    # Check for duplicate channel names
+    duplicate_names = [name for name, count in Counter(channel_names).items() if count > 1]
+    if duplicate_names:
+        logger.warning("Duplicate channel names found in structure.oebin!!!!")
+        logger.warning(f"Duplicate channel names: {sorted(duplicate_names)}")
 
 
 def get_port_visits(continuous_dat_file_path: Path,
@@ -1175,6 +1214,10 @@ def add_raw_ephys(
     # We have different information in different places for Berke Lab probes vs other probe types (Neuropixels).
     # This is a bit messy because our old code assumed Berke Lab probes only. But is ok for now.
     if probe_metadata["name"] in BERKE_LAB_PROBES:
+        # Sanity-check the oebin channels against the expected 256 "CH" + 8 "ADC" layout
+        expected_channel_names = {f"CH{i}" for i in range(1, 257)} | {f"ADC{i}" for i in range(1, 9)}
+        validate_oebin_channel_names(oebin_params["channel_names"], expected_channel_names, logger)
+
         # For Berke Lab probes, port visits are recorded on ADC1, which lives in the same continuous.dat
         # as the neural data channels (256 "CH" + 8 "ADC" = 264 total channels)
         port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
