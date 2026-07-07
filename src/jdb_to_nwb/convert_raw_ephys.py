@@ -105,7 +105,7 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     open_ephys_folder_path/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat
 
     For Neuropixels, we may have multiple "probe name" folders, each with a different continuous.dat file
-    This will be the case for the ADC, and also if we implant 2 probes bilatrerally. For example:
+    This will be the case for the ADC, and also if we implant 2 probes bilaterally. For example:
     open_ephys_folder_path/Record Node 101/experiment2/recording1/continuous/OneBox-100.OneBox-ADC/continuous.dat
     open_ephys_folder_path/Record Node 101/experiment2/recording1/continuous/OneBox-100.ProbeA/continuous.dat
 
@@ -140,8 +140,8 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
         raise FileNotFoundError(f"No settings.xml found for experiment {experiment_number} in {open_ephys_folder_path}")
     if len(settings_files) > 1:
         raise ValueError(
-            f"Found {len(settings_files)} for experiment {experiment_number} in {open_ephys_folder_path},"
-            f"expected 1: {settings_files}"
+            f"Found {len(settings_files)} settings.xml files for experiment {experiment_number} in "
+            f"{open_ephys_folder_path}, expected 1: {settings_files}"
             )
     settings_xml_file = settings_files[0]
 
@@ -177,7 +177,8 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
     This works the same for Berke Lab probes and Neuropixels.
 
     Note: structure.oebin does NOT contain the bandpass filtering info (LowCut/HighCut) -
-    afaik that lives only in settings.xml, so filtering info still comes from read_open_ephys_settings_xml.
+    as far as I know that lives only in settings.xml, so filtering info still comes from
+    read_open_ephys_settings_xml.
 
     Parameters:
         continuous_dat_file_path (Path):
@@ -283,7 +284,7 @@ def get_port_visits(continuous_dat_file_path: Path,
                     port_visits_channel_num: int,
                     sample_rate: float,
                     logger,
-                    pulse_high_threshold: float = 10_000) -> tuple[list[float], int]:
+                    pulse_high_threshold: float = 10_000) -> tuple[list[float], float]:
     """
     Extract port visit times from an OpenEphys continuous.dat file.
 
@@ -295,9 +296,10 @@ def get_port_visits(continuous_dat_file_path: Path,
         12 channels, 30300.5 Hz). ADC data is stored as raw int16 like everything else, so pass a
         threshold in raw int16 units (volts / bit_volts).
         
-    NOTE: We return a time (not a sample count) of bonsai start because the neuropixels port visit file 
-    (e.g. the OneBox-ADC at 30300.5 Hz) has a different sample rate than the probe file (30000 Hz). 
-    Sample rates are same for Berke Lab probes (ADC1 lives in the same contimnuous.dat file as neural data)
+    NOTE: We return the bonsai start time (in seconds, not a sample count) because the Neuropixels port
+    visit file (the OneBox-ADC at 30300.5 Hz) has a different sample rate than the probe file (30000 Hz).
+    For Berke Lab probes the sample rates are the same (ADC1 lives in the same continuous.dat as the
+    neural data), but returning a time keeps this function correct for both cases
 
     Parameters:
         continuous_dat_file_path (Path):
@@ -390,7 +392,7 @@ def get_raw_ephys_data(
     logger,
     exclude_channels: list[str] = [],
     samples_to_remove: int = 0
-) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
+) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray]:
     """
     Get the raw ephys data from the OpenEphys binary recording.
 
@@ -591,11 +593,12 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
 
     NOTE: All we actually use from settings.xml is the filtering info (a single string stored on
     every electrode). We used to also validate the channel numbers/names against the expected
-    256 CH + 8 ADC layout, but we stopped because for some of our rats (IM-1875), we did actually 
-    have some weird stuff going on there (missing CH1-CH8, which was replaced by a duplicated ADC1-ADC8),
-    and we ignored the warnings. A better and more consistent way to do this would be to read that info
-    from the structure.oebin instead. I think that would work for old and newer open ephys versions, and
-    both Berke lab and neuropixels. Not sure, but putting my thoughts here for posterity (7/6/26) -S
+    256 CH + 8 ADC layout here, but that validation now happens from structure.oebin instead
+    (see validate_oebin_channel_names), which is format-independent and works across Open Ephys
+    versions and both Berke Lab and Neuropixels probes. 
+    That validation warns but doesn't error: some of our rats (e.g. IM-1875) have incorrect channels
+    due to an old open ephys bug (missing CH1-CH8, replaced by a duplicated ADC1-ADC8) that we knowingly
+    ignore because they end up being excluded by impedance criteria anyway
 
     Parameters:
         settings_file_path (Path):
@@ -1059,9 +1062,10 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dic
 
     We treat ELECTRODE_INDEX as the authoritative identity and merge it against our canonical coordinate
     table (neuropixels_2.0_multishank_electrode_coords.csv, one row per global electrode) to get the
-    shank, shank_column, shank_row, and canonical x_um/y_um. We merge on the electrode index rather than
-    on x/y: the settings.xml x positions use a slightly different origin than our coords table (a constant
-    ~19um offset), so I need to check this.
+    shank, shank_column, shank_row, and canonical x_um/y_um. We merge on the global electrode index rather
+    than on x/y because the index is the authoritative identity - matching on float coordinates can break
+    depending on the x or y value they are referenced to. (Our coords should matche the settings.xml 
+    x/y positions exactly, which we check below)
 
     Parameters:
         settings_file_path (Path):
@@ -1323,8 +1327,11 @@ def add_raw_ephys(
     metadata: dict,
     logger,
     fig_dir: Path = None,
-) -> None:
+) -> dict:
     """Add the raw ephys data to a NWB file.
+
+    Returns a dict with the Open Ephys start time and detected port visits (empty dict if there is no
+    ephys metadata for this session, or if the required ephys metadata subfields are missing).
 
     Parameters:
         nwbfile (NWBFile):
@@ -1384,10 +1391,10 @@ def add_raw_ephys(
 
     # For now, only allow a single probe
     if len(probe_file_paths) != 1:
-        logger.error(f"Expected exactly one continuous.dat, found: {probe_file_paths}")
-        raise NotImplementedError("Currently only one continuous.dat file is supported.")
+        logger.error(f"Expected exactly one probe continuous.dat, found: {probe_file_paths}")
+        raise NotImplementedError("Currently only one probe continuous.dat is supported.")
     probe_stream_name, continuous_dat_file_path = next(iter(probe_file_paths.items()))
-    logger.info(f"Found continuous.dat for '{probe_stream_name}' at {continuous_dat_file_path}")
+    logger.info(f"Found probe continuous.dat for '{probe_stream_name}' at {continuous_dat_file_path}")
 
     logger.info("Adding probe...")
     probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=logger)
@@ -1451,9 +1458,10 @@ def add_raw_ephys(
         logger.info(f"Found OneBox-ADC continuous.dat for '{adc_stream_name}' at {adc_dat_file_path}")
         adc_oebin_params = read_oebin_params(continuous_dat_file_path=adc_dat_file_path, logger=logger)
 
-        # ADC data is stored as raw int16 like everything else; convert our desired volts threshold to raw
-        # int16 using the ADC bit_volts. Port visits default to ADC0 (the "selected" ADC channel in
-        # settings.xml); both the channel and threshold are overridable via metadata.
+        # ADC data is stored as raw int16 like everything else, so convert our desired volts threshold 
+        # to raw int16 using the ADC bit_volts. 
+        # Port visits default to ADC2 (ADC0 is a 1 Hz sync clock, and ADC1 will be used for future optotagging)
+        # Both the channel and threshold are overridable via metadata
         port_visits_dat_file_path = adc_dat_file_path
         port_visits_total_channels = adc_oebin_params["channel_count"]
         port_visits_sample_rate = adc_oebin_params["sample_rate"]
