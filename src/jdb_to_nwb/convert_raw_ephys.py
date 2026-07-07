@@ -1555,18 +1555,33 @@ def add_raw_ephys(
     uv_traces_as_iterator = MicrovoltsSpikeInterfaceRecordingDataChunkIterator(traces_as_iterator,
                                                                                channel_conversion_factor_uv)
 
-    # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
-    # by the NWB team.
-    # We could also add compression here. zstd/blosc-zstd are recommended by the NWB team, but
-    # they require the hdf5plugin library to be installed. gzip is available by default.
-    # Use gzip for now, but consider zstd/blosc-zstd in the future.
-    data_data_io = H5DataIO(
-        data=uv_traces_as_iterator,
-        chunks=(min(num_samples, 81920), min(num_channels, 64)),
-        compression="gzip",
-    )
-    logger.info(f"ElectricalSeries data will be written with chunks "
-                f"{(min(num_samples, 81920), min(num_channels, 64))} and gzip compression")
+    # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, the recommended chunk size by the
+    # NWB team. Compress with blosc-zstd (via the hdf5plugin library), also recommended by the NWB team: 
+    # it is much faster to write than gzip and compresses better, which matters a lot for these large recordings. 
+    # Fall back to gzip (always available) if hdf5plugin is not installed.
+    # NOTE: reading a blosc-zstd-compressed NWB requires the blosc HDF5 filter (hdf5plugin) to be installed.
+    # We include hdf5plugin as a dependency, so anything using jdb_to_nwb (or Spyglass) can read these files,
+    # but a bare-HDF5 reader without the filter cannot. Use gzip instead if you need maximum portability.
+    chunks = (min(num_samples, 81920), min(num_channels, 64))
+    try:
+        import hdf5plugin
+        blosc_zstd = dict(hdf5plugin.Blosc(cname="zstd", clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE))
+        data_data_io = H5DataIO(
+            data=uv_traces_as_iterator,
+            chunks=chunks,
+            compression=blosc_zstd["compression"],
+            compression_opts=blosc_zstd["compression_opts"],
+            allow_plugin_filters=True,
+        )
+        compression_desc = "blosc-zstd (clevel 5)"
+    except ImportError:
+        data_data_io = H5DataIO(
+            data=uv_traces_as_iterator,
+            chunks=chunks,
+            compression="gzip",
+        )
+        compression_desc = "gzip (install hdf5plugin for faster, smaller blosc-zstd compression)"
+    logger.info(f"ElectricalSeries data will be written with chunks {chunks} and {compression_desc} compression")
 
     # If we have ground truth port visit times (photometry), align timestamps to that
     ground_truth_time_source = metadata.get("ground_truth_time_source")
