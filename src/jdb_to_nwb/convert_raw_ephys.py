@@ -24,10 +24,10 @@ from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
-from .utils import get_logger_directory, log_and_print
+from .utils import log_and_print, add_associated_file
 from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
-from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
+from ndx_franklab_novela import Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
 VOLTS_PER_MICROVOLT = 1e-6
 
@@ -494,50 +494,6 @@ def get_raw_ephys_data(
         channel_conversion_factor_uv,
         original_timestamps,
     )
-
-
-def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: str, logger,
-                        task_epochs: str = "0", log_filename: str = None) -> None:
-    """
-    Add a file to the nwbfile's 'associated_files' processing module (creating the module if needed),
-    and optionally save a copy of it alongside the log files
-
-    We save several raw provenance files this way (the Open Ephys settings.xml and structure.oebin, the
-    electrode info CSV, etc). This helper centralizes the boilerplate and logs each save.
-
-    Parameters:
-        nwbfile (NWBFile): The NWB file being assembled.
-        name (str): Name for the AssociatedFiles object
-        description (str): Human-readable description of the file
-        content (str): The file contents as a string
-        logger (Logger): Logger to track conversion progress
-        task_epochs (str): Task epoch the file belongs to. Defaults to "0" (Berke Lab has one epoch per day)
-        log_filename (str): Optional. If given, also write a copy of the content to the log directory
-            under this filename (e.g. "settings.xml"). Skipped if the logger has no logfile.
-    """
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-    logger.info(f"Saving '{name}' as an AssociatedFiles object in the nwb ({len(content)} chars)")
-    nwbfile.processing["associated_files"].add(AssociatedFiles(
-        name=name,
-        description=description,
-        content=content,
-        task_epochs=task_epochs,
-    ))
-
-    # Also save a copy to the logging directory
-    # Skip if the logger writes only to stdout (no log directory)
-    if log_filename is not None:
-        try:
-            log_dir = get_logger_directory(logger)
-        except ValueError:
-            logger.debug(f"No log directory available; not saving a copy of '{log_filename}' alongside logs")
-            return
-        save_path = os.path.join(log_dir, log_filename)
-        with open(save_path, "w") as f:
-            f.write(content)
-        logger.info(f"Saved a copy of '{log_filename}' to the log directory: {save_path}")
 
 
 def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
