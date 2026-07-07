@@ -190,7 +190,8 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
         dict:
             Params for the stream matching this continuous.dat:
             "channel_count" (int), "sample_rate" (float), "bit_volts" (float, the uV conversion
-            factor, shared across channels), and "channel_names" (list[str])
+            factor, shared across channels), "channel_names" (list[str]), and "oebin_path" (Path to
+            the structure.oebin file itself, so we can save it as an AssociatedFile)
     """
     continuous_dat_file_path = Path(continuous_dat_file_path)
     # .../recording{n}/continuous/<stream folder>/continuous.dat -> stream folder name and oebin path
@@ -224,9 +225,10 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
         "sample_rate": float(stream["sample_rate"]),
         "bit_volts": bit_volts,
         "channel_names": [ch["channel_name"] for ch in stream["channels"]],
+        "oebin_path": oebin_path,  # so we can save structure.oebin as an AssociatedFile
     }
-    logger.debug(f"Read oebin params for stream '{stream_folder_name}': "
-                 f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
+    logger.info(f"Read oebin params for stream '{stream_folder_name}': "
+                f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
     return params
 
 
@@ -484,6 +486,34 @@ def get_raw_ephys_data(
         channel_conversion_factor_uv,
         original_timestamps,
     )
+
+
+def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: str, logger,
+                        task_epochs: str = "0") -> None:
+    """
+    Add a file to the nwbfile's 'associated_files' processing module (creating the module if needed).
+
+    We save several raw provenance files this way (the Open Ephys settings.xml and structure.oebin, the
+    electrode info CSV, etc). This helper centralizes the boilerplate and logs each save.
+
+    Parameters:
+        nwbfile (NWBFile): The NWB file being assembled.
+        name (str): Name for the AssociatedFiles object
+        description (str): Human-readable description of the file
+        content (str): The file contents as a string
+        logger (Logger): Logger to track conversion progress
+        task_epochs (str): Task epoch the file belongs to. Defaults to "0" (Berke Lab has one epoch/day)
+    """
+    if "associated_files" not in nwbfile.processing:
+        logger.debug("Creating nwb processing module for associated files")
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+    logger.info(f"Saving '{name}' as an AssociatedFiles object in the nwb ({len(content)} chars)")
+    nwbfile.processing["associated_files"].add(AssociatedFiles(
+        name=name,
+        description=description,
+        content=content,
+        task_epochs=task_epochs,
+    ))
 
 
 def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
@@ -820,16 +850,13 @@ def add_electrode_data_berke_probe(
     electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
 
     # Save electrode info as an AssociatedFiles object in the NWB
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-    logger.debug("Saving electrode info CSV as an AssociatedFiles object")
-    nwbfile.processing["associated_files"].add(AssociatedFiles(
+    add_associated_file(
+        nwbfile,
         name="electrode_info",
         description="Electrode channel map and impedance information (CSV)",
         content=electrode_info.to_csv(index=False),
-        task_epochs="0",
-    ))
+        logger=logger,
+    )
 
     # Get general metadata for the Probe
     electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
@@ -1188,16 +1215,13 @@ def add_electrode_data_neuropixels(
             Logger to track conversion progress
     """
     # Save channel info as an AssociatedFiles object in the NWB
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-    logger.debug("Saving Neuropixels channel info CSV as an AssociatedFiles object")
-    nwbfile.processing["associated_files"].add(AssociatedFiles(
+    add_associated_file(
+        nwbfile,
         name="electrode_info",
         description="Neuropixels channel map (recording channel -> electrode geometry) (CSV)",
         content=channel_info.to_csv(index=False),
-        task_epochs="0",
-    ))
+        logger=logger,
+    )
 
     # General metadata for the electrode groups
     electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
@@ -1396,6 +1420,8 @@ def add_raw_ephys(
     #   pulse_high_threshold is the raw int16 value above which the port visit channel is considered "high"
     #   exclude_channel_names are neural channels to drop from the ElectricalSeries (Berke ECoG screws)
     if probe_metadata["name"] in BERKE_LAB_PROBES:
+        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Berke Lab custom probe.")
+
         # Berke Lab probes require a per-session impedance file (used to mark bad channels)
         if "impedance_file_path" not in metadata["ephys"]:
             raise ValueError("Berke Lab probes require 'impedance_file_path' in the ephys metadata.")
@@ -1430,6 +1456,8 @@ def add_raw_ephys(
         exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
+        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Neuropixels probe.")
+
         # For Neuropixels (OneBox), port visits are recorded on a SEPARATE OneBox-ADC stream (its own
         # continuous.dat), not in the probe's continuous.dat. Find that ADC stream and read its params.
         if not adc_file_paths:
@@ -1526,9 +1554,11 @@ def add_raw_ephys(
         region=list(raw_data_row_to_electrode_table_row),
         description="Electrodes used in raw ElectricalSeries recording",
     )
+    logger.info(f"Raw ephys data is {num_samples} samples x {num_channels} channels "
+                f"(conversion factor {channel_conversion_factor_uv} uV/bit)")
 
     # Convert to uV without loading the whole thing at once
-    uv_traces_as_iterator = MicrovoltsSpikeInterfaceRecordingDataChunkIterator(traces_as_iterator, 
+    uv_traces_as_iterator = MicrovoltsSpikeInterfaceRecordingDataChunkIterator(traces_as_iterator,
                                                                                channel_conversion_factor_uv)
 
     # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
@@ -1541,6 +1571,8 @@ def add_raw_ephys(
         chunks=(min(num_samples, 81920), min(num_channels, 64)),
         compression="gzip",
     )
+    logger.info(f"ElectricalSeries data will be written with chunks "
+                f"{(min(num_samples, 81920), min(num_channels, 64))} and gzip compression")
 
     # If we have ground truth port visit times (photometry), align timestamps to that
     ground_truth_time_source = metadata.get("ground_truth_time_source")
@@ -1576,25 +1608,27 @@ def add_raw_ephys(
     logger.info("Adding raw ephys to the nwbfile as an ElectricalSeries")
     nwbfile.add_acquisition(eseries)
 
-    # Get the raw settings.xml file as a string to be used to create an AssociatedFiles object
+    # Save the raw Open Ephys settings.xml and structure.oebin as AssociatedFiles
     with open(settings_file_path, "r") as settings_file:
         raw_settings_xml = settings_file.read()
-
-    # Create an AssociatedFiles object to save settings.xml
-    raw_settings_xml_file = AssociatedFiles(
+    add_associated_file(
+        nwbfile,
         name="open_ephys_settings_xml",
         description="Raw settings.xml file from OpenEphys",
         content=raw_settings_xml,
-        task_epochs="0",  # Berke Lab only has one epoch (session) per day
+        logger=logger,
     )
 
-    # If it doesn't exist already, make a processing module for associated files
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+    with open(oebin_params["oebin_path"], "r") as oebin_file:
+        raw_structure_oebin = oebin_file.read()
+    add_associated_file(
+        nwbfile,
+        name="open_ephys_structure_oebin",
+        description="Raw structure.oebin file from OpenEphys (recording metadata: streams, channels, "
+                    "bit_volts, sample rates)",
+        content=raw_structure_oebin,
+        logger=logger,
+    )
 
-    # Add settings.xml to the nwb as an associated file
-    logger.debug("Saving the Open Ephys settings.xml file as an AssociatedFiles object")
-    nwbfile.processing["associated_files"].add(raw_settings_xml_file)
-
+    log_and_print(logger, "Finished adding raw ephys to the nwb.")
     return {"ephys_start": open_ephys_start, "port_visits": ephys_visit_times}
