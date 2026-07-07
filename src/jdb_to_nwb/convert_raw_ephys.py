@@ -1127,6 +1127,16 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dic
             raise ValueError(f"{probe_id}: electrode indices not found in coords table: "
                              f"{sorted(unmatched['electrode'])}")
 
+        # Sanity-check our canonical coords against what OpenEphys reports in settings.xml. 
+        # They should match exactly, warn if a future probe config ever disagrees
+        # Then drop the now-redundant settings columns to keep the channel info clean
+        x_mismatch = (merged["x_um"] != merged["x_um_settings"]).sum()
+        y_mismatch = (merged["y_um"] != merged["y_um_settings"]).sum()
+        if x_mismatch or y_mismatch:
+            logger.warning(f"{probe_id}: coords table disagrees with settings.xml for "
+                           f"{x_mismatch} x and {y_mismatch} y positions - check the coords file!")
+        merged = merged.drop(columns=["x_um_settings", "y_um_settings"])
+
         assert len(merged) == 384, f"Expected 384 channels, got {len(merged)}"
         logger.info(f"Neuropixels {probe_id}: all {len(merged)} channels matched to electrodes successfully!")
         neuropixels_channel_data[probe_id] = merged
@@ -1194,7 +1204,9 @@ def add_electrode_data_neuropixels(
     targeted_z = metadata["ephys"].get("targeted_z")
     logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
 
-    # Make an ElectrodeGroup and a Shank for each shank that actually has recording sites
+    # Make an ElectrodeGroup and a Shank for each shank that actually has recording sites.
+    # NOTE: we group one ElectrodeGroup per shank (mirrors the Berke probe per-shank structure). 
+    # We might later change to an electrode group per contiguous y block.
     electrode_groups_by_shank = {}
     shanks_by_shank = {}
     for shank_index in sorted(channel_info["shank"].unique()):
