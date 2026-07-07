@@ -438,8 +438,7 @@ def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
 
 def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
     """
-    Read the OpenEphys settings.xml file to validate channel info and get the filtering
-    applied across all channels.
+    Read the OpenEphys settings.xml file to get the filtering applied across all channels.
 
     Supports two settings.xml formats:
 
@@ -462,6 +461,14 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
           <EDITOR ... LowCut="..." HighCut="..." />
         </PROCESSOR>
 
+    NOTE: All we actually use from settings.xml is the filtering info (a single string stored on
+    every electrode). We used to also validate the channel numbers/names against the expected
+    256 CH + 8 ADC layout, but we stopped because for some of our rats (IM-1875), we did actually 
+    have some weird stuff going on there (missing CH1-CH8, which was replaced by a duplicated ADC1-ADC8),
+    and we ignored the warnings. A better and more consistent way to do this would be to read that info
+    from the structure.oebin instead. I think that would work for old and newer open ephys versions, and
+    both Berke lab and neuropixels. Not sure, but putting my thoughts here for posterity (7/6/26) -S
+
     Parameters:
         settings_file_path (Path):
             Path to the OpenEphys settings.xml file
@@ -475,22 +482,21 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
     settings_tree = ET.parse(settings_file_path)
     settings_root = settings_tree.getroot()
 
-    # Try old format first: "Sources/Rhythm FPGA" processor with CHANNEL_INFO
-    rhfp_processor = settings_root.find(".//PROCESSOR[@name='Sources/Rhythm FPGA']")
-    if rhfp_processor is not None:
-        _validate_old_format_channels(rhfp_processor, logger)
-        acq_processor = rhfp_processor
-    else:
-        # Try new format: "Acquisition Board" processor with STREAM
+    # The EDITOR (with the filtering info) lives inside the acquisition processor, whose name
+    # differs between the old format ("Sources/Rhythm FPGA") and the new format ("Acquisition Board")
+    
+    # Try old format first: "Sources/Rhythm FPGA" processor
+    acq_processor = settings_root.find(".//PROCESSOR[@name='Sources/Rhythm FPGA']")
+    if acq_processor is None:
+        # Try new format: "Acquisition Board" processor
         acq_processor = settings_root.find(".//PROCESSOR[@name='Acquisition Board']")
-        if acq_processor is None:
-            logger.error(
-                "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
-            )
-            raise ValueError(
-                "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
-            )
-        _validate_new_format_channels(acq_processor, settings_root, logger)
+    if acq_processor is None:
+        logger.error(
+            "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
+        )
+        raise ValueError(
+            "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
+        )
 
     # Get the filtering info from the EDITOR element (same location in both formats)
     editor = acq_processor.find("EDITOR")
@@ -504,145 +510,6 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
         filtering_info = "Unknown"
 
     return filtering_info
-
-
-def _validate_old_format_channels(processor, logger) -> None:
-    """Validate channel info from the old-format settings.xml (Open Ephys < 1.0).
-
-    The old format has a CHANNEL_INFO element with explicit CHANNEL entries:
-        <CHANNEL_INFO>
-            <CHANNEL name="CH1" number="0" gain="0.195"/>
-            ...
-        </CHANNEL_INFO>
-
-    We check that the channel numbers and names match the expected 256 CH + 8 ADC layout.
-    
-    NOTE: I used to return channel_number_to_channel_name, but now we don't use it.= and we just do this check.
-    I have excluded this for now because for our current rats (IM-1875), we do actually have some weird 
-    stuff going on there (missing CH1-CH8, which is replaced by a duplicated ADC1-ADC8).
-    This is reflected in both the settings.xml and the structure.oebin files, and (rightfully) breaks
-    a bunch of stuff. A current workaround is just to rename the offending channels in these files
-    which is bad practice!! but ok for now because they would be excluded by impedance criteria anyway)
-    If you do this please note it and also save a copy of the original files. 
-    But for now we must choose our battles and I'm skipping this one.
-    """
-    logger.info("Parsing old-format settings.xml (Sources/Rhythm FPGA processor)")
-    channel_info = processor.find("CHANNEL_INFO")
-    if channel_info is None:
-        logger.error("Could not find the CHANNEL_INFO node in the settings.xml file.")
-        raise ValueError("Could not find the CHANNEL_INFO node in the settings.xml file.")
-
-    channel_number_to_channel_name = {
-        int(channel.attrib["number"]): channel.attrib["name"]
-        for channel in channel_info.findall("CHANNEL")
-    }
-
-    expected_channel_numbers = set(range(264))  # 0 to 263, for 256 channels + 8 ADC
-    expected_channel_names = {f"CH{i}" for i in range(1, 257)} | {f"ADC{i}" for i in range(1, 9)}
-
-    channel_numbers_from_settings_xml = set(channel_number_to_channel_name.keys())
-    channel_names_from_settings_xml = set(channel_number_to_channel_name.values())
-
-    # Check for missing or unexpected channel numbers
-    missing_channel_numbers = expected_channel_numbers - channel_numbers_from_settings_xml
-    unexpected_channel_numbers = channel_numbers_from_settings_xml - expected_channel_numbers
-    if missing_channel_numbers or unexpected_channel_numbers:
-        logger.warning("Channel numbers in settings.xml do not match expectations!!!!")
-        if missing_channel_numbers:
-            logger.warning(f"Missing channel numbers: {sorted(missing_channel_numbers)}")
-        if unexpected_channel_numbers:
-            logger.warning(f"Unexpected channel numbers: {sorted(unexpected_channel_numbers)}")
-    else:
-        logger.info("All expected channel numbers found in OpenEphys settings.xml")
-        logger.debug(f"Found channels: {sorted(channel_numbers_from_settings_xml)}")
-
-    # Check for missing or unexpected channel names
-    missing_channel_names = expected_channel_names - channel_names_from_settings_xml
-    unexpected_channel_names = channel_names_from_settings_xml - expected_channel_names
-    if missing_channel_names or unexpected_channel_names:
-        logger.warning("Channel names in settings.xml do not match expectations!!!!")
-        if missing_channel_names:
-            logger.warning(f"Missing channel names: {sorted(missing_channel_names)}")
-        if unexpected_channel_names:
-            logger.warning(f"Unexpected channel names: {sorted(unexpected_channel_names)}")
-    else:
-        logger.info("All expected channel names found in OpenEphys settings.xml")
-        logger.debug(f"Found channels: {sorted(channel_names_from_settings_xml)}")
-
-    # Check for duplicate channel names
-    channel_name_counts = Counter(list(channel_number_to_channel_name.values()))
-    duplicate_names = [name for name, count in channel_name_counts.items() if count > 1]
-    if duplicate_names:
-        logger.warning("Duplicate channel names found in settings.xml!!!!")
-        logger.warning(f"Duplicate channel names: {sorted(duplicate_names)}")
-
-
-def _validate_new_format_channels(processor, settings_root, logger) -> None:
-    """Validate channel info from the new-format settings.xml (Open Ephys >= 1.0).
-
-    The new format has no explicit per-channel listing in the Acquisition Board
-    processor. Instead, the channel count is in the STREAM element:
-
-        <STREAM name="acquisition_board" ... channel_count="264"/>
-
-    However, the Channel Map processor (if present) lists each channel explicitly:
-
-        <PROCESSOR name="Channel Map" ...>
-          <CUSTOM_PARAMETERS>
-            <STREAM>
-              <CH index="0" enabled="1"/>
-              ...
-              <CH index="263" enabled="1"/>
-            </STREAM>
-          </CUSTOM_PARAMETERS>
-        </PROCESSOR>
-
-    We use the Channel Map entries to verify that all expected channel numbers
-    (0-263) are actually present in the settings.xml.
-    """
-    logger.info("Parsing new-format settings.xml (Acquisition Board processor)")
-    stream = processor.find("STREAM")
-    if stream is None:
-        logger.error("Could not find STREAM element in the Acquisition Board processor.")
-        raise ValueError("Could not find STREAM element in the Acquisition Board processor.")
-
-    channel_count = int(stream.attrib.get("channel_count", 0))
-    logger.info(f"Channel count from settings.xml STREAM element: {channel_count}")
-
-    if channel_count != 264:
-        logger.warning(
-            f"Expected 264 channels (256 CH + 8 ADC) but found {channel_count} in settings.xml."
-        )
-
-    # Cross-check with the Channel Map processor, which lists each channel explicitly
-    channel_map_processor = settings_root.find(".//PROCESSOR[@name='Channel Map']")
-    if channel_map_processor is not None:
-        channel_map_stream = channel_map_processor.find("CUSTOM_PARAMETERS/STREAM")
-        if channel_map_stream is not None:
-            channel_map_indices = {
-                int(ch.attrib["index"]) for ch in channel_map_stream.findall("CH")
-            }
-            expected_indices = set(range(264))
-            missing = expected_indices - channel_map_indices
-            extra = channel_map_indices - expected_indices
-            if missing:
-                logger.error(f"Channel Map processor is missing channel indices: {sorted(missing)}")
-                raise ValueError(
-                    f"Channel Map processor is missing expected channel indices: {sorted(missing)}"
-                )
-            if extra:
-                logger.warning(f"Channel Map processor has unexpected extra channel indices: {sorted(extra)}")
-            logger.info(
-                f"All {len(expected_indices)} expected channel indices (0-263) "
-                "confirmed present in Channel Map processor."
-            )
-        else:
-            logger.warning("Channel Map processor found but has no STREAM in CUSTOM_PARAMETERS.")
-    else:
-        logger.warning(
-            "No Channel Map processor found in settings.xml. "
-            "Cannot cross-check individual channel indices; relying on channel_count only."
-        )
 
 
 def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataFrame:
@@ -1243,7 +1110,7 @@ def add_raw_ephys(
         total_channels = 264  # 256 "CH" + 8 "ADC"
         port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
 
-        # Read the settings.xml file to validate channels and get filtering info
+        # Read the settings.xml file to get filtering info
         filtering_info = read_open_ephys_settings_xml(settings_file_path=settings_file_path, logger=logger)
 
         # Create electrode groups and add electrode data to the NWB file
