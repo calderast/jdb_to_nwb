@@ -290,40 +290,53 @@ def plot_raw_ephys_traces(nwbfile, start_time=100.0, duration=1.5, fig_dir=None)
 
 def plot_raw_ephys_snippet(nwbfile, fig_dir=None):
     """
-    Plot a raw ephys trace snippet around the 5th rewarded poke. Called during NWB conversion.
+    Plot a raw ephys trace snippet. Called during NWB conversion.
 
-    Skips silently if the NWB file has no ElectricalSeries, no trials table, or fewer than
-    5 rewarded trials. The window is centered 1s before the poke and runs for 2s total.
-    I picked the 5th rewarded poke because ideally we would see theta on approach and maybe ripples after.
+    Prefers a window centered 1s before the 5th rewarded poke (ideally we'd see theta on approach and
+    maybe ripples after). For ephys-only sessions with no trials table or fewer than 5 rewarded trials,
+    falls back to a fixed window 60s into the recording (or the midpoint of a shorter recording) so we
+    still get a trace snippet. The window runs for 2s total. Skips silently only if there is no
+    ElectricalSeries or the recording is shorter than the window.
 
     Dispatches on probe type: Neuropixels sessions get the optonpx-style raw per-shank-run trace
     plots (plot_neuropixels_traces); Berke Lab probes keep the shank-colored trace plot
     (plot_raw_ephys_traces).
 
     Parameters:
-        nwbfile (NWBFile): Fully assembled NWB file (ephys + behavior both added).
+        nwbfile (NWBFile): Fully assembled NWB file (ephys added; behavior optional).
         fig_dir (str): Optional directory to save the figure.
         logger: Optional logger for warnings.
     """
-    if "ElectricalSeries" not in nwbfile.acquisition or nwbfile.trials is None:
+    if "ElectricalSeries" not in nwbfile.acquisition:
         return
 
-    trials_df = nwbfile.trials.to_dataframe()
-    rewarded = trials_df[trials_df["reward"] == 1]
-    # If we have < 5 rewarded trials, skip
-    if len(rewarded) < 5:
-        return
+    duration = 2.0
 
-    poke_time = float(rewarded.iloc[4]["poke_in"])
-    start_time = max(0.0, poke_time - 1)
+    # Prefer a window centered 1s before the 5th rewarded poke, if we have the trials to find it
+    start_time = None
+    if nwbfile.trials is not None and "reward" in nwbfile.trials.colnames:
+        rewarded = nwbfile.trials.to_dataframe()
+        rewarded = rewarded[rewarded["reward"] == 1]
+        if len(rewarded) >= 5:
+            start_time = max(0.0, float(rewarded.iloc[4]["poke_in"]) - 1)
+
+    # Fallback for ephys-only sessions: a fixed window into the recording
+    if start_time is None:
+        timestamps = np.asarray(nwbfile.acquisition["ElectricalSeries"].timestamps)
+        rec_start, rec_end = float(timestamps[0]), float(timestamps[-1])
+        if rec_end - rec_start < duration:
+            return  # recording too short to plot even the fallback window
+        # 60s in, or the midpoint of a shorter recording, clamped so the window fits
+        offset = min(60.0, (rec_end - rec_start) / 2)
+        start_time = rec_start + min(offset, (rec_end - rec_start) - duration)
 
     # The probe is added as a device named after its model (e.g. "Neuropixels 2.0 (4-shank)"),
     # so route on whether any device name mentions Neuropixels
     is_neuropixels = any("neuropixels" in name.lower() for name in nwbfile.devices)
     if is_neuropixels:
-        plot_neuropixels_traces(nwbfile=nwbfile, start_time=start_time, duration=2, fig_dir=fig_dir)
+        plot_neuropixels_traces(nwbfile=nwbfile, start_time=start_time, duration=duration, fig_dir=fig_dir)
     else:
-        plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=2, fig_dir=fig_dir)
+        plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=duration, fig_dir=fig_dir)
 
 
 def plot_channel_map(probe_name, channel_coords, fig_dir=None):
