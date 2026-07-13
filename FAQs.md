@@ -55,9 +55,50 @@ Or for a probability change session, it might just be one line:
 
 The file can be named whatever you want as long as the `maze_configuration_file_path` path points to it (you don't have to name it barriers.txt if you don't want to). You may choose to write a script that auto-generates this file when you pick your maze configurations, or just type it manually every time you run a session.
 
-## How can I get hex centroids? 
+## How can I get hex centroids?
 
-See [resources/Get_Hex_Centroids.ipynb](resources/Get_Hex_Centroids.ipynb)
+See [resources/Get_Hex_Centroids.ipynb](resources/Get_Hex_Centroids.ipynb) to generate a hex centroids file from the session's behavior video. If you don't move the maze in between sessions, you can use the same centroids file for multiple sessions. If you are reusing the same centroids file for multiple sessions, skip to "Part 4" of the centroids notebook to confirm they still line up correctly with your behavior video for this session. The conversion pipeline also produces a sanity check figure of the hex centroids overlayed on the maze video, so you can also use that to confirm that everything matches.
+
+NOTE: If you cropped the video for DeepLabCut position tracking (as we did in some early sessions), use the cropped video to get the centroids, or shift all of the centroids by the crop amount to ensure they match the cropped video.
+
+## I recorded multiple sessions on the same day. What do I do?
+
+For now, we handle this using the `animal_name` field described above. Instead of the regular animal name, add a suffix "_2" (or "_3", "_4", etc. for further epochs). You'll end up with file names like `IM-1875_20250725.nwb` (for the first epoch of the day, which you specify normally), `IM-1875_2_20250725.nwb` (for the second epoch, where you set `animal_name: IM-1875_2`), `IM-1875_3_20250725.nwb`..., etc. 
+
+## How can I run batch conversion of multiple sessions at once?
+
+You can write a little script to do this! Look I did it for you:
+
+```
+#!/usr/bin/env bash
+
+# Directory where your metadata files live
+METADATA_DIR="/Users/steph/berkelab/jdb_to_nwb/metadata"
+
+# Output directory for created nwbs
+OUT_DIR="/Users/steph/berkelab/jdb_to_nwb/output"
+
+# List metadata files you want to convert
+FILES=(
+    "$METADATA_DIR/1478/metadata_IM-1478_20220725.yaml"
+    "$METADATA_DIR/1478/metadata_IM-1478_20220727.yaml"
+    "$METADATA_DIR/1594/metadata_IM-1594_20230726yaml"
+)
+
+# Loop through them and convert one by one
+for METADATA in "${FILES[@]}"; do
+    echo "Starting conversion for: $METADATA"
+    jdb_to_nwb "$METADATA" "$OUT_DIR"
+    echo "Finished conversion for: $METADATA"
+    echo "---------------------------------------"
+done
+
+echo "All conversions completed!"
+```
+
+1. Save this as `batch_conversion.sh`
+2. Make it executable: `chmod +x batch_conversion.sh`
+3. Run it: `./batch_conversion.sh`
 
 --------------------------------
 TODOs for Stephanie below. I am still filling these out. This is just a brain dump for now of everything that I want to include.
@@ -79,13 +120,13 @@ So I did something weird this session, and/or something went wrong. How can I de
 
 We already handle this automatically, so it should be fine. You'll see a note in the warning logs. Just double check the debug logs to make sure everything looks fine.
 
-## My photometry recording dropped, and I need to crop it. What do I do?
+## My photometry recording dropped, so I need to crop it to valid times. What do I do?
 
-See [resources/photometry/crop_photometry.ipynb](resources/photometry/crop_photometry.ipynb).
+Use the notebook [resources/photometry/crop_photometry.ipynb](resources/photometry/crop_photometry.ipynb) to find the desired end time of your photometry signal. Then use the optional metadata field `phot_end_time_mins` to specify the desired end time of your photometry recording (see `metadata_fully_explained.yaml`).
 
 ## I moved the barriers at a different time than the arduino printout. What do I do?
 
-We do this a lot. Use optional metadata field `barrier_shift_trial_counts` (see `metadata_fully_explained.yaml`).
+We do this a lot. Use optional metadata field `barrier_shift_trial_counts` to specify the trials where you actually moved the barriers (see `metadata_fully_explained.yaml`). The conversion pipeline automatically generates figures showing the rat position on each trial - use these to double-check that the barrier shift trials you specified match the rat's trajectories on the trials near a barrier shift.
 
 ## I plugged in the ephys cables the wrong way (Berke lab silicon probes). What do I do?
 
