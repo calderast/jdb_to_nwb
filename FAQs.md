@@ -57,7 +57,7 @@ The file can be named whatever you want as long as the `maze_configuration_file_
 
 ## How can I get hex centroids?
 
-See [resources/Get_Hex_Centroids.ipynb](resources/Get_Hex_Centroids.ipynb) to generate a hex centroids file from the session's behavior video. If you don't move the maze in between sessions, you can use the same centroids file for multiple sessions. If you are reusing the same centroids file for multiple sessions, skip to "Part 4" of the centroids notebook to confirm they still line up correctly with your behavior video for this session. The conversion pipeline also produces a sanity check figure of the hex centroids overlayed on the maze video, so you can also use that to confirm that everything matches.
+See [resources/Get_Hex_Centroids.ipynb](resources/Get_Hex_Centroids.ipynb) to generate a hex centroids file from the session's behavior video. If you don't move the maze in between sessions, you can use the same centroids file for multiple sessions. If you are reusing the same centroids file for multiple sessions, skip to "Part 4" of the centroids notebook to confirm they still line up correctly with your behavior video for this session. The conversion pipeline also produces a sanity check figure of the hex centroids overlaid on the maze video, so you can also use that to confirm that everything matches.
 
 NOTE: If you cropped the video for DeepLabCut position tracking (as we did in some early sessions), use the cropped video to get the centroids, or shift all of the centroids by the crop amount to ensure they match the cropped video.
 
