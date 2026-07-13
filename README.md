@@ -25,7 +25,7 @@ The nwb file will be automatically named based on the animal name and date (i.e.
 jdb_to_nwb metadata_example.yaml output_dir
 ```
 
-3. Sub-directories for associated figures and conversion log files will be created alongside the nwb file in `output_dir`. Check that there are no warnings or errors in the `warning` log file and that all figures look as expected. It's also a good idea to read through the `info` log file to check that everything makes sense based on your experimental setup. If you are not sure if the conversion was sucessful (or just want to double check), you can send the `debug` log file to Stephanie to make sure.
+3. Sub-directories for associated figures and conversion log files will be created alongside the nwb file in `output_dir`. Check that there are no warnings or errors in the `warning` log file and that all figures look as expected. It's also a good idea to read through the `info` log file to check that everything makes sense based on your experimental setup. If you are not sure if the conversion was successful (or just want to double check), you can send the `debug` log file to Stephanie to make sure.
 
 ## Downloading test data (Developers only)
 
