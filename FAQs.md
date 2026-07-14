@@ -105,19 +105,74 @@ echo "All conversions completed!"
 
 ### What (photometry) files and metadata do I need?
 
-Placeholder, Stephanie TODO
+If your session included fiber photometry, add a `photometry` field to your metadata. See `metadata_fully_explained.yaml` for the full annotated example.
 
-### What (ephys) files and metadata do I need?
+**Data file(s) — provide ONE of the following, depending on how you recorded:**
 
-Placeholder, Stephanie TODO
+- **LabVIEW:** both `phot_file_path` (`.phot`) and `box_file_path` (`.box`)
+- **pyPhotometry:** `ppd_file_path` (`.ppd`)
+
+The pipeline technically also accepts a path to the preprocessed `signals.mat` (from Tim's experiments) using `signals_mat_file_path`. We only use this for verification purposes.
+
+**Device / experiment metadata** (these reference existing entries in `resources/photometry/photometry_devices.yaml` and `resources/photometry/virus_info.yaml`, so you mostly just un-comment the ones you used):
+
+- `excitation_sources`: the LEDs used (Thorlabs LEDs in the old maze room, Doric LEDs in the new one).
+- `photodetector`: the Doric mini cube used.
+- `optic_fiber_implant_sites`: one entry per implanted fiber (AP/ML/DV, targeted_location). For bilateral implants, list both and mark the one you recorded from with `recording: true`. Our setup currently assumes only ONE fiber was recorded per session.
+- `virus_injections`: one entry per injection (virus_name, coordinates, volume, titer).
+
+**Optional processing fields:**
+
+- `phot_end_time_mins`: crop the signal to a valid end time if the recording dropped (see "My photometry recording dropped..." below).
+- `processing_presets` / `processing_overrides`: override the default processing (see the photometry-processing questions below).
 
 ### What are the photometry processing presets?
 
-Placeholder, Stephanie TODO
+A "preset" is a named recipe of processing steps (smoothing → baseline → normalization → correction) applied to a photometry signal. They're defined in `resources/photometry/processing_presets.yaml`. Each indicator has a default preset (set in `resources/photometry/photometry_mappings.yaml`), so you usually don't need to choose one yourself. There is no one "correct" way to process photometry signals. These presets are all some version of 1) some small amount of smoothing, 2) some sort of baseline correction to remove drift due to photobleaching, 3) some type of normalization to remove variation between subjects/sessions due to differences in viral expression etc., and 4) some correction for movement artifacts using an isosbestic (e.g. 405mn for dLight) or ratiometric (e.g. 405nm for gACh4h) reference wavelength if it exists for a given indicator.
+
+Current presets:
+
+| Preset | What it does | Default for |
+| --- | --- | --- |
+| `dlight_isosbestic` | rolling-mean smooth → airPLS baseline → median z-score → isosbestic Lasso correction (Tim's original dLight pipeline) | dLight1.3b, dLight3.8 |
+| `dlight_isosbestic_tight_baseline` | same as above but a tighter airPLS baseline (lambda 1e6). Use when the baseline has sharper fluctuations (e.g. unstable plugging) that the default under-fits | — |
+| `dlight_isosbestic_double_exp` | same but a double-exponential baseline instead of airPLS. Use to remove photobleaching drift while keeping other slow variation | — |
+| `dlight_isosbestic_no_baseline` | same but no baseline correction. Use if you care about slow-timescale changes a baseline/highpass would remove | — |
+| `gach_ratiometric` | lowpass smooth → highpass baseline → mean z-score → ratiometric correction (470/405) | gACh4h |
+| `classic_filtering` | lowpass smooth → highpass baseline → mean z-score, no correction | rDA3m |
+
+If you want to process your photometry signals differently, you can add new presets in `processing_presets.yaml`. You can also modify an existing preset to use non-default parameters via a `param_overrides` key.
 
 ### What processing settings should I use for photometry? How can I tell if my settings are correct?
 
-Placeholder, Stephanie TODO
+In most cases, do nothing. The pipeline auto-selects a preset for each indicator based on `resources/photometry/photometry_mappings.yaml`. These presets are consistent with how we have traditionally processed each indicator. 
+
+To confirm your processing is ok, the conversion pipeline produces photometry plots for quality control. Check that the fit baseline correctly follows the slow drift (without overfitting to the real signal). I have noticed that since we switched to pyPhotometry for dLight recordings, our original preset (`dlight_isosbestic`) under-fits the baseline slightly when the signal has sharp fluctuations due to unstable plugging. In this case, try `dlight_isosbestic_tight_baseline`. If you have the opposite problem and the fit baseline is removing slow signal fluctuations you might care about, try `dlight_isosbestic_no_baseline`. **The point here is that while we do have processsing presets, you should ALWAYS look at the created figures and decide if you agree with how the signal looks after each step. If you don't, then change the presets and try it again.**
+
+How you should process your signals also depends on the questions you want to ask - e.g. if you care a lot about things like satiety that might change on slow timescales, fitting and subtracting a baseline is probably a bad idea. We also save all of the raw signals in the nwb, so you are able to re-process the signals however you want if this is needed for your analysis (different processing may be helpful for different analysis questions).
+
+### What (ephys) files and metadata do I need?
+
+If your session included electrophysiology, add an `ephys` field to your metadata. The pipeline supports both the Berke Lab custom silicon probes and Neuropixels 2.0 (4-shank) probes. Some required fields differ between the two. See `metadata_fully_explained.yaml` for the full annotated list, and `resources/electrophysiology/README.md` for details on the probes.
+
+**Needed for all ephys sessions (both probe types):**
+
+- `openephys_folder_path`: path to the Open Ephys output folder (the auto-generated one with the recording start time in the name, e.g. `2022-07-25_15-30-00`).
+- `probe`: the probe you used, referencing one of the probes in `resources/electrophysiology/ephys_devices.yaml`. Currently only one probe per session is supported. Un-comment the one you used from the list in `metadata_fully_explained.yaml`.
+- `targeted_x`, `targeted_y`, `targeted_z`: targeted implant coordinates in mm (AP, ML, DV).
+- `electrodes_location`: brain region (e.g. "Hippocampus CA1"). This can be however specific you want (Neuropixels often targets multiple regions). Defaults to "unspecified" with a warning if omitted.
+
+**If you used a Berke Lab custom probe, you ALSO need:**
+
+- `impedance_file_path`: path to the impedance CSV. This is a required field for Berke Lab probes (it's used to tag bad channels based on impedance). Optional related fields: `plug_order` (to use the correct channel map if you plugged the cables in the non-default way) and `min_impedance_ohms` / `max_impedance_ohms` (to change the bad-channel impedance cutoffs). See the "non-default processing" section for more info on these.
+
+### What about spike sorting?
+If you have spike sorting output, you can specify `mountain_sort_output_file_path` and `sampling_frequency`. Let me know if you have issues with this - we have stopped adding sorting output to the NWB files, so while this option technically exists, I don't recommend using it. The code may be out of date because neuroconv keeps updating things and I haven't looked at it in a while (see [Github issue #185](https://github.com/calderast/jdb_to_nwb/issues/185), we currently just pin an older neuroconv version). Also note that spike sorting output won't be perfectly aligned to the other datastreams because the port visit sync pulses are not preserved (another reason I don't reccomend using this). Instead, we do all of our spike sorting and decoding in spyglass.
+
+### (Windows) I got `OSError: [WinError 1455] The paging file is too small for this operation to complete`. What do I do?
+
+This shows up on Windows during ephys conversion and appears to be a system memory / page-file issue. Sadly the fix here is just to restart your computer and re-run the conversion, ideally with other memory-heavy programs closed.
+
 
 ---
 # Non-default processing
@@ -148,6 +203,13 @@ Use optional ephys metadata field `plug_order`.
 ### I want to change the impedance criteria for when an electrode is marked "bad channel". What do I do?
 
 Use optional ephys metadata fields `min_impedance_ohms` (Defaults to 1e5. Channels below this impedance will be tagged as "bad channel") and/or `max_impedance_ohms` (Defaults to 3e6. Channels above this impedance will be tagged as "bad channel").
+
+### My photometry processing looks bad, how can I change it?
+
+To change the processing, you have two options (see `metadata_fully_explained.yaml`):
+
+- `processing_presets`: use a *different* preset for a given indicator (e.g. `dLight1.3b: dlight_isosbestic_tight_baseline`).
+- `processing_overrides`: tweak *individual parameters* of the selected preset (e.g. a different airPLS `lambda`, rolling-mean window, or Lasso `alpha`). Defaults live under `method_defaults` in `processing_presets.yaml`.
 
 
 ---
@@ -284,4 +346,4 @@ pip show jdb-to-nwb
 ```
 
 The version should now match the latest tag on the
-[Tags page](https://github.com/calderast/jdb_to_nwb/tags). If it's still wrong, lmk and we'll debug it together so I can update this.
+[Tags page](https://github.com/calderast/jdb_to_nwb/tags). If it's still wrong, let me know and we'll debug it together so I can update this.
