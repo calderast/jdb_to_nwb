@@ -97,7 +97,7 @@ class MicrovoltsSpikeInterfaceRecordingDataChunkIterator(SpikeInterfaceRecording
         return self.iterator._get_maxshape()
 
 
-def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
+def find_open_ephys_paths(open_ephys_folder_path, experiment_number=None, logger=None) -> dict:
     """
     Given the Open Ephys folder path, find the relevant settings.xml file and all associated continuous.dat files.
 
@@ -116,18 +116,45 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     open_ephys_folder_path/Record Node 101/settings_2.xml (Neuropixels)
 
     Parameters:
-        open_ephys_folder_path: 
+        open_ephys_folder_path:
             Path to the Open Ephys output folder (the auto-generated one with the
             recording start time in the folder name)
         experiment_number (int):
             Optional. If multiple recordings in the same output folder (which get
-            auto-named experiment1, experiment2, etc), which one to use. Defaults to 1
+            auto-named experiment1, experiment2, etc), which one to use. If None (the default),
+            the experiment number is auto-detected from the settings*.xml file(s) present.
+        logger (Logger):
+            Optional. Logger to track conversion progress (used to report the auto-detected number)
 
     Returns:
         dict:
             "settings_file": path to settings.xml file
             "recording_files": dict with probe_name: path to the continuous.dat for that probe
     """
+    # Auto-detect the experiment number if not specified
+    if experiment_number is None:
+        # Look at whatever settings*.xml files exist
+        settings_candidates = glob.glob(os.path.join(open_ephys_folder_path, "**", "settings*.xml"), recursive=True)
+        experiment_numbers = set()
+        for candidate in settings_candidates:
+            # experiment1 has settings.xml, experiment{N>1} has settings_N.xml
+            match = re.fullmatch(r"settings(?:_(\d+))?\.xml", os.path.basename(candidate))
+            if match:
+                experiment_numbers.add(int(match.group(1)) if match.group(1) else 1)
+        if not experiment_numbers:
+            raise FileNotFoundError(
+                f"No settings.xml found anywhere in {open_ephys_folder_path}"
+            )
+        if len(experiment_numbers) > 1:
+            raise ValueError(
+                f"Found multiple Open Ephys experiments ({sorted(experiment_numbers)}) in "
+                f"{open_ephys_folder_path}. Specify which one to convert by setting 'experiment_number' "
+                "in the ephys metadata."
+            )
+        experiment_number = experiment_numbers.pop()
+        if logger is not None:
+            logger.info(f"Auto-detected Open Ephys experiment number {experiment_number}")
+
     # Determine the suffix for settings.xml (empty for experiment1, "_2" for experiment2, etc.)
     suffix = "" if experiment_number == 1 else f"_{experiment_number}"
 
@@ -1378,8 +1405,13 @@ def add_raw_ephys(
     open_ephys_start = open_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"Open Ephys start time: {open_ephys_start}")
 
-    # Get paths to the settings.xml file and the continuous.dat files
-    open_ephys_paths_dict = find_open_ephys_paths(open_ephys_folder_path=openephys_folder_path, experiment_number=1)
+    # Get paths to the settings.xml file and the continuous.dat files.
+    # The experiment number is auto-detected by default, but can be overridden via metadata for the
+    # rare case of multiple experiments recorded into the same Open Ephys output folder.
+    # This happens when you start and stop the ephys recording multiple times.
+    experiment_number = metadata["ephys"].get("experiment_number", None)
+    open_ephys_paths_dict = find_open_ephys_paths(open_ephys_folder_path=openephys_folder_path,
+                                                  experiment_number=experiment_number, logger=logger)
     settings_file_path = open_ephys_paths_dict["settings_file"]
     recording_file_paths_dict = open_ephys_paths_dict["recording_files"]
 

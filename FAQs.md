@@ -204,6 +204,20 @@ Use optional ephys metadata field `plug_order`.
 
 Use optional ephys metadata fields `min_impedance_ohms` (Defaults to 1e5. Channels below this impedance will be tagged as "bad channel") and/or `max_impedance_ohms` (Defaults to 3e6. Channels above this impedance will be tagged as "bad channel").
 
+### The pipeline says it found multiple Open Ephys experiments and asked me to pick one. What do I do?
+
+Open Ephys names each recording in an output folder `experiment1`, `experiment2`, etc. A new one is created each time you stop and re-start the recording within the same folder. (Normally there's just `experiment1` for a single recording and the pipeline auto-detects it). If your Open Ephys folder contains more than one experiment, the pipeline can't guess which you want, so it complains and lists the experiments it found.
+
+If you're not sure which experiment is which, look inside your Open Ephys output folder: the settings file is named `settings.xml` for experiment 1, and `settings_2.xml`, `settings_3.xml`, etc. for later experiments, with the data in matching `experiment1`, `experiment2`, ... folders. The recording you want is probably the bigger/longer one.
+
+To fix, set the optional `experiment_number` field in your ephys metadata to the one you want to convert (see `metadata_fully_explained.yaml`):
+
+```yaml
+ephys:
+  experiment_number: 2
+```
+
+
 ### My photometry processing looks bad, how can I change it?
 
 To change the processing, you have two options (see `metadata_fully_explained.yaml`):
