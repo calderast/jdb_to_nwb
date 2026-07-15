@@ -46,6 +46,11 @@ ephys:
   targeted_x: 4.5  # AP in mm
   targeted_y: 2.2  # ML in mm. Negative ML is the left hemisphere and positive ML is the right hemisphere
   targeted_z: -2.0  # DV in mm
+  # OPTIONAL: which Open Ephys experiment to convert if the output folder contains more than one
+  # (experiment1, experiment2, ...), which can happen if you stopped and re-started the recording. 
+  # Normally it will always be experiment1 (and will be auto-detected by default).
+  # You only need to specify this if the pipeline complains and asks you to pick one.
+  # experiment_number: 1
 
   # Fields used ONLY for Berke Lab custom probes (ignored for Neuropixels):
   # impedance_file_path is REQUIRED for Berke Lab probes (used to tag bad channels) and is not used
