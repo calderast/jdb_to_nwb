@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import pandas as pd
 import os
@@ -12,6 +13,16 @@ _TOTAL_CHANNELS = 264         # 256 CH + 8 ADC for Berke Lab probes
 # Full-saturation and desaturated (blended 50% toward white) versions of the two shank colors
 _SHANK_COLORS = ["black", "#cc0000"]
 _SHANK_COLORS_FADED = ["#aaaaaa", "#dd9999"]
+
+# Neuropixels 2.0 trace-plotting constants (mirrors Jeffrey-J-Tong/optonpx)
+# Neuropixels 2.0 electrode rows are spaced 15 um apart. Channels within a shank whose vertical
+# gap exceeds 2 rows (30 um) are treated as a separate contiguous run (a true break in coverage).
+_NPX_ROW_PITCH_UM = 15
+_NPX_CONTIGUOUS_MAX_GAP_UM = 2 * _NPX_ROW_PITCH_UM
+_NPX_TRACE_OFFSET_UV = 150     # vertical offset between stacked channel traces
+# Purple -> blue -> teal -> green -> orange -> red gradient, used to color traces by channel number
+_NPX_GRADIENT_COLORS = ["#6a1b9a", "#1565c0", "#0277bd", "#00838f",
+                        "#2e7d32", "#558b2f", "#f57f17", "#e65100", "#b71c1c"]
 
 
 
@@ -242,18 +253,10 @@ def plot_raw_ephys_traces(nwbfile, start_time=100.0, duration=1.5, fig_dir=None)
     end_frame = int(np.searchsorted(timestamps, start_time + duration))
     t = timestamps[start_frame:end_frame] - timestamps[start_frame]
 
-    # Load the data window: shape (n_time, n_channels), in uV.
-    # When loaded from HDF5, eseries.data is an h5py.Dataset (subscriptable).
-    # During conversion it is H5DataIO(MicrovoltsSpikeInterfaceRecordingDataChunkIterator),
-    # and H5DataIO.__getitem__ delegates to the iterator which is not subscriptable.
-    try:
-        data_slice = np.array(eseries.data[start_frame:end_frame, :], dtype=float)
-    except TypeError:
-        inner = getattr(eseries.data, 'data', eseries.data)
-        if not hasattr(inner, 'conversion_factor_uv'):
-            return None
-        raw = inner.recording.get_traces(start_frame=start_frame, end_frame=end_frame, return_scaled=False)
-        data_slice = raw.astype(float) * inner.conversion_factor_uv
+    # Load the data window: shape (n_time, n_channels), in uV (None if the data can't be read)
+    data_slice = _load_electrical_series_window(eseries, start_frame, end_frame)
+    if data_slice is None:
+        return None
 
     # Build per-column electrode info using the electrode table region.
     # eseries.electrodes.data[c] = electrode table row for data column c.
@@ -287,29 +290,53 @@ def plot_raw_ephys_traces(nwbfile, start_time=100.0, duration=1.5, fig_dir=None)
 
 def plot_raw_ephys_snippet(nwbfile, fig_dir=None):
     """
-    Plot a raw ephys trace snippet around the 5th rewarded poke. Called during NWB conversion.
+    Plot a raw ephys trace snippet. Called during NWB conversion.
 
-    Skips silently if the NWB file has no ElectricalSeries, no trials table, or fewer than
-    5 rewarded trials. The window is centered 0.5s before the poke and runs for 1.5s total.
-    I picked the 5th rewarded poke because ideally we would see theta on approach and maybe ripples after.
+    Prefers a window centered 1s before the 5th rewarded poke (ideally we'd see theta on approach and
+    maybe ripples after). For ephys-only sessions with no trials table or fewer than 5 rewarded trials,
+    falls back to a fixed window 60s into the recording (or the midpoint of a shorter recording) so we
+    still get a trace snippet. The window runs for 2s total. Skips silently only if there is no
+    ElectricalSeries or the recording is shorter than the window.
+
+    Dispatches on probe type: Neuropixels sessions get the optonpx-style raw per-shank-run trace
+    plots (plot_neuropixels_traces); Berke Lab probes keep the shank-colored trace plot
+    (plot_raw_ephys_traces).
 
     Parameters:
-        nwbfile (NWBFile): Fully assembled NWB file (ephys + behavior both added).
+        nwbfile (NWBFile): Fully assembled NWB file (ephys added; behavior optional).
         fig_dir (str): Optional directory to save the figure.
         logger: Optional logger for warnings.
     """
-    if "ElectricalSeries" not in nwbfile.acquisition or nwbfile.trials is None:
+    if "ElectricalSeries" not in nwbfile.acquisition:
         return
 
-    trials_df = nwbfile.trials.to_dataframe()
-    rewarded = trials_df[trials_df["reward"] == 1]
-    # If we have < 5 rewarded trials, skip
-    if len(rewarded) < 5:
-        return
+    duration = 2.0
 
-    poke_time = float(rewarded.iloc[4]["poke_in"])
-    start_time = max(0.0, poke_time - 1)
-    plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=2, fig_dir=fig_dir)
+    # Prefer a window centered 1s before the 5th rewarded poke, if we have the trials to find it
+    start_time = None
+    if nwbfile.trials is not None and "reward" in nwbfile.trials.colnames:
+        rewarded = nwbfile.trials.to_dataframe()
+        rewarded = rewarded[rewarded["reward"] == 1]
+        if len(rewarded) >= 5:
+            start_time = max(0.0, float(rewarded.iloc[4]["poke_in"]) - 1)
+
+    # Fallback for ephys-only sessions: a fixed window into the recording
+    if start_time is None:
+        timestamps = np.asarray(nwbfile.acquisition["ElectricalSeries"].timestamps)
+        rec_start, rec_end = float(timestamps[0]), float(timestamps[-1])
+        if rec_end - rec_start < duration:
+            return  # recording too short to plot even the fallback window
+        # 60s in, or the midpoint of a shorter recording, clamped so the window fits
+        offset = min(60.0, (rec_end - rec_start) / 2)
+        start_time = rec_start + min(offset, (rec_end - rec_start) - duration)
+
+    # The probe is added as a device named after its model (e.g. "Neuropixels 2.0 (4-shank)"),
+    # so route on whether any device name mentions Neuropixels
+    is_neuropixels = any("neuropixels" in name.lower() for name in nwbfile.devices)
+    if is_neuropixels:
+        plot_neuropixels_traces(nwbfile=nwbfile, start_time=start_time, duration=duration, fig_dir=fig_dir)
+    else:
+        plot_raw_ephys_traces(nwbfile=nwbfile, start_time=start_time, duration=duration, fig_dir=fig_dir)
 
 
 def plot_channel_map(probe_name, channel_coords, fig_dir=None):
@@ -465,3 +492,140 @@ def plot_neuropixels(all_neuropixels_electrodes: pd.DataFrame, channel_info: pd.
         plt.close(fig2)
 
     return fig1, fig2
+
+
+### Neuropixels raw trace plots, mirroring Jeffrey-J-Tong/optonpx
+
+
+def _load_electrical_series_window(eseries, start_frame, end_frame):
+    """
+    Load a [start_frame:end_frame] window of an ElectricalSeries as a (n_time, n_channels) uV array.
+
+    Handles both the on-disk case (eseries.data is an h5py.Dataset, directly subscriptable) and the
+    mid-conversion case (eseries.data is H5DataIO wrapping a MicrovoltsSpikeInterfaceRecordingDataChunk-
+    Iterator, which is not subscriptable - we pull raw traces from the underlying SpikeInterface
+    recording and scale them to uV). Returns None if the data cannot be read (e.g. an iterator without
+    the expected conversion factor).
+    """
+    try:
+        return np.array(eseries.data[start_frame:end_frame, :], dtype=float)
+    except TypeError:
+        inner = getattr(eseries.data, "data", eseries.data)
+        if not hasattr(inner, "conversion_factor_uv"):
+            return None
+        raw = inner.recording.get_traces(start_frame=start_frame, end_frame=end_frame, return_scaled=False)
+        return raw.astype(float) * inner.conversion_factor_uv
+
+
+def _find_contiguous_channel_groups_npx(elec_df):
+    """
+    Group recording channels by shank, then split each shank into runs that are contiguous in y.
+
+    Contiguous means the vertical gap between consecutive channels is <= 30 um (2 electrode rows),
+    which covers same-row two-column, adjacent-row, and single-column zig-zag selections. A larger gap
+    marks a true break in coverage (e.g. a different bank), so it starts a new run. This mirrors
+    optonpx's find_contiguous_channel_groups.
+
+    Parameters:
+        elec_df (pd.DataFrame): One row per data column, with columns 'data_col', 'shank', 'y_um'.
+
+    Returns:
+        list[tuple[int, int, pd.DataFrame]]:
+            (shank, run_index_within_shank, run_df) tuples. Each run_df is sorted by y ascending.
+    """
+    groups = []
+    for shank in sorted(elec_df["shank"].unique()):
+        shank_df = elec_df[elec_df["shank"] == shank].sort_values("y_um").reset_index(drop=True)
+        if len(shank_df) == 0:
+            continue
+        ys = shank_df["y_um"].values
+        run_start = 0
+        run_index = 0
+        for i in range(1, len(shank_df)):
+            if ys[i] - ys[i - 1] > _NPX_CONTIGUOUS_MAX_GAP_UM:
+                groups.append((int(shank), run_index, shank_df.iloc[run_start:i].reset_index(drop=True)))
+                run_index += 1
+                run_start = i
+        groups.append((int(shank), run_index, shank_df.iloc[run_start:].reset_index(drop=True)))
+    return groups
+
+
+def plot_neuropixels_traces(nwbfile, start_time=100.0, duration=2.0, fig_dir=None):
+    """
+    Plot raw Neuropixels trace snippets, one figure per shank + contiguous channel run.
+    Mirrors the layout of the Jeffrey-J-Tong/optonpx raw trace plots: within each run, channels are
+    stacked with a fixed uV offset and colored by channel number along a purple->red gradient, and
+    each trace is median-subtracted.
+
+    Parameters:
+        nwbfile (NWBFile):
+            NWB file with an 'ElectricalSeries' in acquisition and a Neuropixels electrode table
+            (columns 'probe_shank', 'rel_y', 'intan_channel_number').
+        start_time (float): Start of the window to plot, in seconds. Default 100.0.
+        duration (float): Duration of the window, in seconds. Default 2.0.
+        fig_dir (str): Optional directory to save figures. If None, figures are not saved.
+
+    Returns:
+        list[tuple[plt.Figure, int, int]]:
+            (figure, shank, run) for each figure produced. Empty if data is unavailable.
+    """
+    eseries = nwbfile.acquisition["ElectricalSeries"]
+    timestamps = np.array(eseries.timestamps)
+
+    # Frames for the requested window
+    start_frame = int(np.searchsorted(timestamps, start_time))
+    end_frame = int(np.searchsorted(timestamps, start_time + duration))
+
+    data_slice = _load_electrical_series_window(eseries, start_frame, end_frame)  # (n_time, n_ch), uV
+    if data_slice is None:
+        return []
+
+    t = timestamps[start_frame:end_frame] - timestamps[start_frame]
+
+    # Median-subtract each channel over the window
+    data_slice = data_slice - np.median(data_slice, axis=0, keepdims=True)
+
+    # Per-column electrode info via the electrode table region: eseries.electrodes.data[c] is the
+    # electrode-table row for data column c.
+    electrode_table_df = nwbfile.electrodes.to_dataframe()
+    region_indices = list(eseries.electrodes.data)
+    elec_df = electrode_table_df.iloc[region_indices].reset_index(drop=True)
+    elec_df["data_col"] = range(len(elec_df))
+    elec_df = elec_df.rename(columns={
+        "probe_shank": "shank", "rel_y": "y_um", "intan_channel_number": "channel_num"
+    })
+
+    # Map each channel number to a color along the purple->red gradient (colored by channel number)
+    cmap = mcolors.LinearSegmentedColormap.from_list("wide_gradient", _NPX_GRADIENT_COLORS)
+    norm = mcolors.Normalize(vmin=elec_df["channel_num"].min(), vmax=elec_df["channel_num"].max())
+
+    groups = _find_contiguous_channel_groups_npx(elec_df)
+    recording_name = getattr(nwbfile, "session_id", "") or ""
+
+    figures = []
+    for shank, run, run_df in groups:
+        # Stack this run's traces, offset vertically, colored by channel number
+        n_ch = len(run_df)
+        fig, ax = plt.subplots(figsize=(14, min(max(3, n_ch * 0.15), 20)))
+        for i, row in enumerate(run_df.itertuples(index=False)):
+            trace = data_slice[:, int(row.data_col)]
+            ax.plot(t, trace + i * _NPX_TRACE_OFFSET_UV, lw=0.4, color=cmap(norm(row.channel_num)))
+
+        ax.set_yticks([i * _NPX_TRACE_OFFSET_UV for i in range(n_ch)])
+        ax.tick_params(axis="y", labelleft=False, length=3)
+        ax.set_xlim(t[0], t[-1])
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Channel")
+        ax.set_title(f"Shank {shank}  run {run}  ({n_ch} ch, "
+                     f"y {int(run_df['y_um'].min())}–{int(run_df['y_um'].max())} µm)  [raw]")
+        if recording_name:
+            fig.suptitle(recording_name, fontsize=9, color="#555555", y=1.002)
+        fig.tight_layout()
+
+        if fig_dir:
+            save_path = os.path.join(fig_dir, f"neuropixels_traces_sh{shank}_run{run}_raw.png")
+            fig.savefig(save_path, dpi=200, bbox_inches="tight")
+            plt.close(fig)
+        figures.append((fig, shank, run))
+
+    return figures

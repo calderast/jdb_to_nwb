@@ -1,19 +1,22 @@
 # Electrophysiology resources
 
+## Plot ephys traces or electrode impedances for a quick quality check
+After we implant the probe, we do a week or so of impedance checks and driving without running an actual session. To plot a snippet of raw traces and electrode impedances for this case, see `preview_ephys.ipynb`. (You can of course also use this to preview traces and ephys for a regular session). This notebook is designed for use with Berke Lab custom probes (not Neuropixels).
+
 ## Probes:
-All probes used by the Berke Lab in the hex maze task are listed in `ephys_devices.yaml`. Berke Lab currently uses custom silicon probes designed by Daniel Egert for high-density hippocampal recordings. 
+All probes used by the Berke Lab in the hex maze task are listed in `ephys_devices.yaml`. Berke Lab currently uses custom silicon probes designed by Daniel Egert for high-density hippocampal recordings. We also do some recordings with Neuropixels 2.0 (4-shank) probes.
 
 The “first gen” probes have 256 channels (32 shanks x 8 electrodes per shank). There is 30um between electrodes on each shank. Odd shanks are vertically offset by 1/2 the electrode pitch (15um). Shanks are numbered "left to right": 1 (leftmost shank) to 32 (rightmost shank). Electrodes are numbered "top to bottom": 1 (top, most dorsal) to 8 (tip, most ventral) on each shank. These probes come in 3 different lengths: 3mm probe (with 66um shank pitch), 6mm probe (with 80um shank pitch), and 9mm probe (with 100um shank pitch). The 9mm probe has never been used in the hex maze, so is not included in `ephys_devices.yaml`.
 
 The “next gen” probes have 252 channels (21 shanks x 12 electrodes per shank). There is 25um between electrodes on each shank. Odd shanks are vertically offset by 1/2 the electrode pitch (12.5um). Shanks are numbered "left to right": 1 (leftmost shank) to 21 (rightmost shank). Electrodes are numbered "bottom to top": 1 (tip, most ventral) to 12 (top, most dorsal) on each shank. These probes come in 2 different lengths: 4mm probe (with 80um shank pitch) and 10mm probe (with 100um shank pitch).
 
-Berke Lab has also done some pilot recordings with Neuropixels 2.0 (4-shank) probes. Full support for Neuropixels will be added if we decide to move forwards with Neuropixels recordings in the hex maze.
+Berke Lab also records with Neuropixels 2.0 (4-shank) probes, which are supported by the conversion pipeline (see the "Neuropixels 2.0" section below). Neuropixels 2.0 has 4 shanks with 1280 electrodes each (5120 total recording sites), of which 384 are recorded at a time. The recording site configuration is read per-session from the Open Ephys `settings.xml`, so unlike the custom probes there is no separate channel map file to maintain.
 
 ## Electrode coordinates:
-Electrode coordinate files (and corresponding figures) for each probe contain the relative x,y locations of each electrode on the probe. These files and figures were generated based on the known probe geometry by `generate_electrode_coordinates.ipynb`.
+Electrode coordinate files (and corresponding figures) for each probe contain the relative x,y locations of each electrode on the probe. For the Berke Lab custom probes, these files and figures were generated based on the known probe geometry by `generate_electrode_coordinates.ipynb`. For Neuropixels, `neuropixels_2.0_multishank_electrode_coords.csv` gives the canonical x,y location of all 5120 recording sites (one row per global electrode index); the pipeline merges the per-session recording channels against this table on the global electrode index.
 
 ## Channel map:
-The Intan boards we use have 256 channels (2x 128 channel headstage). The channel map is needed to map which Intan channel corresponds to each recording electrode on our probe.
+The Intan boards we use have 256 channels (2x 128 channel headstage). The channel map is needed to map which Intan channel corresponds to each recording electrode on our probe. (This section applies to the Berke Lab custom probes only; Neuropixels does not use the Intan boards and reads its channel-to-electrode mapping per-session from `settings.xml` — see the "Neuropixels 2.0" section below.)
 
 The channel map depends on how the rat was plugged in (which of the 2 SPI cables is plugged into which port). The “chip first” map is the channel map for when the chip side (top in Eagle) is plugged into the first port. This is preferred and is the assumed default unless otherwise specified. The “cable first” map is the channel map for if the cable side (bottom in Eagle) was plugged into the first port. The “cable first” map is simply the “chip first” map shifted by ±128, and vice versa (to go from one to the other, subtract 128 from values greater than 128, and add 128 to values less than or equal to 128).
 
@@ -42,3 +45,14 @@ For the 252-channel probes, 4 of the Intan channels are not connected to electro
 - SCREW4: between S06E03 and S06E04 - Intan channel 192 (chip_first) or 64 (cable_first)
 - SCREW1: between S16E09 and S16E10 - Intan channel 127 (chip_first) or 255 (cable_first)
 - SCREW2: between S20E01 and S20E02 - Intan channel 63 (chip_first) or 191 (cable_first)
+
+## Neuropixels 2.0
+
+Neuropixels 2.0 (4-shank) recordings are supported alongside the Berke Lab custom probes. A few things differ from the custom-probe path:
+
+- **Acquisition hardware:** Neuropixels is recorded through the IMEC OneBox (not the Intan boards), so the "Channel map" and "ECoG channels" sections above do not apply. Open Ephys writes the probe stream (e.g. `...ProbeA`) and the ADC (port visits) stream (`...OneBox-ADC`) as separate `continuous.dat` files.
+- **Channel/electrode mapping:** Which of the 5120 recording sites the 384 recording channels are wired to is read per-session from `settings.xml` (the `NP_PROBE` elements), not from a stored channel map. The pipeline validates these against `neuropixels_2.0_multishank_electrode_coords.csv` (the canonical coordinates of all 5120 sites) by merging on the global electrode index.
+- **No impedance / bad channels:** As far as I know there is no per-session impedance file, so no channels are marked "bad" (unlike the Berke Lab probes, which use `impedance_file_path`).
+- **Port visits:** Port visits are recorded on the separate OneBox-ADC stream (by default ADC channel 2, with a 4.0 V threshold; ADC0 is a 1 Hz sync clock and ADC1 is reserved for optotagging). Both are overridable via the `port_visits_adc_channel` and `port_visits_threshold_volts` metadata fields. Because the ADC stream (30300.5 Hz) and the probe stream (30000 Hz) have different sample rates, the bonsai-start time detected on the ADC is converted to probe samples before trimming.
+
+See `metadata_fully_explained.yaml` for which `ephys` metadata fields apply to Neuropixels vs the Berke Lab custom probes.

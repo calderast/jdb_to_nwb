@@ -5,6 +5,7 @@
 import os
 import re
 import glob
+import json
 import yaml
 import numpy as np
 import pandas as pd
@@ -23,15 +24,21 @@ from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
 from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
-from .utils import get_logger_directory
+from .utils import log_and_print, add_associated_file
 from .timestamps_alignment import align_via_interpolation
 from .plotting.plot_ephys import plot_channel_map, plot_channel_impedances, plot_neuropixels
-from ndx_franklab_novela import AssociatedFiles, Probe, NwbElectrodeGroup, Shank, ShanksElectrode
+from ndx_franklab_novela import Probe, NwbElectrodeGroup, Shank, ShanksElectrode
 
 VOLTS_PER_MICROVOLT = 1e-6
 
 MIN_IMPEDANCE_OHMS = 1e5
 MAX_IMPEDANCE_OHMS = 3e6
+
+# Neuropixels port visits are recorded on the separate OneBox-ADC stream on ADC2 (in volts)
+# (ADC0 carries a 1 Hz sync clock, ADC1 is used for future optotagging)
+# Both the channel and the threshold are overridable via metadata["ephys"]
+NPX_DEFAULT_PORT_VISITS_ADC_CHANNEL = 2
+NPX_PORT_VISITS_THRESHOLD_VOLTS = 4.0
 
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
@@ -90,7 +97,7 @@ class MicrovoltsSpikeInterfaceRecordingDataChunkIterator(SpikeInterfaceRecording
         return self.iterator._get_maxshape()
 
 
-def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
+def find_open_ephys_paths(open_ephys_folder_path, experiment_number=None, logger=None) -> dict:
     """
     Given the Open Ephys folder path, find the relevant settings.xml file and all associated continuous.dat files.
 
@@ -98,7 +105,7 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     open_ephys_folder_path/experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat
 
     For Neuropixels, we may have multiple "probe name" folders, each with a different continuous.dat file
-    This will be the case for the ADC, and also if we implant 2 probes bilatrerally. For example:
+    This will be the case for the ADC, and also if we implant 2 probes bilaterally. For example:
     open_ephys_folder_path/Record Node 101/experiment2/recording1/continuous/OneBox-100.OneBox-ADC/continuous.dat
     open_ephys_folder_path/Record Node 101/experiment2/recording1/continuous/OneBox-100.ProbeA/continuous.dat
 
@@ -109,18 +116,45 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     open_ephys_folder_path/Record Node 101/settings_2.xml (Neuropixels)
 
     Parameters:
-        open_ephys_folder_path: 
+        open_ephys_folder_path:
             Path to the Open Ephys output folder (the auto-generated one with the
             recording start time in the folder name)
         experiment_number (int):
             Optional. If multiple recordings in the same output folder (which get
-            auto-named experiment1, experiment2, etc), which one to use. Defaults to 1
+            auto-named experiment1, experiment2, etc), which one to use. If None (the default),
+            the experiment number is auto-detected from the settings*.xml file(s) present.
+        logger (Logger):
+            Optional. Logger to track conversion progress (used to report the auto-detected number)
 
     Returns:
         dict:
             "settings_file": path to settings.xml file
             "recording_files": dict with probe_name: path to the continuous.dat for that probe
     """
+    # Auto-detect the experiment number if not specified
+    if experiment_number is None:
+        # Look at whatever settings*.xml files exist
+        settings_candidates = glob.glob(os.path.join(open_ephys_folder_path, "**", "settings*.xml"), recursive=True)
+        experiment_numbers = set()
+        for candidate in settings_candidates:
+            # experiment1 has settings.xml, experiment{N>1} has settings_N.xml
+            match = re.fullmatch(r"settings(?:_(\d+))?\.xml", os.path.basename(candidate))
+            if match:
+                experiment_numbers.add(int(match.group(1)) if match.group(1) else 1)
+        if not experiment_numbers:
+            raise FileNotFoundError(
+                f"No settings.xml found anywhere in {open_ephys_folder_path}"
+            )
+        if len(experiment_numbers) > 1:
+            raise ValueError(
+                f"Found multiple Open Ephys experiments ({sorted(experiment_numbers)}) in "
+                f"{open_ephys_folder_path}. Specify which one to convert by setting 'experiment_number' "
+                "in the ephys metadata."
+            )
+        experiment_number = experiment_numbers.pop()
+        if logger is not None:
+            logger.info(f"Auto-detected Open Ephys experiment number {experiment_number}")
+
     # Determine the suffix for settings.xml (empty for experiment1, "_2" for experiment2, etc.)
     suffix = "" if experiment_number == 1 else f"_{experiment_number}"
 
@@ -133,8 +167,8 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
         raise FileNotFoundError(f"No settings.xml found for experiment {experiment_number} in {open_ephys_folder_path}")
     if len(settings_files) > 1:
         raise ValueError(
-            f"Found {len(settings_files)} for experiment {experiment_number} in {open_ephys_folder_path},"
-            f"expected 1: {settings_files}"
+            f"Found {len(settings_files)} settings.xml files for experiment {experiment_number} in "
+            f"{open_ephys_folder_path}, expected 1: {settings_files}"
             )
     settings_xml_file = settings_files[0]
 
@@ -160,66 +194,189 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=1) -> dict:
     return {"settings_file": settings_xml_file, "recording_files": continuous_dat_files}
 
 
-def get_port_visits(continuous_dat_file_path: Path, 
-                    total_channels: int, 
-                    port_visits_channel_num: int, 
-                    logger) -> list[float]:
+def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
     """
-    Extract port visit times from OpenEphys continuous.dat file.
+    Read per-stream recording parameters from the structure.oebin file.
 
-    TODO: Make sure this works for both Berke Lab custom probes and Neuropixels.
-    This function has not yet been tested for Neuropixels.
-    Ideally, making this work for Neuropixels (or any other probe) is as simple as changing 
-    total_channels and port_visits_channel_num to match that configuration.
-    But other things like the pulse_high_threshold etc may need to be adjusted as well.
-    Hold off on testing this until we actually decide to use Neuropixels or a different probe.
+    The structure.oebin is a JSON file at the recording level (the same folder that contains the
+    'continuous' folder). It describes every continuous stream (probe streams and the ADC stream),
+    including the number of channels, sampling rate, and the per-channel bit_volts conversion factor.
+    This works the same for Berke Lab probes and Neuropixels.
 
-    For Berke Lab probes:
-    total_channels = 264  # 256 "CH" + 8 "ADC"
-    port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
+    Note: structure.oebin does NOT contain the bandpass filtering info (LowCut/HighCut) -
+    as far as I know that lives only in settings.xml, so filtering info still comes from
+    read_open_ephys_settings_xml.
 
     Parameters:
         continuous_dat_file_path (Path):
-            Path to the 'continuous.dat' OpenEphys binary recording
-        total_channels (int):
-            The total number of channels in the continuous.dat file
-        port_visits_channel_num (int):
-            The number of the channel (zero-indexed) that port visits are recorded on.
+            Path to a 'continuous.dat' file. The structure.oebin is found relative to it
+            (.../recording{n}/continuous/<stream>/continuous.dat -> .../recording{n}/structure.oebin)
         logger (Logger):
             Logger to track conversion progress
 
     Returns:
-        port_visits (list[float]):
-            List of port visit times in seconds
-        samples_to_remove (int):
-            Index of start pulse marking bonsai start time (in 30kHz sample frequency). 
-            Samples before this time will be trimmed from ephys data
+        dict:
+            Params for the stream matching this continuous.dat:
+            "channel_count" (int), "sample_rate" (float), "bit_volts" (float, the uV conversion
+            factor, shared across channels), "channel_names" (list[str]), and "oebin_path" (Path to
+            the structure.oebin file itself, so we can save it as an AssociatedFile)
     """
+    continuous_dat_file_path = Path(continuous_dat_file_path)
+    # .../recording{n}/continuous/<stream folder>/continuous.dat -> stream folder name and oebin path
+    stream_folder_name = continuous_dat_file_path.parent.name
+    oebin_path = continuous_dat_file_path.parent.parent.parent / "structure.oebin"
+    if not oebin_path.exists():
+        raise FileNotFoundError(f"Could not find structure.oebin at expected location {oebin_path}")
 
-    pulse_high_threshold = 10_000
-    openephys_fs = 30_000
-    downsampled_fs = 1000
-    # 1000ish is a reasonable downsample frequency, because it's low enough to speeds things up
-    # (this takes ~2mins on my machine) but high enough that we definitely don't miss any port visit pulses 
-    # For reference, a typical port visit keeps the channel high for ~10ms, so 10 samples at 1000 Hz
+    with open(oebin_path, "r") as f:
+        oebin = json.load(f)
+
+    # Log a summary of every continuous stream in the oebin 
+    logger.debug(f"structure.oebin at {oebin_path} (Open Ephys GUI version {oebin.get('GUI version', '?')})")
+    for s in oebin["continuous"]:
+        logger.debug(f"  continuous stream: folder_name={s['folder_name']!r} "
+                     f"num_channels={s['num_channels']} sample_rate={s['sample_rate']}")
+
+    # Find the continuous stream whose folder_name matches this continuous.dat's stream folder
+    # (oebin folder_name has a trailing slash, e.g. "Rhythm_FPGA-100.0/", so strip it to compare)
+    for stream in oebin["continuous"]:
+        if stream["folder_name"].rstrip("/") == stream_folder_name:
+            break
+    else:
+        raise ValueError(
+            f"Could not find a continuous stream matching '{stream_folder_name}' in {oebin_path}. "
+            f"Available streams: {[s['folder_name'] for s in oebin['continuous']]}"
+        )
+
+    # bit_volts (the uV conversion factor) should be the same for every channel in the stream
+    bit_volts_per_channel = {ch["bit_volts"] for ch in stream["channels"]}
+    if len(bit_volts_per_channel) != 1:
+        logger.warning(f"Stream '{stream_folder_name}' has multiple bit_volts values: {bit_volts_per_channel}")
+    bit_volts = float(stream["channels"][0]["bit_volts"])
+
+    params = {
+        "channel_count": int(stream["num_channels"]),
+        "sample_rate": float(stream["sample_rate"]),
+        "bit_volts": bit_volts,
+        "channel_names": [ch["channel_name"] for ch in stream["channels"]],
+        "oebin_path": oebin_path,  # so we can save structure.oebin as an AssociatedFile
+    }
+    logger.info(f"Read oebin params for stream '{stream_folder_name}': "
+                f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
+    # List every channel name found in this stream
+    logger.debug(f"structure.oebin channel names for '{stream_folder_name}': {params['channel_names']}")
+    return params
+
+
+def validate_oebin_channel_names(channel_names: list[str], expected_channel_names: set[str], logger) -> None:
+    """
+    Sanity-check the channel names read from structure.oebin against what we expect for this probe.
+
+    We source this from structure.oebin (which lists each channel's name) rather than settings.xml,
+    since oebin is format-independent and we already read it. Logs warnings but does NOT raise on a
+    mismatch: a few missing/unexpected channels usually just get excluded downstream by impedance
+    anyway (e.g. IM-1875 is missing CH1-CH8, replaced by duplicated ADC1-ADC8).
+
+    Parameters:
+        channel_names (list[str]):
+            Ordered channel names from structure.oebin (from read_oebin_params)
+        expected_channel_names (set[str]):
+            The channel names we expect for this probe (e.g. CH1-CH256 + ADC1-ADC8 for a Berke probe)
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    found_channel_names = set(channel_names)
+
+    # Check for missing or unexpected channel names
+    missing_channel_names = expected_channel_names - found_channel_names
+    unexpected_channel_names = found_channel_names - expected_channel_names
+    if missing_channel_names or unexpected_channel_names:
+        logger.warning("Channel names in structure.oebin do not match expectations!!!!")
+        if missing_channel_names:
+            logger.warning(f"Missing channel names: {sorted(missing_channel_names)}")
+        if unexpected_channel_names:
+            logger.warning(f"Unexpected channel names: {sorted(unexpected_channel_names)}")
+    else:
+        logger.info(f"All {len(expected_channel_names)} expected channel names found in structure.oebin")
+
+    # Check for duplicate channel names
+    duplicate_names = [name for name, count in Counter(channel_names).items() if count > 1]
+    if duplicate_names:
+        logger.warning("Duplicate channel names found in structure.oebin!!!!")
+        logger.warning(f"Duplicate channel names: {sorted(duplicate_names)}")
+
+
+def get_port_visits(continuous_dat_file_path: Path,
+                    total_channels: int,
+                    port_visits_channel_num: int,
+                    sample_rate: float,
+                    logger,
+                    pulse_high_threshold: float = 10_000) -> tuple[list[float], float]:
+    """
+    Extract port visit times from an OpenEphys continuous.dat file.
+
+    Works for both Berke Lab custom probes and Neuropixels. The difference is just which file/channel
+    the port visits live on, plus the sample rate and threshold:
+      - Berke Lab probes: port visits are on ADC1 (channel 256) of the probe's own continuous.dat
+        (264 channels, 30000 Hz, raw int16 threshold ~10000).
+      - Neuropixels (OneBox): port visits are on the SEPARATE OneBox-ADC continuous.dat (ADC2,
+        12 channels, 30300.5 Hz). ADC data is stored as raw int16 like everything else, so pass a
+        threshold in raw int16 units (volts / bit_volts).
+        
+    NOTE: We return the bonsai start time (in seconds, not a sample count) because the Neuropixels port
+    visit file (the OneBox-ADC at 30300.5 Hz) has a different sample rate than the probe file (30000 Hz).
+    For Berke Lab probes the sample rates are the same (ADC1 lives in the same continuous.dat as the
+    neural data), but returning a time keeps this function correct for both cases
+
+    Parameters:
+        continuous_dat_file_path (Path):
+            Path to the 'continuous.dat' OpenEphys binary recording that holds the port visit channel
+        total_channels (int):
+            The total number of channels in that continuous.dat file
+        port_visits_channel_num (int):
+            The number of the channel (zero-indexed) that port visits are recorded on
+        sample_rate (float):
+            The sample rate (Hz) of that continuous.dat file (from structure.oebin)
+        logger (Logger):
+            Logger to track conversion progress
+        pulse_high_threshold (float):
+            Raw int16 value above which the port visit channel is considered "high". Defaults to 10000
+
+    Returns:
+        port_visits (list[float]):
+            List of port visit times in seconds (relative to the bonsai start pulse)
+        bonsai_start_time (float):
+            Time (seconds) of the start pulse marking bonsai start, relative to the start of this
+            continuous.dat. The caller converts this to a sample count in the neural recording's
+            sample rate to trim data before bonsai start
+    """
+    # Downsample to ~1000 Hz before searching for pulses. 1000ish is low enough to speed things up
+    # (this takes ~2mins on my machine) but high enough that we definitely don't miss any port visit pulses.
+    # For reference, a typical port visit keeps the channel high for ~10ms, so 10 samples at 1000 Hz.
+    # Sample rates aren't always a clean multiple of 1000 (the OneBox ADC is 30300.5 Hz), so compute the
+    # integer decimation factor and the actual downsampled rate it gives us (used for samples->seconds).
+    downsampled_fs_target = 1000
+    decimation = max(1, round(sample_rate / downsampled_fs_target))
+    downsampled_fs = sample_rate / decimation
 
     # Memory-map the large .dat file to avoid loading everything into memory. Reshape to (samples, channels)
-    data_for_all_channels = np.memmap(continuous_dat_file_path, dtype='int16',mode='c').reshape(-1, total_channels) 
+    data_for_all_channels = np.memmap(continuous_dat_file_path, dtype='int16', mode='c').reshape(-1, total_channels)
 
     logger.debug(f"Reading Open Ephys port visits from channel {port_visits_channel_num}")
-    logger.debug(f"Downsampling data to from {openephys_fs} Hz to {downsampled_fs} Hz so it isn't huge")
+    logger.debug(f"Downsampling data from {sample_rate} Hz to {downsampled_fs} Hz so it isn't huge")
 
     # Extract the channel that records port visits and downsample so the data isn't massive
-    visits_channel_data = data_for_all_channels[:, port_visits_channel_num]
-    visits_channel_data = visits_channel_data[::int(openephys_fs / downsampled_fs)]
+    # Force a contiguous copy of just the one channel up front (much faster than slicing the memmap column)
+    visits_channel_data = np.array(data_for_all_channels[:, port_visits_channel_num])  # copies into RAM contiguously
+    visits_channel_data = visits_channel_data[::decimation]
 
     # Find indices where the visits channel is high (aka port visit times)
     logger.debug(f"Recording times the channel is high (>{pulse_high_threshold})")
     pulse_above_threshold = np.where(visits_channel_data > pulse_high_threshold)[0]
 
-    # If no port visits were found, return an empty list of visits and 0 samples to remove
+    # If no port visits were found, return an empty list of visits and bonsai start time 0
     if pulse_above_threshold.size == 0:
-        return [], 0
+        return [], 0.0
 
     # Find pulse boundaries (breaks in the sequence of threshold crossings)
     breaks = np.where(np.diff(pulse_above_threshold) != 1)[0] + 1
@@ -227,7 +384,7 @@ def get_port_visits(continuous_dat_file_path: Path,
     # Get the durations of each pulse (each contiguous block where the visits channel is high)
     pulse_starts = np.insert(pulse_above_threshold[breaks], 0, pulse_above_threshold[0])
     pulse_ends = np.append(pulse_above_threshold[breaks - 1], pulse_above_threshold[-1])
-    pulse_durations = pulse_ends - pulse_starts + 1 
+    pulse_durations = pulse_ends - pulse_starts + 1
 
     logger.debug(f"Found {len(pulse_starts)} visit pulses.")
 
@@ -244,17 +401,17 @@ def get_port_visits(continuous_dat_file_path: Path,
     if pulse_durations[0] < 300:
         logger.warning("Expected the first pulse marking the start time to have duration >= 300! "
                        f"Got pulse duration {pulse_durations[0]} - this may indicate a problem with the start pulse!")
-    logger.info(f"Bonsai start time occurred {pulse_starts[0] / downsampled_fs}s after ephys was started.")
+
+    # Bonsai start time (seconds) relative to the start of this continuous.dat
+    bonsai_start_time = float(pulse_starts[0] / downsampled_fs)
+    logger.info(f"Bonsai start time occurred {bonsai_start_time}s after ephys was started.")
     logger.info("This will be set to time=0 and samples before this will be removed.")
 
     # Convert port visit times to seconds relative to bonsai start pulse
     port_visits = pulse_starts[1:] - pulse_starts[0]
     port_visits = [float(visit / downsampled_fs) for visit in port_visits]
 
-    # Convert bonsai start pulse index in 1kHz to index in 30kHz
-    # This is the number of samples to remove from the start of the raw ephys data
-    samples_to_remove = int(pulse_starts[0] * int(openephys_fs / downsampled_fs))
-    return port_visits, samples_to_remove
+    return port_visits, bonsai_start_time
 
 
 def get_raw_ephys_data(
@@ -262,7 +419,7 @@ def get_raw_ephys_data(
     logger,
     exclude_channels: list[str] = [],
     samples_to_remove: int = 0
-) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray, list[str]]:
+) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray]:
     """
     Get the raw ephys data from the OpenEphys binary recording.
 
@@ -300,7 +457,7 @@ def get_raw_ephys_data(
     assert len(streams_without_adc) == 1, \
         (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
 
-    # TODO: For bilateral Neuropixels we will have 2 streams without ADC (one for each probe)
+    # NOTE: For bilateral Neuropixels we will have 2 streams without ADC (one for each probe)
     # We will deal with this later. Probably just do all of the following in a loop (once per probe)?
 
     # Ignore the "ADC" channels
@@ -326,13 +483,11 @@ def get_raw_ephys_data(
     channel_conversion_factors_uv = recording_sliced.get_channel_gains()
     # Warn if the channel conversion factors are not the same for all channels
     if not all(channel_conversion_factors_uv == channel_conversion_factors_uv[0]):
-        print(
+        log_and_print(
+            logger,
             "The channel conversion factors are not the same for all channels. "
-            "This is unexpected and may indicate a problem with the conversion factors."
-        )
-        logger.warning(
-            "The channel conversion factors are not the same for all channels. "
-            "This is unexpected and may indicate a problem with the conversion factors."
+            "This is unexpected and may indicate a problem with the conversion factors.",
+            level="warning",
         )
     # Just grab the first one, because it should be the same for all channels
     channel_conversion_factor_uv = channel_conversion_factors_uv[0]
@@ -440,8 +595,7 @@ def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
 
 def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
     """
-    Read the OpenEphys settings.xml file to validate channel info and get the filtering
-    applied across all channels.
+    Read the OpenEphys settings.xml file to get the filtering applied across all channels.
 
     Supports two settings.xml formats:
 
@@ -464,6 +618,15 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
           <EDITOR ... LowCut="..." HighCut="..." />
         </PROCESSOR>
 
+    NOTE: All we actually use from settings.xml is the filtering info (a single string stored on
+    every electrode). We used to also validate the channel numbers/names against the expected
+    256 CH + 8 ADC layout here, but that validation now happens from structure.oebin instead
+    (see validate_oebin_channel_names), which is format-independent and works across Open Ephys
+    versions and both Berke Lab and Neuropixels probes. 
+    That validation warns but doesn't error: some of our rats (e.g. IM-1875) have incorrect channels
+    due to an old open ephys bug (missing CH1-CH8, replaced by a duplicated ADC1-ADC8) that we knowingly
+    ignore because they end up being excluded by impedance criteria anyway
+
     Parameters:
         settings_file_path (Path):
             Path to the OpenEphys settings.xml file
@@ -477,22 +640,21 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
     settings_tree = ET.parse(settings_file_path)
     settings_root = settings_tree.getroot()
 
-    # Try old format first: "Sources/Rhythm FPGA" processor with CHANNEL_INFO
-    rhfp_processor = settings_root.find(".//PROCESSOR[@name='Sources/Rhythm FPGA']")
-    if rhfp_processor is not None:
-        _validate_old_format_channels(rhfp_processor, logger)
-        acq_processor = rhfp_processor
-    else:
-        # Try new format: "Acquisition Board" processor with STREAM
+    # The EDITOR (with the filtering info) lives inside the acquisition processor, whose name
+    # differs between the old format ("Sources/Rhythm FPGA") and the new format ("Acquisition Board")
+    
+    # Try old format first: "Sources/Rhythm FPGA" processor
+    acq_processor = settings_root.find(".//PROCESSOR[@name='Sources/Rhythm FPGA']")
+    if acq_processor is None:
+        # Try new format: "Acquisition Board" processor
         acq_processor = settings_root.find(".//PROCESSOR[@name='Acquisition Board']")
-        if acq_processor is None:
-            logger.error(
-                "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
-            )
-            raise ValueError(
-                "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
-            )
-        _validate_new_format_channels(acq_processor, settings_root, logger)
+    if acq_processor is None:
+        logger.error(
+            "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
+        )
+        raise ValueError(
+            "Could not find 'Sources/Rhythm FPGA' or 'Acquisition Board' processor in the settings.xml file."
+        )
 
     # Get the filtering info from the EDITOR element (same location in both formats)
     editor = acq_processor.find("EDITOR")
@@ -506,145 +668,6 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
         filtering_info = "Unknown"
 
     return filtering_info
-
-
-def _validate_old_format_channels(processor, logger) -> None:
-    """Validate channel info from the old-format settings.xml (Open Ephys < 1.0).
-
-    The old format has a CHANNEL_INFO element with explicit CHANNEL entries:
-        <CHANNEL_INFO>
-            <CHANNEL name="CH1" number="0" gain="0.195"/>
-            ...
-        </CHANNEL_INFO>
-
-    We check that the channel numbers and names match the expected 256 CH + 8 ADC layout.
-    
-    NOTE: I used to return channel_number_to_channel_name, but now we don't use it.= and we just do this check.
-    I have excluded this for now because for our current rats (IM-1875), we do actually have some weird 
-    stuff going on there (missing CH1-CH8, which is replaced by a duplicated ADC1-ADC8).
-    This is reflected in both the settings.xml and the structure.oebin files, and (rightfully) breaks
-    a bunch of stuff. A current workaround is just to rename the offending channels in these files
-    which is bad practice!! but ok for now because they would be excluded by impedance criteria anyway)
-    If you do this please note it and also save a copy of the original files. 
-    But for now we must choose our battles and I'm skipping this one.
-    """
-    logger.info("Parsing old-format settings.xml (Sources/Rhythm FPGA processor)")
-    channel_info = processor.find("CHANNEL_INFO")
-    if channel_info is None:
-        logger.error("Could not find the CHANNEL_INFO node in the settings.xml file.")
-        raise ValueError("Could not find the CHANNEL_INFO node in the settings.xml file.")
-
-    channel_number_to_channel_name = {
-        int(channel.attrib["number"]): channel.attrib["name"]
-        for channel in channel_info.findall("CHANNEL")
-    }
-
-    expected_channel_numbers = set(range(264))  # 0 to 263, for 256 channels + 8 ADC
-    expected_channel_names = {f"CH{i}" for i in range(1, 257)} | {f"ADC{i}" for i in range(1, 9)}
-
-    channel_numbers_from_settings_xml = set(channel_number_to_channel_name.keys())
-    channel_names_from_settings_xml = set(channel_number_to_channel_name.values())
-
-    # Check for missing or unexpected channel numbers
-    missing_channel_numbers = expected_channel_numbers - channel_numbers_from_settings_xml
-    unexpected_channel_numbers = channel_numbers_from_settings_xml - expected_channel_numbers
-    if missing_channel_numbers or unexpected_channel_numbers:
-        logger.warning("Channel numbers in settings.xml do not match expectations!!!!")
-        if missing_channel_numbers:
-            logger.warning(f"Missing channel numbers: {sorted(missing_channel_numbers)}")
-        if unexpected_channel_numbers:
-            logger.warning(f"Unexpected channel numbers: {sorted(unexpected_channel_numbers)}")
-    else:
-        logger.info("All expected channel numbers found in OpenEphys settings.xml")
-        logger.debug(f"Found channels: {sorted(channel_numbers_from_settings_xml)}")
-
-    # Check for missing or unexpected channel names
-    missing_channel_names = expected_channel_names - channel_names_from_settings_xml
-    unexpected_channel_names = channel_names_from_settings_xml - expected_channel_names
-    if missing_channel_names or unexpected_channel_names:
-        logger.warning("Channel names in settings.xml do not match expectations!!!!")
-        if missing_channel_names:
-            logger.warning(f"Missing channel names: {sorted(missing_channel_names)}")
-        if unexpected_channel_names:
-            logger.warning(f"Unexpected channel names: {sorted(unexpected_channel_names)}")
-    else:
-        logger.info("All expected channel names found in OpenEphys settings.xml")
-        logger.debug(f"Found channels: {sorted(channel_names_from_settings_xml)}")
-
-    # Check for duplicate channel names
-    channel_name_counts = Counter(list(channel_number_to_channel_name.values()))
-    duplicate_names = [name for name, count in channel_name_counts.items() if count > 1]
-    if duplicate_names:
-        logger.warning("Duplicate channel names found in settings.xml!!!!")
-        logger.warning(f"Duplicate channel names: {sorted(duplicate_names)}")
-
-
-def _validate_new_format_channels(processor, settings_root, logger) -> None:
-    """Validate channel info from the new-format settings.xml (Open Ephys >= 1.0).
-
-    The new format has no explicit per-channel listing in the Acquisition Board
-    processor. Instead, the channel count is in the STREAM element:
-
-        <STREAM name="acquisition_board" ... channel_count="264"/>
-
-    However, the Channel Map processor (if present) lists each channel explicitly:
-
-        <PROCESSOR name="Channel Map" ...>
-          <CUSTOM_PARAMETERS>
-            <STREAM>
-              <CH index="0" enabled="1"/>
-              ...
-              <CH index="263" enabled="1"/>
-            </STREAM>
-          </CUSTOM_PARAMETERS>
-        </PROCESSOR>
-
-    We use the Channel Map entries to verify that all expected channel numbers
-    (0-263) are actually present in the settings.xml.
-    """
-    logger.info("Parsing new-format settings.xml (Acquisition Board processor)")
-    stream = processor.find("STREAM")
-    if stream is None:
-        logger.error("Could not find STREAM element in the Acquisition Board processor.")
-        raise ValueError("Could not find STREAM element in the Acquisition Board processor.")
-
-    channel_count = int(stream.attrib.get("channel_count", 0))
-    logger.info(f"Channel count from settings.xml STREAM element: {channel_count}")
-
-    if channel_count != 264:
-        logger.warning(
-            f"Expected 264 channels (256 CH + 8 ADC) but found {channel_count} in settings.xml."
-        )
-
-    # Cross-check with the Channel Map processor, which lists each channel explicitly
-    channel_map_processor = settings_root.find(".//PROCESSOR[@name='Channel Map']")
-    if channel_map_processor is not None:
-        channel_map_stream = channel_map_processor.find("CUSTOM_PARAMETERS/STREAM")
-        if channel_map_stream is not None:
-            channel_map_indices = {
-                int(ch.attrib["index"]) for ch in channel_map_stream.findall("CH")
-            }
-            expected_indices = set(range(264))
-            missing = expected_indices - channel_map_indices
-            extra = channel_map_indices - expected_indices
-            if missing:
-                logger.error(f"Channel Map processor is missing channel indices: {sorted(missing)}")
-                raise ValueError(
-                    f"Channel Map processor is missing expected channel indices: {sorted(missing)}"
-                )
-            if extra:
-                logger.warning(f"Channel Map processor has unexpected extra channel indices: {sorted(extra)}")
-            logger.info(
-                f"All {len(expected_indices)} expected channel indices (0-263) "
-                "confirmed present in Channel Map processor."
-            )
-        else:
-            logger.warning("Channel Map processor found but has no STREAM in CUSTOM_PARAMETERS.")
-    else:
-        logger.warning(
-            "No Channel Map processor found in settings.xml. "
-            "Cannot cross-check individual channel indices; relying on channel_count only."
-        )
 
 
 def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataFrame:
@@ -789,12 +812,6 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
     plot_channel_impedances(probe_name=probe_name, electrode_info=full_electrode_info_df, 
                             min_impedance=min_impedance, max_impedance=max_impedance, fig_dir=fig_dir)
 
-    # Save electrode info to the log directory
-    log_dir = get_logger_directory(logger)
-    save_path = os.path.join(log_dir, "electrode_info.csv")
-    full_electrode_info_df.to_csv(save_path, index=False)
-    logger.info(f"Saved electrode info to {save_path}")
-
     return full_electrode_info_df
 
 
@@ -836,17 +853,15 @@ def add_electrode_data_berke_probe(
     # Get dataframe of electrode information (channel map, x/y coordinates, and impedance info)
     electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
 
-    # Save electrode info as an AssociatedFiles object in the NWB
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-    logger.debug("Saving electrode info CSV as an AssociatedFiles object")
-    nwbfile.processing["associated_files"].add(AssociatedFiles(
+    # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory)
+    add_associated_file(
+        nwbfile,
         name="electrode_info",
         description="Electrode channel map and impedance information (CSV)",
         content=electrode_info.to_csv(index=False),
-        task_epochs="0",
-    ))
+        logger=logger,
+        log_filename="electrode_info.csv",
+    )
 
     # Get general metadata for the Probe
     electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
@@ -1043,13 +1058,41 @@ def add_electrode_data_berke_probe(
 
 ### Functions for Neuropixels
 
+# Neuropixels 2.0 has 4 shanks with 1280 electrodes each, for 5120 total recording sites.
+# The global electrode index (0..5119) encodes the shank: shank = electrode_index // 1280.
+NPX_ELECTRODES_PER_SHANK = 1280
+
+
+def _parse_np_probe_element(probe, tag: str, logger) -> dict:
+    """
+    Parse one per-channel element of an NP_PROBE (e.g. CHANNELS, ELECTRODE_INDEX, ELECTRODE_XPOS).
+
+    These elements store one attribute per recording channel, keyed by channel name ("CH0", "CH1", ...).
+    Returns a dict of {channel_num (int): value (str)} for the "CH#" attributes.
+    """
+    element = probe.find(tag)
+    if element is None:
+        logger.error(f"Could not find {tag} in the NP_PROBE in the settings.xml file.")
+        raise ValueError(f"Could not find {tag} in the NP_PROBE in the settings.xml file.")
+    return {int(name[2:]): value for name, value in element.attrib.items() if name.startswith("CH")}
+
+
 def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dict:
     """
-    Read the openephys settings.xml file for a Neuropixels 2.0 mulitshank probe
-    to get the mapping of channel number to channel name, electrode_xpos, and electrode_ypos.
+    Read the OpenEphys settings.xml for a Neuropixels 2.0 multishank probe and build a channel map:
+    which physical electrode each recording channel (CH0..CH383) is wired to, plus its geometry.
 
-    Merge with data for all Neuropixels electrodes to get shank row, shank column, 
-    and electrode ID for each channel.
+    Each NP_PROBE element in settings.xml stores, per channel:
+        CHANNELS        : "bank:shank" (we take the shank)
+        ELECTRODE_INDEX : global electrode index (0..5119) = shank * 1280 + local_electrode
+        ELECTRODE_XPOS / ELECTRODE_YPOS : physical position on the probe (um)
+
+    We treat ELECTRODE_INDEX as the authoritative identity and merge it against our canonical coordinate
+    table (neuropixels_2.0_multishank_electrode_coords.csv, one row per global electrode) to get the
+    shank, shank_column, shank_row, and canonical x_um/y_um. We merge on the global electrode index rather
+    than on x/y because the index is the authoritative identity - matching on float coordinates can break
+    depending on the x or y value they are referenced to. (Our coords should matche the settings.xml 
+    x/y positions exactly, which we check below)
 
     Parameters:
         settings_file_path (Path):
@@ -1061,109 +1104,248 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dic
 
     Returns:
         dict:
-            Dictionary of probe_id: dataframe of channel info
+            probe_id -> DataFrame with one row per recording channel and columns:
+            channel_num, channel_name, bank, shank, electrode, shank_column, shank_row, x_um, y_um
     """
-    # Load electrode coordinates for all 5120 potential Neuropixels recording sites
+    # Load canonical coordinates for all 5120 potential Neuropixels recording sites
     all_neuropixels_electrodes_info = pd.read_csv(ELECTRODE_COORDS_PATH_NPX_MULTISHANK)
 
-    # Initialize dict to store channel info for each probe from the settings.xml
-    neuropixels_channel_data = {}
-
-    # Load the settings.xml
-    settings_tree = ET.parse(settings_file_path)
-    settings_root = settings_tree.getroot()
-
-    # Parse each PROBE
+    settings_root = ET.parse(settings_file_path).getroot()
     probes = settings_root.findall(".//NP_PROBE")
-    for i, probe in enumerate(probes):
-        # Make an id for each probe in case there are multiple (there will be 2 if we do bilateral recordings)
-        probe_id = f"probe_{i}"
+    if not probes:
+        logger.error("Could not find any NP_PROBE elements in the settings.xml file.")
+        raise ValueError("Could not find any NP_PROBE elements in the settings.xml file.")
 
-        # Get electrode config preset name
+    # Parse each probe (there will be more than one if we ever do bilateral recordings)
+    neuropixels_channel_data = {}
+    for i, probe in enumerate(probes):
+        probe_id = f"probe_{i}"
         logger.debug(f"NP_PROBE {i}: electrodeConfigurationPreset = '{probe.get('electrodeConfigurationPreset')}'")
 
-        # Initialize channel map for this probe
+        # Parse the per-channel elements, each keyed by channel number
+        bank_shank = _parse_np_probe_element(probe, "CHANNELS", logger)  # "bank:shank"
+        electrode_index = _parse_np_probe_element(probe, "ELECTRODE_INDEX", logger)
+        xpos = _parse_np_probe_element(probe, "ELECTRODE_XPOS", logger)
+        ypos = _parse_np_probe_element(probe, "ELECTRODE_YPOS", logger)
+
         channel_map = {}
+        for channel_num, bank_shank_str in bank_shank.items():
+            bank_str, shank_str = bank_shank_str.split(":")
+            channel_map[channel_num] = {
+                "channel_name": f"CH{channel_num}",
+                "bank": int(bank_str),
+                "shank": int(shank_str),
+                "electrode": int(electrode_index[channel_num]),
+                "x_um_settings": int(xpos[channel_num]),
+                "y_um_settings": int(ypos[channel_num]),
+            }
 
-        # Parse CHANNELS
-        channels_element = probe.find("CHANNELS")
-        if channels_element is not None:
-            for channel_name, shank_info in channels_element.attrib.items():
-                if channel_name.startswith("CH"):
-                    channel_num = int(channel_name[2:])
-                    bank_str, shank_str = shank_info.split(":")
-                    channel_map[channel_num] = {
-                        "channel_name": channel_name, 
-                        "shank": int(shank_str), 
-                        "bank(?)": int(bank_str) # TODO: I don't actually know what this is
-                    }
-        else:
-            logger.error("Could not find CHANNELS in the settings.xml file.")
-            raise ValueError("Could not find CHANNELS in the settings.xml file.")
+        channel_df = pd.DataFrame.from_dict(channel_map, orient="index")
+        channel_df["channel_num"] = channel_df.index.astype(int)
+        channel_df = channel_df.sort_values("channel_num").reset_index(drop=True)
 
-        # Parse ELECTRODE_XPOS
-        xpos_element = probe.find("ELECTRODE_XPOS")
-        if xpos_element is not None:
-            for channel_name, xpos in xpos_element.attrib.items():
-                if channel_name.startswith("CH"):
-                    channel_num = int(channel_name[2:])
-                    channel_map[channel_num]["x_um"] = int(xpos)
-        else:
-            logger.error("Could not find ELECTRODE_XPOS in the settings.xml file.")
-            raise ValueError("Could not find ELECTRODE_XPOS in the settings.xml file.")
+        # Cross-check: the shank from CHANNELS should match the shank implied by the electrode index
+        shank_from_electrode = channel_df["electrode"] // NPX_ELECTRODES_PER_SHANK
+        if not (channel_df["shank"] == shank_from_electrode).all():
+            logger.warning(f"{probe_id}: shank from CHANNELS disagrees with electrode_index // "
+                           f"{NPX_ELECTRODES_PER_SHANK} for some channels!")
 
-        # Parse ELECTRODE_YPOS
-        ypos_element = probe.find("ELECTRODE_YPOS")
-        if ypos_element is not None:
-            for channel_name, ypos in ypos_element.attrib.items():
-                if channel_name.startswith("CH"):
-                    channel_num = int(channel_name[2:])
-                    channel_map[channel_num]["y_um"] = int(ypos)
-        else:
-            logger.error("Could not find ELECTRODE_YPOS in the settings.xml file.")
-            raise ValueError("Could not find ELECTRODE_YPOS in the settings.xml file.")
-
-        # Create dataframe of channel info from the settings.xml
-        channel_info_from_settings = pd.DataFrame.from_dict(channel_map, orient='index')
-        channel_info_from_settings['channel_num'] = channel_info_from_settings.index.astype(int)
-        channel_info_from_settings = channel_info_from_settings.sort_values(by='channel_num').reset_index(drop=True)
-        logger.debug(f"Channel info from settings.xml for Neuropixels probe {probe_id}:")
-        logger.debug(channel_info_from_settings)
-
-        # Merge this probe's channel info with all electrode coordinates
-        logger.debug(f"Validating electrode coordinates for Neuropixels {probe_id} "
-                    "by merging with data for all possible Neuropixels recording sites...")
-        full_channel_info_df = pd.merge(
-            channel_info_from_settings,
-            all_neuropixels_electrodes_info,
-            on=["x_um", "y_um", "shank"],
-            how="left",  # ensures we detect any unmatched rows
-            validate="one_to_one"
+        # Merge with the canonical coordinate table on the global electrode index to validate and enrich.
+        # This pulls in shank_column, shank_row, and canonical x_um/y_um (the 'shank' also comes from here)
+        logger.debug(f"Validating electrode indices for Neuropixels {probe_id} against the coords table...")
+        merged = channel_df.drop(columns=["shank"]).merge(
+            all_neuropixels_electrodes_info[["electrode", "shank", "shank_column", "shank_row", "x_um", "y_um"]],
+            on="electrode", how="left", validate="one_to_one",
         )
 
-        # Check for unmatched electrodes
-        if full_channel_info_df["electrode"].isnull().any():
-            missing = full_channel_info_df[full_channel_info_df["electrode"].isnull()]
-            logger.error(
-                f"Missing electrode match for {len(missing)} channels in {probe_id}:\n"
-                f"{missing[['channel_num', 'x_um', 'y_um', 'shank']]}"
-            )
-            raise ValueError(
-                f"Missing electrode match for {len(missing)} channels in {probe_id}:\n"
-                f"{missing[['channel_num', 'x_um', 'y_um', 'shank']]}"
-            )
+        # Check for electrode indices we couldn't match to a known recording site
+        unmatched = merged[merged["shank_row"].isnull()]
+        if len(unmatched) > 0:
+            logger.error(f"{probe_id}: {len(unmatched)} channels have electrode indices not found in the "
+                         f"coords table:\n{unmatched[['channel_num', 'electrode']]}")
+            raise ValueError(f"{probe_id}: electrode indices not found in coords table: "
+                             f"{sorted(unmatched['electrode'])}")
 
-        # Check that we have info for 384 recording sites as expected
-        assert len(full_channel_info_df) == 384, f"Expected 384 channels, got {len(full_channel_info_df)}"
-        logger.info(f"Neuropixels {probe_id}: all 384 channels matched and merged successfully!")
-        neuropixels_channel_data[probe_id] = full_channel_info_df
+        # Sanity-check our canonical coords against what OpenEphys reports in settings.xml. 
+        # They should match exactly, warn if a future probe config ever disagrees
+        # Then drop the now-redundant settings columns to keep the channel info clean
+        x_mismatch = (merged["x_um"] != merged["x_um_settings"]).sum()
+        y_mismatch = (merged["y_um"] != merged["y_um_settings"]).sum()
+        if x_mismatch or y_mismatch:
+            logger.warning(f"{probe_id}: coords table disagrees with settings.xml for "
+                           f"{x_mismatch} x and {y_mismatch} y positions - check the coords file!")
+        merged = merged.drop(columns=["x_um_settings", "y_um_settings"])
 
-        # Plot electrode layour and channel info for this probe
+        assert len(merged) == 384, f"Expected 384 channels, got {len(merged)}"
+        logger.info(f"Neuropixels {probe_id}: all {len(merged)} channels matched to electrodes successfully!")
+        logger.debug(f"{probe_id}: recording channels per shank: {merged.groupby('shank').size().to_dict()}")
+        logger.debug(f"{probe_id}: electrode index range {int(merged['electrode'].min())}-"
+                     f"{int(merged['electrode'].max())}, y range {int(merged['y_um'].min())}-"
+                     f"{int(merged['y_um'].max())} um")
+        neuropixels_channel_data[probe_id] = merged
+
+        # Plot the electrode layout and channel info for this probe
         plot_neuropixels(all_neuropixels_electrodes=all_neuropixels_electrodes_info,
-                         channel_info=channel_info_from_settings,
+                         channel_info=merged,
                          probe_name=probe_id,
                          fig_dir=fig_dir)
+
     return neuropixels_channel_data
+
+
+def add_electrode_data_neuropixels(
+    *,
+    nwbfile: NWBFile,
+    channel_info: pd.DataFrame,
+    filtering_info: str,
+    metadata: dict,
+    probe_obj,
+    logger,
+) -> None:
+    """
+    Add electrode groups and the electrode table for a Neuropixels probe.
+
+    Analogous to add_electrode_data_berke_probe, but simpler: Neuropixels has no per-session impedance
+    file, so we don't mark bad channels here (all channels are treated as good). We create one
+    ElectrodeGroup per shank that has recording sites, and add one electrode per recording channel.
+
+    Parameters:
+        nwbfile (NWBFile):
+            The NWB file being assembled.
+        channel_info (pd.DataFrame):
+            One row per recording channel (from get_channel_map_neuropixels), with columns
+            channel_num, shank, electrode, shank_column, shank_row, x_um, y_um
+        filtering_info (str):
+            The filtering applied to all channels (Neuropixels applies hardware filtering)
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml)
+        probe_obj (Probe):
+            The Probe object added to the nwbfile
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory)
+    add_associated_file(
+        nwbfile,
+        name="electrode_info",
+        description="Neuropixels channel map (recording channel -> electrode geometry) (CSV)",
+        content=channel_info.to_csv(index=False),
+        logger=logger,
+        log_filename="electrode_info.csv",
+    )
+
+    # General metadata for the electrode groups
+    electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
+    if electrodes_location == "unspecified":
+        logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
+    else:
+        logger.info(f"Electrodes location is '{electrodes_location}'")
+    targeted_x = metadata["ephys"].get("targeted_x")
+    targeted_y = metadata["ephys"].get("targeted_y")
+    targeted_z = metadata["ephys"].get("targeted_z")
+    logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
+
+    # Make an ElectrodeGroup and a Shank for each shank that actually has recording sites.
+    # NOTE: we group one ElectrodeGroup per shank (mirrors the Berke probe per-shank structure). 
+    # We might later change to an electrode group per contiguous y block.
+    electrode_groups_by_shank = {}
+    shanks_by_shank = {}
+    for shank_index in sorted(channel_info["shank"].unique()):
+        electrode_group = NwbElectrodeGroup(
+            name=str(shank_index),
+            description=f"Electrodes on shank {shank_index}",
+            location=electrodes_location,
+            targeted_location=electrodes_location,
+            targeted_x=float(targeted_x),
+            targeted_y=float(targeted_y),
+            targeted_z=float(targeted_z),
+            units="mm",
+            device=probe_obj,
+        )
+        nwbfile.add_electrode_group(electrode_group)
+        electrode_groups_by_shank[shank_index] = electrode_group
+        shanks_by_shank[shank_index] = Shank(name=str(shank_index))
+        logger.debug(f"Adding shank {shank_index}")
+
+    # Add the electrode data columns (mirrors the Berke table, minus the impedance columns)
+    nwbfile.add_electrode_column(
+        name="electrode_name",
+        description="The name of the electrode, in 'S(shank number)E(electrode number)' format",
+    )
+    nwbfile.add_electrode_column(
+        name="intan_channel_number",
+        description="The recording channel number (0-indexed) for the electrode (CH0..CH383 -> 0..383)",
+    )
+    nwbfile.add_electrode_column(
+        name="electrode_index",
+        description="The global Neuropixels electrode index (0-indexed, 0..5119)",
+    )
+    nwbfile.add_electrode_column(
+        name="bad_channel",
+        description="Whether the channel is a bad channel. Always False for Neuropixels (no impedance file)",
+    )
+    nwbfile.add_electrode_column(
+        name="rel_x",
+        description="The relative x coordinate of the electrode (um)",
+    )
+    nwbfile.add_electrode_column(
+        name="rel_y",
+        description="The relative y coordinate of the electrode (um)",
+    )
+    nwbfile.add_electrode_column(
+        name="filtering",
+        description="The filtering applied to the electrode",
+    )
+    nwbfile.add_electrode_column(
+        name="probe_electrode",
+        description="The global index of the electrode on the probe (0-indexed)",
+    )
+    nwbfile.add_electrode_column(
+        name="probe_shank",
+        description="The index of the shank this electrode is on",
+    )
+    nwbfile.add_electrode_column(
+        name="ref_elect_id",
+        description="The index of the reference electrode in this table. -1 if not set. Used by Spyglass.",
+    )
+
+    # Add electrodes in channel_num order (0..383) so the electrode table row -> raw data row mapping
+    # (built downstream from intan_channel_number) is correct
+    for _, row in channel_info.sort_values("channel_num").iterrows():
+        shank_index = int(row["shank"])
+        electrode_index = int(row["electrode"])
+        local_electrode = electrode_index % NPX_ELECTRODES_PER_SHANK
+
+        # Follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode (for Spyglass consistency)
+        shanks_by_shank[shank_index].add_shanks_electrode(
+            ShanksElectrode(
+                name=str(local_electrode),
+                rel_x=float(row["x_um"]),
+                rel_y=float(row["y_um"]),
+                rel_z=0.0,
+            )
+        )
+        nwbfile.add_electrode(
+            electrode_name=f"S{shank_index:02d}E{local_electrode}",
+            intan_channel_number=int(row["channel_num"]),
+            electrode_index=electrode_index,
+            bad_channel=False,  # no impedance file for Neuropixels, so no channels are marked bad
+            rel_x=float(row["x_um"]),
+            rel_y=float(row["y_um"]),
+            group=electrode_groups_by_shank[shank_index],
+            location=electrodes_location,  # same for all electrodes
+            filtering=filtering_info,  # same for all electrodes
+            probe_electrode=electrode_index,  # used by Spyglass
+            probe_shank=shank_index,  # used by Spyglass
+            ref_elect_id=-1,  # used by Spyglass
+        )
+
+    # Add each populated Shank to the Probe
+    for shank in shanks_by_shank.values():
+        probe_obj.add_shank(shank)
+
+    logger.info(f"Added {len(channel_info)} Neuropixels electrodes across {len(electrode_groups_by_shank)} "
+                f"shank ElectrodeGroup(s): {sorted(electrode_groups_by_shank)}")
 
 
 def add_raw_ephys(
@@ -1172,8 +1354,11 @@ def add_raw_ephys(
     metadata: dict,
     logger,
     fig_dir: Path = None,
-) -> None:
+) -> dict:
     """Add the raw ephys data to a NWB file.
+
+    Returns a dict with the Open Ephys start time and detected port visits (empty dict if there is no
+    ephys metadata for this session, or if the required ephys metadata subfields are missing).
 
     Parameters:
         nwbfile (NWBFile):
@@ -1187,28 +1372,25 @@ def add_raw_ephys(
     """
 
     if "ephys" not in metadata:
-        print("No ephys metadata found for this session. Skipping ephys conversion.")
-        logger.info("No ephys metadata found for this session. Skipping ephys conversion.")
+        log_and_print(logger, "No ephys metadata found for this session. Skipping ephys conversion.")
         return {}
 
-    # If we do have "ephys" in metadata, check for the required keys
-    required_ephys_keys = {"openephys_folder_path", "probe", "impedance_file_path"}
+    # If we do have "ephys" in metadata, check for the required keys.
+    # (impedance_file_path is required for Berke Lab probes but not Neuropixels, so it is checked
+    # in the Berke branch below rather than here.)
+    required_ephys_keys = {"openephys_folder_path", "probe"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
-        print(
+        log_and_print(
+            logger,
             "The required ephys subfields do not exist in the metadata dictionary.\n"
             "Remove the 'ephys' field from metadata if you do not have ephys data "
-            f"for this session, \nor specify the following missing subfields: {missing_keys}"
-        )
-        logger.warning(
-            "The required ephys subfields do not exist in the metadata dictionary.\n"
-            "Remove the 'ephys' field from metadata if you do not have ephys data "
-            f"for this session, \nor specify the following missing subfields: {missing_keys}"
+            f"for this session, \nor specify the following missing subfields: {missing_keys}",
+            level="warning",
         )
         return {}
 
-    print("Adding raw ephys...")
-    logger.info("Adding raw ephys...")
+    log_and_print(logger, "Adding raw ephys...")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
 
     # Get Open Ephys start time as datetime object based on the time specified in the folder name
@@ -1223,34 +1405,62 @@ def add_raw_ephys(
     open_ephys_start = open_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"Open Ephys start time: {open_ephys_start}")
 
-    # Get paths to the settings.xml file and the continuous.dat files
-    # This is set up for future flexibility (finds the correct paths for multiple probes and multiple recordings),
-    # but we don't use that flexibility yet. I will implement processing for multiple probes if we decide to do
-    # bilateral neuropixels recordings.
-    open_ephys_paths_dict = find_open_ephys_paths(open_ephys_folder_path=openephys_folder_path, experiment_number=1)
+    # Get paths to the settings.xml file and the continuous.dat files.
+    # The experiment number is auto-detected by default, but can be overridden via metadata for the
+    # rare case of multiple experiments recorded into the same Open Ephys output folder.
+    # This happens when you start and stop the ephys recording multiple times.
+    experiment_number = metadata["ephys"].get("experiment_number", None)
+    open_ephys_paths_dict = find_open_ephys_paths(open_ephys_folder_path=openephys_folder_path,
+                                                  experiment_number=experiment_number, logger=logger)
     settings_file_path = open_ephys_paths_dict["settings_file"]
     recording_file_paths_dict = open_ephys_paths_dict["recording_files"]
 
-    # For now, only allow a single continuous.dat file
-    if len(recording_file_paths_dict) == 1:
-        probe_name, continuous_dat_file_path = next(iter(recording_file_paths_dict.items()))
-        logger.info(f"Found continuous.dat for probe '{probe_name}' at {continuous_dat_file_path}")
-    else:
-        logger.error("Currently only one continuous.dat file is supported!")
-        logger.error(f"Found multiple probes/files: {recording_file_paths_dict}")
-        raise NotImplementedError("Currently only one continuous.dat file is supported.")
-    
+    # Separate the neural data stream(s) from the ADC stream. For Berke Lab probes, the ADC channels live
+    # inside the single probe continuous.dat (so there is no separate ADC stream). For Neuropixels (OneBox),
+    # the ADC is its own stream/folder (e.g. "OneBox-100.OneBox-ADC") separate from the probe ("...ProbeA").
+    adc_file_paths = {name: path for name, path in recording_file_paths_dict.items() if "ADC" in name.upper()}
+    probe_file_paths = {name: path for name, path in recording_file_paths_dict.items() if "ADC" not in name.upper()}
+
+    # For now, only allow a single probe
+    if len(probe_file_paths) != 1:
+        logger.error(f"Expected exactly one probe continuous.dat, found: {probe_file_paths}")
+        raise NotImplementedError("Currently only one probe continuous.dat is supported.")
+    probe_stream_name, continuous_dat_file_path = next(iter(probe_file_paths.items()))
+    logger.info(f"Found probe continuous.dat for '{probe_stream_name}' at {continuous_dat_file_path}")
+
     logger.info("Adding probe...")
     probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=logger)
     
-    # We have different information in different places for Berke Lab probes vs other probe types (Neuropixels).
-    # This is a bit messy because our old code assumed Berke Lab probes only. But is ok for now.
-    if probe_metadata["name"] in BERKE_LAB_PROBES:
-        # For Berke Lab probes:
-        total_channels = 264  # 256 "CH" + 8 "ADC"
-        port_visits_channel_num = 256 # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
+    # Read recording params (channel count, sample rate, conversion factor) from structure.oebin
+    # This works the same for Berke lab probes and Neuropixels
+    oebin_params = read_oebin_params(continuous_dat_file_path=continuous_dat_file_path, logger=logger)
+    total_channels = oebin_params["channel_count"]
 
-        # Read the settings.xml file to validate channels and get filtering info
+    # Berke Lab probes and Neuropixels store their electrode info and port visits differently, so each
+    # branch sets up its electrode table and tells us where to find the port visit pulses:
+    #   port_visits_* describe the continuous.dat file/channel/rate that the port visit pulses live on
+    #   pulse_high_threshold is the raw int16 value above which the port visit channel is considered "high"
+    #   exclude_channel_names are neural channels to drop from the ElectricalSeries (Berke ECoG screws)
+    if probe_metadata["name"] in BERKE_LAB_PROBES:
+        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Berke Lab custom probe.")
+
+        # Berke Lab probes require a per-session impedance file (used to mark bad channels)
+        if "impedance_file_path" not in metadata["ephys"]:
+            raise ValueError("Berke Lab probes require 'impedance_file_path' in the ephys metadata.")
+
+        # Sanity-check the oebin channels against the expected 256 "CH" + 8 "ADC" layout
+        expected_channel_names = {f"CH{i}" for i in range(1, 257)} | {f"ADC{i}" for i in range(1, 9)}
+        validate_oebin_channel_names(oebin_params["channel_names"], expected_channel_names, logger)
+
+        # For Berke Lab probes, port visits are recorded on ADC1, which lives in the same continuous.dat
+        # as the neural data channels (256 "CH" + 8 "ADC" = 264 total channels)
+        port_visits_dat_file_path = continuous_dat_file_path
+        port_visits_total_channels = total_channels
+        port_visits_sample_rate = oebin_params["sample_rate"]
+        port_visits_channel_num = 256  # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
+        pulse_high_threshold = 10_000  # raw int16 threshold
+
+        # Read the settings.xml file to get filtering info
         filtering_info = read_open_ephys_settings_xml(settings_file_path=settings_file_path, logger=logger)
 
         # Create electrode groups and add electrode data to the NWB file
@@ -1268,32 +1478,75 @@ def add_raw_ephys(
         exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
-        # For Neuropixels (NOTE these are fake placeholder values):
-        total_channels = 392 # I actually have no idea. Guessing 384 "CH" + 8(??) "ADC" ?
-        port_visits_channel_num = 384 # Also no idea. 
+        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Neuropixels probe.")
 
-        # Read the settings.xml file to get channel map
-        channel_info = get_channel_map_neuropixels(settings_file_path=settings_file_path, 
-                                                   logger=logger, 
-                                                   fig_dir=fig_dir)
+        # For Neuropixels (OneBox), port visits are recorded on a SEPARATE OneBox-ADC stream (its own
+        # continuous.dat), not in the probe's continuous.dat. Find that ADC stream and read its params.
+        if not adc_file_paths:
+            raise ValueError("No OneBox-ADC stream found for Neuropixels; cannot read port visits.")
+        if len(adc_file_paths) > 1:
+            raise NotImplementedError(f"Expected exactly one ADC stream, found: {adc_file_paths}")
+        adc_stream_name, adc_dat_file_path = next(iter(adc_file_paths.items()))
+        logger.info(f"Found OneBox-ADC continuous.dat for '{adc_stream_name}' at {adc_dat_file_path}")
+        adc_oebin_params = read_oebin_params(continuous_dat_file_path=adc_dat_file_path, logger=logger)
 
-        logger.debug("Neuropixels channel info:")
-        logger.debug(channel_info)
-        # TODO: Use channel map to add electrode data to the nwbfile
-        # Figure out impedance and filtering info - not sure where that lives
-        # Work with Sam to figure out how to name the probe and create custom electrode groups
-        # based on the geometry of each channel map
-        raise NotImplementedError("Full processing for Neuropixels not yet implemented.")
+        # ADC data is stored as raw int16 like everything else, so convert our desired volts threshold 
+        # to raw int16 using the ADC bit_volts. 
+        # Port visits default to ADC2 (ADC0 is a 1 Hz sync clock, and ADC1 will be used for future optotagging)
+        # Both the channel and threshold are overridable via metadata
+        port_visits_dat_file_path = adc_dat_file_path
+        port_visits_total_channels = adc_oebin_params["channel_count"]
+        port_visits_sample_rate = adc_oebin_params["sample_rate"]
+        port_visits_channel_num = metadata["ephys"].get("port_visits_adc_channel", NPX_DEFAULT_PORT_VISITS_ADC_CHANNEL)
+        threshold_volts = metadata["ephys"].get("port_visits_threshold_volts", NPX_PORT_VISITS_THRESHOLD_VOLTS)
+        pulse_high_threshold = threshold_volts / adc_oebin_params["bit_volts"]
+        logger.info(f"Reading Neuropixels port visits from ADC channel {port_visits_channel_num} "
+                    f"with threshold {threshold_volts} V ({pulse_high_threshold:.0f} raw int16)")
+
+        # Neuropixels applies hardware filtering (not recorded in settings.xml like the Berke bandpass)
+        filtering_info = "Neuropixels 2.0 hardware filtering (see IMEC Neuropixels documentation)"
+
+        # Build the channel map, then create electrode groups and add electrode data to the NWB file.
+        # We only support a single probe for now, so take the one probe's channel info.
+        channel_map = get_channel_map_neuropixels(settings_file_path=settings_file_path,
+                                                  logger=logger, fig_dir=fig_dir)
+        if len(channel_map) != 1:
+            raise NotImplementedError(f"Expected exactly one Neuropixels probe, found {len(channel_map)}.")
+        channel_info = next(iter(channel_map.values()))
+
+        add_electrode_data_neuropixels(
+            nwbfile=nwbfile,
+            channel_info=channel_info,
+            filtering_info=filtering_info,
+            metadata=metadata,
+            probe_obj=probe_obj,
+            logger=logger,
+        )
+
+        # All Neuropixels recording channels are kept (no ECoG-screw channels to exclude)
+        exclude_channel_names = []
 
     # Get port visits recorded by Open Ephys for timestamp alignment
     logger.info("Getting port visits recorded by Open Ephys...")
-    ephys_visit_times, samples_to_remove = get_port_visits(continuous_dat_file_path=continuous_dat_file_path, 
-                                                           total_channels=total_channels,
+    logger.debug(f"Port visit source: channel {port_visits_channel_num} of {port_visits_dat_file_path} "
+                 f"({port_visits_total_channels} channels @ {port_visits_sample_rate} Hz, "
+                 f"threshold {pulse_high_threshold:.0f} raw int16)")
+    ephys_visit_times, bonsai_start_time = get_port_visits(continuous_dat_file_path=port_visits_dat_file_path,
+                                                           total_channels=port_visits_total_channels,
                                                            port_visits_channel_num=port_visits_channel_num,
-                                                           logger=logger)
-    print(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
-    logger.info(f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
+                                                           sample_rate=port_visits_sample_rate,
+                                                           logger=logger,
+                                                           pulse_high_threshold=pulse_high_threshold)
+    log_and_print(logger, f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
     logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
+
+    # Convert the bonsai start time (seconds) to a number of samples in the probe's sample rate.
+    # This matters for Neuropixels: port visits come from the OneBox-ADC (30300.5 Hz) but we trim the
+    # probe data (30000 Hz), so we need to convert
+    probe_sample_rate = oebin_params["sample_rate"]
+    samples_to_remove = round(bonsai_start_time * probe_sample_rate)
+    logger.debug(f"Trimming {samples_to_remove} samples ({bonsai_start_time}s at {probe_sample_rate} Hz) "
+                 "from the start of the probe data")
 
     # Get raw ephys data (with times before bonsai start removed)
     (
@@ -1327,21 +1580,40 @@ def add_raw_ephys(
         region=list(raw_data_row_to_electrode_table_row),
         description="Electrodes used in raw ElectricalSeries recording",
     )
+    logger.info(f"Raw ephys data is {num_samples} samples x {num_channels} channels "
+                f"(conversion factor {channel_conversion_factor_uv} uV/bit)")
 
     # Convert to uV without loading the whole thing at once
-    uv_traces_as_iterator = MicrovoltsSpikeInterfaceRecordingDataChunkIterator(traces_as_iterator, 
+    uv_traces_as_iterator = MicrovoltsSpikeInterfaceRecordingDataChunkIterator(traces_as_iterator,
                                                                                channel_conversion_factor_uv)
 
-    # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, which is the recommended chunk size
-    # by the NWB team.
-    # We could also add compression here. zstd/blosc-zstd are recommended by the NWB team, but
-    # they require the hdf5plugin library to be installed. gzip is available by default.
-    # Use gzip for now, but consider zstd/blosc-zstd in the future.
-    data_data_io = H5DataIO(
-        data=uv_traces_as_iterator,
-        chunks=(min(num_samples, 81920), min(num_channels, 64)),
-        compression="gzip",
-    )
+    # A chunk of shape (81920, 64) and dtype int16 (2 bytes) is ~10 MB, the recommended chunk size by the
+    # NWB team. Compress with blosc-zstd (via the hdf5plugin library), also recommended by the NWB team: 
+    # it is much faster to write than gzip and compresses better, which matters a lot for these large recordings. 
+    # Fall back to gzip (always available) if hdf5plugin is not installed.
+    # NOTE: reading a blosc-zstd-compressed NWB requires the blosc HDF5 filter (hdf5plugin) to be installed.
+    # We include hdf5plugin as a dependency, so anything using jdb_to_nwb (or Spyglass) can read these files,
+    # but a bare-HDF5 reader without the filter cannot. Use gzip instead if you need maximum portability.
+    chunks = (min(num_samples, 81920), min(num_channels, 64))
+    try:
+        import hdf5plugin
+        blosc_zstd = dict(hdf5plugin.Blosc(cname="zstd", clevel=5, shuffle=hdf5plugin.Blosc.SHUFFLE))
+        data_data_io = H5DataIO(
+            data=uv_traces_as_iterator,
+            chunks=chunks,
+            compression=blosc_zstd["compression"],
+            compression_opts=blosc_zstd["compression_opts"],
+            allow_plugin_filters=True,
+        )
+        compression_desc = "blosc-zstd (clevel 5)"
+    except ImportError:
+        data_data_io = H5DataIO(
+            data=uv_traces_as_iterator,
+            chunks=chunks,
+            compression="gzip",
+        )
+        compression_desc = "gzip (install hdf5plugin for faster, smaller blosc-zstd compression)"
+    logger.info(f"ElectricalSeries data will be written with chunks {chunks} and {compression_desc} compression")
 
     # If we have ground truth port visit times (photometry), align timestamps to that
     ground_truth_time_source = metadata.get("ground_truth_time_source")
@@ -1377,25 +1649,29 @@ def add_raw_ephys(
     logger.info("Adding raw ephys to the nwbfile as an ElectricalSeries")
     nwbfile.add_acquisition(eseries)
 
-    # Get the raw settings.xml file as a string to be used to create an AssociatedFiles object
+    # Save the raw Open Ephys settings.xml and structure.oebin as AssociatedFiles
     with open(settings_file_path, "r") as settings_file:
         raw_settings_xml = settings_file.read()
-
-    # Create an AssociatedFiles object to save settings.xml
-    raw_settings_xml_file = AssociatedFiles(
+    add_associated_file(
+        nwbfile,
         name="open_ephys_settings_xml",
         description="Raw settings.xml file from OpenEphys",
         content=raw_settings_xml,
-        task_epochs="0",  # Berke Lab only has one epoch (session) per day
+        logger=logger,
+        log_filename="settings.xml",
     )
 
-    # If it doesn't exist already, make a processing module for associated files
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+    with open(oebin_params["oebin_path"], "r") as oebin_file:
+        raw_structure_oebin = oebin_file.read()
+    add_associated_file(
+        nwbfile,
+        name="open_ephys_structure_oebin",
+        description="Raw structure.oebin file from OpenEphys (recording metadata: streams, channels, "
+                    "bit_volts, sample rates)",
+        content=raw_structure_oebin,
+        logger=logger,
+        log_filename="structure.oebin",
+    )
 
-    # Add settings.xml to the nwb as an associated file
-    logger.debug("Saving the Open Ephys settings.xml file as an AssociatedFiles object")
-    nwbfile.processing["associated_files"].add(raw_settings_xml_file)
-
+    log_and_print(logger, "Finished adding raw ephys to the nwb.")
     return {"ephys_start": open_ephys_start, "port_visits": ephys_visit_times}

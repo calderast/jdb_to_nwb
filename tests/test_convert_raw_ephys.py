@@ -8,12 +8,13 @@ import pytest
 import re
 
 from jdb_to_nwb.convert_raw_ephys import (
-    add_raw_ephys, 
+    add_raw_ephys,
     get_raw_ephys_data,
     add_probe_info,
 #    get_electrode_info, # TODO add test for this
     read_open_ephys_settings_xml,
     add_electrode_data_berke_probe,
+    find_open_ephys_paths,
 )
 
 
@@ -211,6 +212,52 @@ def test_get_raw_ephys_data(dummy_logger):
     assert traces_as_iterator.maxshape == (3_000, 256)
     np.testing.assert_allclose(channel_conversion_factor, [0.19499999284744263] * 256)
     assert len(original_timestamps) == 3_000
+
+
+def test_find_open_ephys_paths_autodetects_experiment_1():
+    """The real test data is experiment1 (settings.xml), so auto-detection should pick experiment 1."""
+    folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+    paths = find_open_ephys_paths(folder_path)  # experiment_number=None -> auto-detect
+    assert paths["settings_file"].endswith("settings.xml")
+    assert not paths["settings_file"].endswith("settings_2.xml")
+
+
+def _make_open_ephys_experiment(base_dir: Path, experiment_number: int, probe_names):
+    """Create a minimal Open Ephys folder tree (settings + continuous.dat per probe) for one experiment."""
+    suffix = "" if experiment_number == 1 else f"_{experiment_number}"
+    record_node = base_dir / "Record Node 101"
+    (record_node / f"settings{suffix}.xml").parent.mkdir(parents=True, exist_ok=True)
+    (record_node / f"settings{suffix}.xml").write_text("<SETTINGS/>")
+    continuous = record_node / f"experiment{experiment_number}" / "recording1" / "continuous"
+    for probe_name in probe_names:
+        probe_dir = continuous / probe_name
+        probe_dir.mkdir(parents=True, exist_ok=True)
+        (probe_dir / "continuous.dat").write_bytes(b"\x00\x00")
+
+
+def test_find_open_ephys_paths_autodetects_experiment_2(tmp_path):
+    """A Neuropixels-style experiment2 recording (settings_2.xml) should be auto-detected."""
+    _make_open_ephys_experiment(tmp_path, 2, ["OneBox-100.ProbeA", "OneBox-100.OneBox-ADC"])
+    paths = find_open_ephys_paths(str(tmp_path))  # auto-detect
+    assert paths["settings_file"].endswith("settings_2.xml")
+    assert set(paths["recording_files"]) == {"OneBox-100.ProbeA", "OneBox-100.OneBox-ADC"}
+
+
+def test_find_open_ephys_paths_ambiguous_experiments_raises(tmp_path):
+    """If multiple experiments are present, auto-detection must refuse and ask the user to specify."""
+    _make_open_ephys_experiment(tmp_path, 1, ["ProbeA"])
+    _make_open_ephys_experiment(tmp_path, 2, ["ProbeA"])
+    with pytest.raises(ValueError, match="multiple Open Ephys experiments"):
+        find_open_ephys_paths(str(tmp_path))
+    # ...but an explicit experiment_number resolves the ambiguity
+    paths = find_open_ephys_paths(str(tmp_path), experiment_number=2)
+    assert paths["settings_file"].endswith("settings_2.xml")
+
+
+def test_find_open_ephys_paths_no_settings_raises(tmp_path):
+    """No settings*.xml anywhere should raise FileNotFoundError."""
+    with pytest.raises(FileNotFoundError, match="No settings.xml"):
+        find_open_ephys_paths(str(tmp_path))
 
 
 def test_read_open_ephys_settings_xml(dummy_logger):

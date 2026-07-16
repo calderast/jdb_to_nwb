@@ -17,6 +17,7 @@ experimenter:
   - Jose Figueroa
   - Yang-Sun Hwang
   - Tim Krausz
+  - Jifu Tong
 
 ## General information about the subject and session.
 experiment_description: Hex maze task
@@ -39,29 +40,46 @@ subject:
 
 # If your experiment included electrophysiology, include field 'ephys' and the following subfields:
 ephys:
+  # Fields used for ALL probes (Berke Lab custom probes AND Neuropixels):
   openephys_folder_path: "path/to/folder/like/2022-07-25_15-30-00"
-  impedance_file_path: "path/to/impedance.csv"
   electrodes_location: "Hippocampus CA1"
   targeted_x: 4.5  # AP in mm
   targeted_y: 2.2  # ML in mm. Negative ML is the left hemisphere and positive ML is the right hemisphere
   targeted_z: -2.0  # DV in mm
+  # OPTIONAL: which Open Ephys experiment to convert if the output folder contains more than one
+  # (experiment1, experiment2, ...), which can happen if you stopped and re-started the recording. 
+  # Normally it will always be experiment1 (and will be auto-detected by default).
+  # You only need to specify this if the pipeline complains and asks you to pick one.
+  # experiment_number: 1
 
-  # OPTIONAL ephys fields for non-default processing:
+  # Fields used ONLY for Berke Lab custom probes (ignored for Neuropixels):
+  # impedance_file_path is REQUIRED for Berke Lab probes (used to tag bad channels) and is not used
+  # for Neuropixels (which has no per-session impedance file, so no channels are marked bad).
+  impedance_file_path: "path/to/impedance.csv"
+  # OPTIONAL Berke Lab probe fields for non-default processing (ignored for Neuropixels):
   plug_order: "chip_first" # "chip_first" or "cable_first". Defaults to "chip_first" if none specified
   min_impedance_ohms: 1e5 # Defaults to 1e5. Channels below this impedance will be tagged as "bad channel"
   max_impedance_ohms: 3e6 # Defaults to 3e6. Channels above this impedance will be tagged as "bad channel"
+
+  # OPTIONAL fields for Neuropixels only (ignored for Berke Lab custom probes):
+  # For Neuropixels, port visits are recorded on the separate OneBox-ADC stream. 
+  # These fields override where/how port visits are detected. 
+  # The defaults below match the standard Berke Lab setup and should not need to be changed.
+  port_visits_adc_channel: 2 # ADC for port visits. Defaults to 2 (ADC0 is a 1Hz sync, ADC1 is reserved for optotagging)
+  port_visits_threshold_volts: 4.0 # Volts above which the port visit channel is "high". Defaults to 4.0
 
   # If you have spike sorting data, specify the following ephys subfields:
   mountain_sort_output_file_path: "path/to/firings.mda"
   sampling_frequency: 30000
 
-  # Berke Lab currently uses 4 possible probes for the hex maze task, specified below.
-  # Un-comment the probe used for your experiment.
+  # Berke Lab uses one of 4 custom silicon probes (or Neuropixels) for the hex maze task, specified below.
+  # Un-comment the single probe used for your experiment (currently only one probe is supported per session).
   probe: # reference existing probes from resources/electrophysiology/ephys_devices.yaml
     - "256-ch Silicon Probe, 3mm length, 66um pitch"
     # - "256-ch Silicon Probe, 6mm length, 80um pitch"
     # - "252-ch Silicon Probe, 4mm length, 80um pitch"
     # - "252-ch Silicon Probe, 10mm length, 100um pitch"
+    # - "Neuropixels 2.0 (4-shank)"
 
 # If your experiment included photometry, include field 'photometry' and the following subfields:
 # BOTH "phot_file_path" and "box_file_path" for raw LabVIEW data,
