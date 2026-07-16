@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 from pynwb import NWBFile
 from hdmf.common.table import DynamicTable, VectorData
-from ndx_franklab_novela import AssociatedFiles
+from .utils import log_and_print, add_associated_file
 from .timestamps_alignment import trim_sync_pulses, align_via_interpolation, handle_timestamps_reset
 from .plotting.plot_behavior import (
     plot_maze_configurations, 
@@ -625,8 +625,7 @@ def reassign_block_boundaries(trial_data, block_data, switch_after_trials, maze_
 
 def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """Add trial and block data to the nwbfile"""
-    print("Adding behavior...")
-    logger.info("Adding behavior...")
+    log_and_print(logger, "Adding behavior...", level="info")
 
     # Get file paths for behavior from metadata file
     arduino_text_file_path = metadata["behavior"]["arduino_text_file_path"]
@@ -901,34 +900,16 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     )
     nwbfile.processing["tasks"].add(task)
 
-    # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects
-    logger.debug("Saving the arduino text file and arduino timestamps file as AssociatedFiles objects")
+    # Save the raw arduino text and timestamps as AssociatedFiles objects in the nwb
     with open(arduino_text_file_path, "r") as arduino_text_file:
         raw_arduino_text = arduino_text_file.read()
     with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
         raw_arduino_timestamps = arduino_timestamps_file.read()
 
-    raw_arduino_text_file = AssociatedFiles(
-        name="arduino_text",
-        description="Raw arduino text",
-        content=raw_arduino_text,
-        task_epochs="0",  # Berke Lab only has one epoch (session) per day
-    )
-    raw_arduino_timestamps_file = AssociatedFiles(
-        name="arduino_timestamps",
-        description="Raw arduino timestamps",
-        content=raw_arduino_timestamps,
-        task_epochs="0",  # Berke Lab only has one epoch (session) per day
-    )
-
-    # If it doesn't exist already, make a processing module for associated files
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-
-    # Add arduino text and timestamps to the NWB as associated files
-    nwbfile.processing["associated_files"].add(raw_arduino_text_file)
-    nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
+    add_associated_file(nwbfile, name="arduino_text", description="Raw arduino text",
+                        content=raw_arduino_text, logger=logger)
+    add_associated_file(nwbfile, name="arduino_timestamps", description="Raw arduino timestamps",
+                        content=raw_arduino_timestamps, logger=logger)
 
     # Return photometry start in arduino time for video/DLC and behavioral alignment with photometry
     return {'photometry_start_in_arduino_time': photometry_start_in_arduino_time, 'port_visits': arduino_visit_times}
