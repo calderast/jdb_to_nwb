@@ -32,6 +32,7 @@ from .plotting.plot_photometry import (
     plot_signal_correlation,
     plot_photometry_signals,
 )
+from .utils import log_and_print
 
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
@@ -1180,8 +1181,7 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
 
     Returns a dict with keys: sampling_rate, port_visits, photometry_start, signals_to_plot
     """
-    print("Adding photometry signals to NWB...")
-    logger.info("Adding photometry signals to NWB...")
+    log_and_print(logger, "Adding photometry signals to NWB...", level="info")
 
     # Write raw signals (one per wavelength in the bundle, written once)
     written_raw_wavelengths = set()
@@ -1625,13 +1625,12 @@ def add_photometry(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """
 
     if "photometry" not in metadata:
-        print("No photometry metadata found for this session. Skipping photometry conversion.")
-        logger.info("No photometry metadata found for this session. Skipping photometry conversion.")
+        log_and_print(logger, "No photometry metadata found for this session. Skipping photometry conversion.", 
+                      level="info")
         return {}
 
     # 1. Add photometry metadata to NWB
-    print("Adding photometry metadata to NWB...")
-    logger.info("Adding photometry metadata to NWB...")
+    log_and_print(logger, "Adding photometry metadata to NWB...", level="info")
     add_photometry_metadata(nwbfile, metadata, logger)
 
     # 2. Load photometry signals into PhotometrySignalBundle

@@ -1372,7 +1372,7 @@ def add_raw_ephys(
     """
 
     if "ephys" not in metadata:
-        log_and_print(logger, "No ephys metadata found for this session. Skipping ephys conversion.")
+        log_and_print(logger, "No ephys metadata found for this session. Skipping ephys conversion.", level="info")
         return {}
 
     # If we do have "ephys" in metadata, check for the required keys.
@@ -1390,7 +1390,7 @@ def add_raw_ephys(
         )
         return {}
 
-    log_and_print(logger, "Adding raw ephys...")
+    log_and_print(logger, "Adding raw ephys...", level="info")
     openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
 
     # Get Open Ephys start time as datetime object based on the time specified in the folder name
@@ -1442,7 +1442,7 @@ def add_raw_ephys(
     #   pulse_high_threshold is the raw int16 value above which the port visit channel is considered "high"
     #   exclude_channel_names are neural channels to drop from the ElectricalSeries (Berke ECoG screws)
     if probe_metadata["name"] in BERKE_LAB_PROBES:
-        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Berke Lab custom probe.")
+        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Berke Lab custom probe.", level="info")
 
         # Berke Lab probes require a per-session impedance file (used to mark bad channels)
         if "impedance_file_path" not in metadata["ephys"]:
@@ -1478,7 +1478,7 @@ def add_raw_ephys(
         exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
-        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Neuropixels probe.")
+        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Neuropixels probe.", level="info")
 
         # For Neuropixels (OneBox), port visits are recorded on a SEPARATE OneBox-ADC stream (its own
         # continuous.dat), not in the probe's continuous.dat. Find that ADC stream and read its params.
@@ -1537,7 +1537,7 @@ def add_raw_ephys(
                                                            sample_rate=port_visits_sample_rate,
                                                            logger=logger,
                                                            pulse_high_threshold=pulse_high_threshold)
-    log_and_print(logger, f"Open Ephys recorded {len(ephys_visit_times)} port visits.")
+    log_and_print(logger, f"Open Ephys recorded {len(ephys_visit_times)} port visits.", level="info")
     logger.debug(f"Open Ephys port visits: {ephys_visit_times}")
 
     # Convert the bonsai start time (seconds) to a number of samples in the probe's sample rate.
@@ -1673,5 +1673,5 @@ def add_raw_ephys(
         log_filename="structure.oebin",
     )
 
-    log_and_print(logger, "Finished adding raw ephys to the nwb.")
+    log_and_print(logger, "Finished adding raw ephys to the nwb.", level="info")
     return {"ephys_start": open_ephys_start, "port_visits": ephys_visit_times}

@@ -7,10 +7,9 @@ import shutil
 
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
-from ndx_franklab_novela import AssociatedFiles
 
 from . import __version__
-from .utils import to_datetime, setup_logger
+from .utils import to_datetime, setup_logger, log_and_print, add_associated_file
 from .convert_video import add_video
 from .convert_position import add_position
 from .convert_raw_ephys import add_raw_ephys
@@ -69,17 +68,15 @@ def set_default_metadata(metadata, logger):
     # Set defaults if these fields are missing
     if "institution" not in metadata:
         metadata["institution"] = "University of California, San Francisco"
-        logger.warning("No 'institution' found in metadata, "
-                       "setting to default 'University of California, San Francisco'")
-        print("No 'institution' found in metadata, setting to default 'University of California, San Francisco'")
+        log_and_print(logger, "No 'institution' found in metadata, "
+                      "setting to default 'University of California, San Francisco'", level="warning")
     if "lab" not in metadata:
         metadata["lab"] = "Berke Lab"
-        logger.warning("No 'lab' found in metadata, setting to default 'Berke Lab'")
-        print("No 'lab' found in metadata, setting to default 'Berke Lab'")
+        log_and_print(logger, "No 'lab' found in metadata, setting to default 'Berke Lab'", level="warning")
     if "experiment_description" not in metadata:
         metadata["experiment_description"] = "Hex maze task"
-        logger.warning("No 'experiment_description' found in metadata, setting to default 'Hex maze task'")
-        print("No 'experiment_description' found in metadata, setting to default 'Hex maze task'")
+        log_and_print(logger, "No 'experiment_description' found in metadata, setting to default 'Hex maze task'",
+                      level="warning")
 
 
 def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
@@ -110,10 +107,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     debug_log_file = Path(log_dir) / f"{session_id}_debug_logs.log"
     logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
 
-    logger.info(f"Starting conversion for session_id {session_id}")
-    logger.info(f"Using source script jdb_to_nwb {__version__}")
-    print(f"Starting conversion for session_id {session_id}")
-    print(f"Using source script jdb_to_nwb {__version__}")
+    log_and_print(logger, f"Starting conversion for session_id {session_id}", level="info")
+    log_and_print(logger, f"Using source script jdb_to_nwb {__version__}", level="info")
 
     # Save a copy of the metadata file to the logging directory
     metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"
@@ -204,9 +199,6 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         handler.flush()
 
     # Save metadata YAML and log files as AssociatedFiles objects in the NWB so the NWB is self-contained
-    if "associated_files" not in nwbfile.processing:
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-
     files_to_embed = [
         ("metadata_yaml",  "Metadata YAML file used to create this NWB file", metadata_copy_file_path),
         ("info_log",       "Info-level conversion log",                         info_log_file),
@@ -216,22 +208,14 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     for name, description, file_path in files_to_embed:
         with open(file_path, "r") as f:
             content = f.read()
-        nwbfile.processing["associated_files"].add(AssociatedFiles(
-            name=name,
-            description=description,
-            content=content,
-            task_epochs="0",
-        ))
-        logger.info(f"Saved {file_path.name} as AssociatedFiles object '{name}' in NWB")
+        add_associated_file(nwbfile, name=name, description=description, content=content, logger=logger)
 
-    print("Writing file...")
-    logger.info("Writing file...")
+    log_and_print(logger, "Writing file...", level="info")
     output_nwb_file_path = Path(output_nwb_dir) / f"{session_id}.nwb"
     with NWBHDF5IO(output_nwb_file_path, mode="w") as io:
         io.write(nwbfile)
 
-    print(f"NWB file created successfully at {output_nwb_file_path}")
-    logger.info(f"NWB file created successfully at {output_nwb_file_path}")
+    log_and_print(logger, f"NWB file created successfully at {output_nwb_file_path}", level="info")
 
 
 def cli():
