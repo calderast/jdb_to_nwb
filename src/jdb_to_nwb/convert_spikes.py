@@ -294,8 +294,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
 
     # Log what we found in the analyzer
     logger.debug(f"unit_ids dtype={unit_ids.dtype}, unit id range {unit_ids.min()}..{unit_ids.max()}")
-    logger.debug(f"{len(analyzer.channel_ids)} channels | channel_ids[:8]={list(analyzer.channel_ids[:8])}"
-                 f"{' ...' if len(analyzer.channel_ids) > 8 else ''}")
+    logger.debug(f"{len(analyzer.channel_ids)} channels | channel_ids={[int(c) for c in analyzer.channel_ids]}")
     saved_extensions = analyzer.get_saved_extension_names()
     logger.debug(f"Saved extensions ({len(saved_extensions)}): {saved_extensions}")
     logger.debug(f"Sorting property keys ({len(sorting.get_property_keys())}): "
