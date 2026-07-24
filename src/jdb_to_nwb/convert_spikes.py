@@ -164,20 +164,112 @@ def add_mountainsort_spikes(nwbfile: NWBFile, metadata: dict, logger):
     log_and_print(logger, f"Added {len(unit_ids)} units to the NWB Units table.", level="info")
 
 
+def verify_analyzer_phy_correspondence(sorting, analyzer_path: Path, phy_group_by_unit: list, logger) -> None:
+    """
+    Sanity-check (logged at DEBUG) that the analyzer's units still correspond to the Phy curation the
+    phy_group labels come from. Called on every Kilosort/BombCell conversion.
+
+    We label each unit's phy_group by looking up its `original_cluster_id` in cluster_group.tsv. That
+    is only meaningful if the analyzer's units are actually the same clusters as the Phy output. Phy
+    merges/splits done AFTER the analyzer was built can break this: a merged cluster gets a new id and
+    its old id disappears from the curation, so a unit still carrying that old original_cluster_id no
+    longer matches any Phy cluster (it gets 'unknown'). This logs that.
+
+    Two levels of check:
+      1. Always: how many units matched a Phy group vs got 'unknown' (uses phy_group_by_unit only).
+      2. If the Phy per-spike files (spike_times.npy + spike_clusters.npy) are present next to the
+         analyzer: verify each matched unit's spike train is byte-for-byte identical to the Phy cluster
+         its original_cluster_id points to. Skipped (DEBUG note) if those files aren't there, e.g. a
+         trimmed upload that only kept analyzer.zarr + cluster_group.tsv.
+
+    A genuine spike-train mismatch (a matched id whose spikes differ) is logged at WARNING, since that
+    means the labels are actively wrong rather than just stale.
+    """
+    num_units = len(sorting.unit_ids)
+    n_unknown = sum(1 for group in phy_group_by_unit if group == "unknown")
+    logger.debug(f"phy_group correspondence: {num_units - n_unknown}/{num_units} units matched a Phy cluster "
+                 f"group, {n_unknown} got 'unknown'.")
+    if n_unknown:
+        logger.debug(f"{n_unknown}/{num_units} units have an original_cluster_id not in cluster_group.tsv. "
+                     "(They could not be matched to a Phy curation group and were set to phy_group='unknown'. "
+                     "This is expected from manual curation if you did splits/merges in Phy after building "
+                     "the analyzer.zarr .")
+
+    # Deeper spike-train check needs the Phy per-spike files. Skip if they aren't present.
+    spike_times_path = analyzer_path.parent / "spike_times.npy"
+    spike_clusters_path = analyzer_path.parent / "spike_clusters.npy"
+    if not (spike_times_path.exists() and spike_clusters_path.exists()):
+        logger.debug("spike_times.npy / spike_clusters.npy not found next to the analyzer; skipping the "
+                     "spike-train correspondence check.")
+        return
+
+    spike_frames = np.load(spike_times_path).ravel()
+    spike_clusters = np.load(spike_clusters_path).ravel()
+
+    # Group the Phy spike frames by cluster id with a single stable sort (preserves time order within
+    # each cluster), then slice out each cluster's frames.
+    phy_order = np.argsort(spike_clusters, kind="stable")
+    phy_sorted_clusters = spike_clusters[phy_order]
+    phy_sorted_frames = spike_frames[phy_order]
+    unique_cluster_ids, cluster_starts = np.unique(phy_sorted_clusters, return_index=True)
+    cluster_ends = np.append(cluster_starts[1:], len(phy_sorted_clusters))
+    phy_frames_by_cluster = {int(cid): phy_sorted_frames[start:end]
+                             for cid, start, end in zip(unique_cluster_ids, cluster_starts, cluster_ends)}
+
+    # Group the analyzer's own spike frames by unit the same way. to_spike_vector() is cached from the
+    # earlier alignment step, so this is cheap (avoids 100s of per-unit get_unit_spike_train calls).
+    spike_vector = sorting.to_spike_vector()
+    unit_order = np.argsort(spike_vector["unit_index"], kind="stable")
+    sorted_unit_index = spike_vector["unit_index"][unit_order]
+    sorted_unit_frames = spike_vector["sample_index"][unit_order]
+    unit_boundaries = np.searchsorted(sorted_unit_index, np.arange(num_units + 1))
+
+    original_cluster_id = np.asarray(sorting.get_property("original_cluster_id"))
+    n_exact_match = n_mismatch = n_missing = 0
+    for i, cluster_id in enumerate(original_cluster_id):
+        phy_frames = phy_frames_by_cluster.get(int(cluster_id))
+        if phy_frames is None:
+            n_missing += 1  # this unit's cluster isn't in the Phy output (the 'unknown' units)
+            continue
+        unit_frames = sorted_unit_frames[unit_boundaries[i]:unit_boundaries[i + 1]]
+        if len(unit_frames) == len(phy_frames) and np.array_equal(np.sort(unit_frames), np.sort(phy_frames)):
+            n_exact_match += 1
+        else:
+            n_mismatch += 1
+
+    logger.debug(f"phy spike-train check ({num_units} units): {n_exact_match} exact spike-train matches, "
+                 f"{n_mismatch} mismatched, {n_missing} clusters not in the Phy output.")
+    if n_mismatch:
+        logger.warning(f"{n_mismatch} unit(s) matched a Phy cluster id but have DIFFERENT spikes than that "
+                       "cluster - the analyzer's original_cluster_id does not line up with cluster_group.tsv, "
+                       "so phy_group labels may be wrong. Check that the analyzer was built from this Phy output.")
+
+
 def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     """
     Add Kilosort4 + BombCell spike sorting output to the NWB file as a Units table.
 
-    Reads a SpikeInterface SortingAnalyzer (analyzer.zarr) pointed to by
-    metadata["ephys"]["sorting_analyzer_path"]. The analyzer carries the sorting plus per-unit
-    quality metrics, templates, and curation labels (BombCell 'bc_unitType', Kilosort 'KSLabel').
-    We write ALL units (not just 'good' ones), carrying the curation labels as columns so units can
-    be filtered downstream while keeping the NWB self-describing.
+    Expected input (how this data is produced in our pipeline):
+      We spike sort with Kilosort4, classify units automatically with BombCell, and (optionally) curate
+      manually in Phy. The result is saved as a SpikeInterface SortingAnalyzer directory (analyzer.zarr),
+      pointed to by metadata["ephys"]["sorting_analyzer_path"]. From it we read:
+        - the sorting: unit ids, spike trains (sample indices into the raw recording), and per-unit
+          properties - 'bc_unitType' (BombCell class), 'KSLabel' (Kilosort auto label), 'original_cluster_id'
+          (the source Phy/Kilosort cluster id), plus the numeric cluster_info metrics BombCell computed.
+        - the 'quality_metrics' extension (SpikeInterface per-unit metrics).
+        - the 'templates' extension (per-unit average waveform) -> peak-channel waveform + peak_channel_id.
+      Phy's MANUAL curation labels are NOT stored in the analyzer. They live in a 'cluster_group.tsv'
+      file sitting next to analyzer.zarr, mapped to units by original_cluster_id -> 'phy_group'.
+
+    We write ALL units (not just 'good' ones), carrying the labels as columns so units can be filtered
+    downstream while keeping the NWB self-describing. Every piece of enrichment above is OPTIONAL: if the
+    analyzer/pipeline did not produce it, we log a warning and skip that column rather than failing - the
+    only thing always written is spike_times (+ the NWB unit id).
 
     Spike times are sample indices relative to the start of the raw recording. We convert them to
     seconds and shift by the bonsai start time (so bonsai start = time 0, matching the raw ephys
     ElectricalSeries), then align to the ground truth clock (photometry, if present) exactly as the
-    raw ephys timestamps are aligned.
+    raw ephys timestamps are aligned. See aligned_spike_trains_by_unit.
     """
     import spikeinterface as si  # local import; heavy dependency only needed when spikes are present
     from spikeinterface.core import get_template_extremum_channel
@@ -193,94 +285,133 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     num_units = len(unit_ids)
     log_and_print(logger, f"Loaded SortingAnalyzer with {num_units} units at {fs} Hz", level="info")
 
+    # Verify the sorting was actually done on this session's full recording before we do anything with it.
+    # The analyzer retains its recording's total sample count (even though it is recordingless), which
+    # must match the raw ephys we converted for this session. If they differ, the spike sample indices
+    # index a different (or cropped) recording, so aligning them to this session's clock would be silently wrong.
+    # ephys_num_samples is set by add_raw_ephys; if it is absent (no raw ephys this session) 
+    # we can't do this check, so we warn and continue.
+    recording_num_samples = metadata.get("ephys_num_samples")
+    if recording_num_samples is None:
+        logger.warning("No 'ephys_num_samples' in metadata (raw ephys not converted this session?); cannot "
+                       "verify the spike sorting was done on this session's full recording.")
+    else:
+        analyzer_num_samples = analyzer.get_num_samples()
+        if analyzer_num_samples != recording_num_samples:
+            raise ValueError(
+                "Spike sorting does not match the full raw ephys recording for this session! The SortingAnalyzer "
+                f"at {analyzer_path} was computed on a recording of {analyzer_num_samples} samples "
+                f"({analyzer_num_samples / fs:.1f}s), but this session's raw ephys recording has "
+                f"{recording_num_samples} samples ({recording_num_samples / fs:.1f}s). The spike times would "
+                "be aligned to the wrong recording. Check that 'sorting_analyzer_path' points to the sorting "
+                "for this session's 'openephys_folder_path'."
+            )
+        log_and_print(logger, f"Verified spike sorting matches this session's recording "
+                      f"({recording_num_samples} samples).", level="info")
+
     # Align spike times for each unit to the nwb's ground truth clock
     # (make bonsai start time 0 and align to photometry clock if photometry exists)
     aligned_spike_trains = aligned_spike_trains_by_unit(sorting, fs, metadata, logger)
 
-    # Gather per-unit metadata to attach as Units table columns
-    quality_metrics = analyzer.get_extension("quality_metrics").get_data()  # DataFrame indexed by unit_id
-    # Coerce to float so missing values become np.nan (NWB stores floats; some metrics are NA for some units),
-    # then reindex to unit_ids order and pull out numpy columns (much faster than per-unit .loc lookups)
-    quality_metrics = quality_metrics.apply(pd.to_numeric, errors="coerce").astype("float64").reindex(unit_ids)
-    quality_metric_arrays = {metric: quality_metrics[metric].to_numpy() for metric in quality_metrics.columns}
-    templates = analyzer.get_extension("templates").get_data()  # (num_units, num_samples, num_channels)
-    peak_channel_index = get_template_extremum_channel(analyzer, outputs="index")  # unit_id -> channel index
-    channel_ids = analyzer.channel_ids
+    # Gather the per-unit columns to attach. Every piece is OPTIONAL: if the analyzer/pipeline did not
+    # produce it, we warn and skip that column rather than failing the whole conversion. The only thing
+    # we always write is spike_times (+ the NWB unit id). Each entry is column_name -> (description,
+    # values) where values is a sequence in unit_ids order.
+    unit_columns = {}
+    property_keys = set(sorting.get_property_keys())
 
-    # Curation labels straight from the analyzer's sorting properties (complete for all units)
-    bc_unit_type = sorting.get_property("bc_unitType")
-    ks_label = sorting.get_property("KSLabel")
-    original_cluster_id = np.asarray(sorting.get_property("original_cluster_id"))
-
-    # Phy manual curation 'group' lives in cluster_group.tsv next to the analyzer's Phy output.
-    # Map it via original_cluster_id; units without a match (e.g. Phy re-merged clusters) get 'unknown'.
-    phy_group_by_unit = ["unknown"] * num_units
-    phy_group_tsv = analyzer_path.parent / "cluster_group.tsv"
-    if phy_group_tsv.exists():
-        group_df = pd.read_csv(phy_group_tsv, sep="\t")
-        group_lookup = dict(zip(group_df["cluster_id"], group_df["group"]))
-        phy_group_by_unit = [str(group_lookup.get(int(cid), "unknown")) for cid in original_cluster_id]
+    # Curation labels / source cluster id from the sorting properties (each optional)
+    if "original_cluster_id" in property_keys:
+        original_cluster_id = np.asarray(sorting.get_property("original_cluster_id"))
+        unit_columns["original_cluster_id"] = ("Original Kilosort/Phy cluster id this unit corresponds to",
+                                               [int(x) for x in original_cluster_id])
     else:
-        log_and_print(logger, f"No cluster_group.tsv found at {phy_group_tsv}; 'phy_group' set to 'unknown'.",
-                      level="warning")
+        original_cluster_id = None
+        logger.warning("Analyzer sorting has no 'original_cluster_id' property; skipping that column and the "
+                       "'phy_group' labels (phy_group is mapped to units via original_cluster_id).")
+    if "bc_unitType" in property_keys:
+        unit_columns["bc_unitType"] = ("BombCell unit classification (GOOD, MUA, NON-SOMA, NOISE)",
+                                       [str(x) for x in sorting.get_property("bc_unitType")])
+    else:
+        logger.warning("Analyzer sorting has no 'bc_unitType' property; skipping the BombCell classification "
+                       "column. (Was BombCell run and attached to this analyzer?)")
+    if "KSLabel" in property_keys:
+        unit_columns["ks_label"] = ("Kilosort automated label (good or mua)",
+                                    [str(x) for x in sorting.get_property("KSLabel")])
+    else:
+        logger.warning("Analyzer sorting has no 'KSLabel' property; skipping the Kilosort label column.")
 
-    # BombCell/Kilosort per-unit metrics from cluster_info (the metrics BombCell used to classify units:
-    # nPeaks, waveformDuration_peakTrough, signalToNoiseRatio, presenceRatio, etc.). These are carried
-    # straight from the analyzer's sorting properties and complement the SpikeInterface quality_metrics.
-    # Skip the label/id properties we handle explicitly above (KSLabel_repeat is a duplicate of ks_label).
+    # Phy MANUAL curation 'group' lives in cluster_group.tsv next to the analyzer (not in the analyzer
+    # itself). Map it via original_cluster_id; units without a match (e.g. Phy re-merged clusters) get
+    # 'unknown'. Needs original_cluster_id, so skip the whole phy_group column if that property is absent.
+    if original_cluster_id is not None:
+        phy_group_by_unit = ["unknown"] * num_units
+        phy_group_tsv = analyzer_path.parent / "cluster_group.tsv"
+        if phy_group_tsv.exists():
+            group_df = pd.read_csv(phy_group_tsv, sep="\t")
+            group_lookup = dict(zip(group_df["cluster_id"], group_df["group"]))
+            phy_group_by_unit = [str(group_lookup.get(int(cid), "unknown")) for cid in original_cluster_id]
+        else:
+            log_and_print(logger, f"No cluster_group.tsv found at {phy_group_tsv}; 'phy_group' set to 'unknown'.",
+                          level="warning")
+        unit_columns["phy_group"] = ("Phy manual curation group (good, mua, noise, or unknown if unlabeled)",
+                                     phy_group_by_unit)
+        # Sanity-check (logs at DEBUG) that the analyzer's units actually correspond to the Phy curation
+        # we just labeled them from - catches an analyzer out of sync with the final Phy curation.
+        verify_analyzer_phy_correspondence(sorting, analyzer_path, phy_group_by_unit, logger)
+
+    # SpikeInterface quality metrics (optional 'quality_metrics' extension). Coerce to float so missing
+    # values become np.nan (NWB stores floats; some metrics are NA for some units), and reindex to
+    # unit_ids order (its index is assumed to be the unit ids).
+    if analyzer.has_extension("quality_metrics"):
+        quality_metrics = analyzer.get_extension("quality_metrics").get_data()
+        quality_metrics = quality_metrics.apply(pd.to_numeric, errors="coerce").astype("float64").reindex(unit_ids)
+        for metric in quality_metrics.columns:
+            unit_columns[metric] = (f"SpikeInterface quality metric: {metric}", quality_metrics[metric].to_numpy())
+    else:
+        logger.warning("Analyzer has no 'quality_metrics' extension; skipping SpikeInterface quality metric "
+                       "columns. (Was compute('quality_metrics') run on this analyzer?)")
+
+    # BombCell/Kilosort per-unit metrics carried from the remaining (numeric) sorting properties (nPeaks,
+    # waveformDuration_peakTrough, signalToNoiseRatio, presenceRatio, etc.). These complement the
+    # SpikeInterface quality_metrics. Skip the label/id properties handled above (KSLabel_repeat is a
+    # duplicate of ks_label). Iterate the ordered property list (not the set) for deterministic column order.
     handled_props = {"bc_unitType", "KSLabel", "KSLabel_repeat", "original_cluster_id"}
-    cluster_info_metric_arrays = {
-        prop: pd.to_numeric(pd.Series(sorting.get_property(prop)), errors="coerce").to_numpy(dtype="float64")
-        for prop in sorting.get_property_keys() if prop not in handled_props
-    }
+    for prop in sorting.get_property_keys():
+        if prop in handled_props:
+            continue
+        # We only turn 1-D, scalar-per-unit properties into metric columns. Skip anything multi-dimensional
+        # (e.g. a (num_units, 3) unit_locations property), which isn't a single per-unit metric value.
+        prop_values = np.asarray(sorting.get_property(prop))
+        if prop_values.ndim != 1:
+            logger.debug(f"Skipping sorting property '{prop}' as a metric column: it is not scalar-per-unit "
+                         f"(shape {prop_values.shape}).")
+            continue
+        values = pd.to_numeric(pd.Series(prop_values), errors="coerce").to_numpy(dtype="float64")
+        unit_columns[prop] = (f"BombCell/Kilosort per-unit metric (from cluster_info): {prop}", values)
 
-    # Define the Units table columns
-    nwbfile.add_unit_column(name="original_cluster_id",
-                            description="Original Kilosort/Phy cluster id this unit corresponds to")
-    nwbfile.add_unit_column(name="bc_unitType",
-                            description="BombCell unit classification (GOOD, MUA, NON-SOMA, NOISE)")
-    nwbfile.add_unit_column(name="ks_label",
-                            description="Kilosort automated label (good or mua)")
-    nwbfile.add_unit_column(name="phy_group",
-                            description="Phy manual curation group (good, mua, noise, or unknown if unlabeled)")
-    nwbfile.add_unit_column(name="peak_channel_id",
-                            description="Recording channel id with the largest-amplitude template for this unit")
-    # Add columns for SpikeInterface quality metrics
-    quality_metric_columns = list(quality_metric_arrays.keys())
-    for metric in quality_metric_columns:
-        nwbfile.add_unit_column(name=metric, 
-                                description=f"SpikeInterface quality metric: {metric}")
-    # Add columns for BombCell/Kilosort metrics
-    cluster_info_metric_columns = list(cluster_info_metric_arrays.keys())
-    for metric in cluster_info_metric_columns:
-        nwbfile.add_unit_column(name=metric, 
-                                description=f"BombCell/Kilosort per-unit metric (from cluster_info): {metric}")
+    # Peak-channel waveform + channel id (optional 'templates' extension)
+    if analyzer.has_extension("templates"):
+        templates = analyzer.get_extension("templates").get_data()  # (num_units, num_samples, num_channels)
+        peak_channel_index = get_template_extremum_channel(analyzer, outputs="index")  # unit_id -> channel index
+        channel_ids = analyzer.channel_ids
+        unit_columns["peak_channel_id"] = ("Recording channel id with the largest-amplitude template for this unit",
+                                           [str(channel_ids[peak_channel_index[uid]]) for uid in unit_ids])
+    else:
+        templates = None
+        logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_channel_id'. "
+                       "(Was compute('templates') run on this analyzer?)")
 
-    # Add each unit
+    # Register all the present columns, then add each unit
+    for name, (description, _values) in unit_columns.items():
+        nwbfile.add_unit_column(name=name, description=description)
+
     for i, unit_id in enumerate(unit_ids):
-        spike_times = aligned_spike_trains[i]
-
-        # Waveform mean on the unit's peak channel (1D over samples)
-        peak_idx = peak_channel_index[unit_id]
-        waveform_mean = templates[i, :, peak_idx].astype("float64")
-
-        per_unit_metric_values = {
-            metric: float(quality_metric_arrays[metric][i]) for metric in quality_metric_columns
-        }
-        per_unit_metric_values.update(
-            {metric: float(cluster_info_metric_arrays[metric][i]) for metric in cluster_info_metric_columns}
-        )
-
-        nwbfile.add_unit(
-            id=int(unit_id),
-            spike_times=spike_times,
-            waveform_mean=waveform_mean,
-            original_cluster_id=int(original_cluster_id[i]),
-            bc_unitType=str(bc_unit_type[i]),
-            ks_label=str(ks_label[i]),
-            phy_group=phy_group_by_unit[i],
-            peak_channel_id=str(channel_ids[peak_idx]),
-            **per_unit_metric_values,
-        )
+        add_unit_kwargs = {name: values[i] for name, (_description, values) in unit_columns.items()}
+        if templates is not None:
+            # Waveform mean on the unit's peak channel (1D over samples)
+            peak_idx = peak_channel_index[unit_id]
+            add_unit_kwargs["waveform_mean"] = templates[i, :, peak_idx].astype("float64")
+        nwbfile.add_unit(id=int(unit_id), spike_times=aligned_spike_trains[i], **add_unit_kwargs)
 
     log_and_print(logger, f"Added {num_units} units to the NWB Units table.", level="info")
