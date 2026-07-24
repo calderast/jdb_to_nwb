@@ -155,6 +155,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
     metadata["ephys_visit_times"] = ephys_data_dict.get("port_visits")
     ephys_start = ephys_data_dict.get('ephys_start')
+    # bonsai start time (seconds after ephys started) is used to align spike sorting output to the
+    # same clock as the raw ephys (bonsai start = time 0). None if there was no raw ephys.
+    metadata["ephys_bonsai_start_time"] = ephys_data_dict.get("bonsai_start_time")
 
     # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)

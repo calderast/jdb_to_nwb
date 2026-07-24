@@ -192,9 +192,10 @@ def main():
 
     # These paths are relative to the base remote directory
     remote_dirs_to_download = [
-        "IM-1478/07252022",
-        "IM-1770_corvette/11062024",
-        "IM-1947/20260422",
+        "IM-1478/07252022", # old Tim session
+        "IM-1770_corvette/11062024", # Jose session
+        "IM-1947/20260422", # Yang-Sun session
+        "IM-1971/20260619", # Jifu's Neuropixels recording and Kilosort4 + BombCell spike sorting (analyzer.zarr)
         "reference/1c415f98146fea2f0f9e2d9bf39c442569048fa3",
     ]
 

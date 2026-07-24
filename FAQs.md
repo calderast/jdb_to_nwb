@@ -167,11 +167,26 @@ If your session included electrophysiology, add an `ephys` field to your metadat
 - `impedance_file_path`: path to the impedance CSV. This is a required field for Berke Lab probes (it's used to tag bad channels based on impedance). Optional related fields: `plug_order` (to use the correct channel map if you plugged the cables in the non-default way) and `min_impedance_ohms` / `max_impedance_ohms` (to change the bad-channel impedance cutoffs). See the "non-default processing" section for more info on these.
 
 ### What about spike sorting?
-If you have spike sorting output, you can specify `mountain_sort_output_file_path` and `sampling_frequency`. Let me know if you have issues with this - we have stopped adding sorting output to the NWB files, so while this option technically exists, I don't recommend using it. The code may be out of date because neuroconv keeps updating things and I haven't looked at it in a while (see [Github issue #185](https://github.com/calderast/jdb_to_nwb/issues/185), we currently just pin an older neuroconv version). Also note that spike sorting output won't be perfectly aligned to the other datastreams because the port visit sync pulses are not preserved (another reason I don't recommend using this). Instead, we do all of our spike sorting and decoding in spyglass.
+If you have spike sorting output, the pipeline can add the sorted units to the NWB as a Units table, with spike times aligned to the same clock as the rest of the file. We currently support 2 types of spike sorting output:
+
+- **Kilosort4 + BombCell (Jifu):** `sorting_analyzer_path`, pointing to the SpikeInterface SortingAnalyzer directory (`analyzer.zarr`). All units are written, along with curation labels (BombCell `bc_unitType`, Kilosort `ks_label`, Phy `phy_group`), per-unit quality metrics, and a peak-channel waveform as Units table columns.
+- **MountainSort (legacy/Tim):** `mountain_sort_output_file_path` (a `firings.mda`) plus `sampling_frequency`. Only spike times and unit ids are written, since the `.mda` itself holds no metrics.
+
+Note that usually, we prefer to do spike sorting and decoding in Spyglass instead of adding units to the NWB. This is a convenience so we can still use old sorting or outputs of hard-earned manual curation. 
+
+**Note on the `neuroconv` version pin:** the MountainSort path reads the `.mda` through neuroconv's `MdaSortingInterface`, which breaks with newer neuroconv (the base interface class became abstract, see [Github issue #185](https://github.com/calderast/jdb_to_nwb/issues/185)). We currently pin an older neuroconv (`neuroconv == 0.8.2`) so this keeps working - you don't need to do anything, just don't upgrade neuroconv past the pin. This only affects the MountainSort path (the Kilosort/BombCell path doesn't use neuroconv for sorting).
+
+### How are spike times aligned to the rest of the NWB?
+A sorter reports each spike as a sample index into the raw recording. We put those spikes onto the same clock as every other data stream in the NWB using the exact same two steps applied to the raw ephys timestamps (so spikes and raw ephys line up):
+
+1. **Bonsai shift:** convert sample indices to seconds and subtract the bonsai start time, so the bonsai start becomes time 0.
+2. **Ground truth alignment:** if photometry was recorded, interpolate the spike times onto the photometry clock using the port-visit pulses that both streams recorded as shared sync points. If there was no photometry, ephys is the ground truth and no interpolation is needed.
+
+This should work, but I haven't exhaustively tested it yet!! Because both steps rely on information from the raw ephys conversion (the bonsai start time and the ephys port visits), you need to convert the raw ephys for the session too*. If you provide spike sorting without raw ephys, the units are still written but their spike times will not be shifted/interpolated (you'll see a warning in the logs).
 
 ### (Windows) I got `OSError: [WinError 1455] The paging file is too small for this operation to complete`. What do I do?
 
-This shows up on Windows during ephys conversion and appears to be a system memory / page-file issue. Sadly the fix here is just to restart your computer and re-run the conversion, ideally with other memory-heavy programs closed.
+This shows up on Windows during ephys conversion and appears to be a system memory / page-file issue. Sadly the fix here is just to restart your computer and re-run the conversion, ideally with other memory-heavy programs closed. Feel free to add a comment on [Github issue #118](https://github.com/calderast/jdb_to_nwb/issues/118) if this happens so I can get a sense of the frequency of it and look into fixing things if it's really a blocker.
 
 
 ---
