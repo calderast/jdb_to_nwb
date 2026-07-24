@@ -117,6 +117,9 @@ def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: d
 
     # to_spike_vector() returns every spike as ('sample_index', 'unit_index'), sorted by time
     spike_vector = sorting.to_spike_vector()
+    logger.debug(f"Aligning: {len(spike_vector)} spikes | raw sample_index range "
+                 f"[{int(spike_vector['sample_index'].min())}, {int(spike_vector['sample_index'].max())}] "
+                 f"| bonsai shift = -{bonsai_start_time}s @ {sampling_frequency} Hz")
     # Convert all spikes to seconds and apply the shift so bonsai start is time 0
     all_spike_times_s = spike_vector["sample_index"] / sampling_frequency - bonsai_start_time
 
@@ -198,6 +201,8 @@ def verify_analyzer_phy_correspondence(sorting, analyzer_path: Path, phy_group_b
     # Deeper spike-train check needs the Phy per-spike files. Skip if they aren't present.
     spike_times_path = analyzer_path.parent / "spike_times.npy"
     spike_clusters_path = analyzer_path.parent / "spike_clusters.npy"
+    logger.debug(f"Looking for Phy per-spike files next to the analyzer: {spike_times_path} "
+                 f"(exists={spike_times_path.exists()}), {spike_clusters_path} (exists={spike_clusters_path.exists()})")
     if not (spike_times_path.exists() and spike_clusters_path.exists()):
         logger.debug("spike_times.npy / spike_clusters.npy not found next to the analyzer; skipping the "
                      "spike-train correspondence check.")
@@ -205,6 +210,8 @@ def verify_analyzer_phy_correspondence(sorting, analyzer_path: Path, phy_group_b
 
     spike_frames = np.load(spike_times_path).ravel()
     spike_clusters = np.load(spike_clusters_path).ravel()
+    logger.debug(f"Loaded spike_times.npy {spike_frames.shape} + spike_clusters.npy "
+                 f"{spike_clusters.shape}; {len(np.unique(spike_clusters))} distinct Phy clusters")
 
     # Group the Phy spike frames by cluster id with a single stable sort (preserves time order within
     # each cluster), then slice out each cluster's frames.
@@ -276,7 +283,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
 
     log_and_print(logger, "Adding Kilosort4 spikes...", level="info")
     analyzer_path = Path(metadata["ephys"]["sorting_analyzer_path"])
-    logger.info(f"Found Kilosort/BombCell spikes from SortingAnalyzer at {analyzer_path}")
+    logger.debug(f"Found Kilosort/BombCell spikes from SortingAnalyzer at {analyzer_path}")
 
     analyzer = si.load_sorting_analyzer(analyzer_path)
     sorting = analyzer.sorting
@@ -284,6 +291,15 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     unit_ids = sorting.unit_ids
     num_units = len(unit_ids)
     log_and_print(logger, f"Loaded SortingAnalyzer with {num_units} units at {fs} Hz", level="info")
+
+    # Log what we found in the analyzer
+    logger.debug(f"unit_ids dtype={unit_ids.dtype}, unit id range {unit_ids.min()}..{unit_ids.max()}")
+    logger.debug(f"{len(analyzer.channel_ids)} channels | channel_ids[:8]={list(analyzer.channel_ids[:8])}"
+                 f"{' ...' if len(analyzer.channel_ids) > 8 else ''}")
+    saved_extensions = analyzer.get_saved_extension_names()
+    logger.debug(f"Saved extensions ({len(saved_extensions)}): {saved_extensions}")
+    logger.debug(f"Sorting property keys ({len(sorting.get_property_keys())}): "
+                 f"{list(sorting.get_property_keys())}")
 
     # Verify the sorting was actually done on this session's full recording before we do anything with it.
     # The analyzer retains its recording's total sample count (even though it is recordingless), which
@@ -297,6 +313,8 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
                        "verify the spike sorting was done on this session's full recording.")
     else:
         analyzer_num_samples = analyzer.get_num_samples()
+        logger.debug(f"analyzer={analyzer_num_samples} samples vs full raw ephys={recording_num_samples} samples "
+                     f"(diff={analyzer_num_samples - recording_num_samples})")
         if analyzer_num_samples != recording_num_samples:
             raise ValueError(
                 "Spike sorting does not match the full raw ephys recording for this session! The SortingAnalyzer "
@@ -312,6 +330,17 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     # Align spike times for each unit to the nwb's ground truth clock
     # (make bonsai start time 0 and align to photometry clock if photometry exists)
     aligned_spike_trains = aligned_spike_trains_by_unit(sorting, fs, metadata, logger)
+
+    # Spike-train stats after alignment
+    spike_counts = [len(train) for train in aligned_spike_trains]
+    total_spikes = sum(spike_counts)
+    logger.debug(f"Found {total_spikes} total spikes across {num_units} units")
+    logger.debug("Per-unit spike count min/median/max = "
+                 f"{min(spike_counts)}/{int(np.median(spike_counts))}/{max(spike_counts)}")
+    nonempty = [train for train in aligned_spike_trains if len(train)]
+    if nonempty:
+        logger.debug(f"Aligned spike time range across units: "
+                     f"[{min(train[0] for train in nonempty):.3f}, {max(train[-1] for train in nonempty):.3f}] s")
 
     # Gather the per-unit columns to attach. Every piece is OPTIONAL: if the analyzer/pipeline did not
     # produce it, we warn and skip that column rather than failing the whole conversion. The only thing
@@ -332,12 +361,14 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     if "bc_unitType" in property_keys:
         unit_columns["bc_unitType"] = ("BombCell unit classification (GOOD, MUA, NON-SOMA, NOISE)",
                                        [str(x) for x in sorting.get_property("bc_unitType")])
+        logger.debug(f"bc_unitType distribution: {pd.Series(unit_columns['bc_unitType'][1]).value_counts().to_dict()}")
     else:
         logger.warning("Analyzer sorting has no 'bc_unitType' property; skipping the BombCell classification "
                        "column. (Was BombCell run and attached to this analyzer?)")
     if "KSLabel" in property_keys:
         unit_columns["ks_label"] = ("Kilosort automated label (good or mua)",
                                     [str(x) for x in sorting.get_property("KSLabel")])
+        logger.debug(f"ks_label distribution: {pd.Series(unit_columns['ks_label'][1]).value_counts().to_dict()}")
     else:
         logger.warning("Analyzer sorting has no 'KSLabel' property; skipping the Kilosort label column.")
 
@@ -347,10 +378,15 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     if original_cluster_id is not None:
         phy_group_by_unit = ["unknown"] * num_units
         phy_group_tsv = analyzer_path.parent / "cluster_group.tsv"
+        logger.debug(f"Looking for Phy manual curation at {phy_group_tsv} (exists={phy_group_tsv.exists()})")
         if phy_group_tsv.exists():
             group_df = pd.read_csv(phy_group_tsv, sep="\t")
             group_lookup = dict(zip(group_df["cluster_id"], group_df["group"]))
+            logger.debug(f"cluster_group.tsv: {len(group_df)} rows | cluster_id range "
+                         f"{group_df['cluster_id'].min()}..{group_df['cluster_id'].max()} | "
+                         f"group value counts {group_df['group'].value_counts().to_dict()}")
             phy_group_by_unit = [str(group_lookup.get(int(cid), "unknown")) for cid in original_cluster_id]
+            logger.debug(f"Phy group mapped onto units: {pd.Series(phy_group_by_unit).value_counts().to_dict()}")
         else:
             log_and_print(logger, f"No cluster_group.tsv found at {phy_group_tsv}; 'phy_group' set to 'unknown'.",
                           level="warning")
@@ -366,6 +402,8 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     if analyzer.has_extension("quality_metrics"):
         quality_metrics = analyzer.get_extension("quality_metrics").get_data()
         quality_metrics = quality_metrics.apply(pd.to_numeric, errors="coerce").astype("float64").reindex(unit_ids)
+        logger.debug(f"Found {len(quality_metrics.columns)} SpikeInterface metrics: "
+                     f"{list(quality_metrics.columns)}")
         for metric in quality_metrics.columns:
             unit_columns[metric] = (f"SpikeInterface quality metric: {metric}", quality_metrics[metric].to_numpy())
     else:
@@ -377,6 +415,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     # SpikeInterface quality_metrics. Skip the label/id properties handled above (KSLabel_repeat is a
     # duplicate of ks_label). Iterate the ordered property list (not the set) for deterministic column order.
     handled_props = {"bc_unitType", "KSLabel", "KSLabel_repeat", "original_cluster_id"}
+    cluster_info_added, cluster_info_skipped = [], []
     for prop in sorting.get_property_keys():
         if prop in handled_props:
             continue
@@ -384,11 +423,16 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
         # (e.g. a (num_units, 3) unit_locations property), which isn't a single per-unit metric value.
         prop_values = np.asarray(sorting.get_property(prop))
         if prop_values.ndim != 1:
-            logger.debug(f"Skipping sorting property '{prop}' as a metric column: it is not scalar-per-unit "
+            logger.debug(f"Skipping property '{prop}' as a metric column: not scalar-per-unit "
                          f"(shape {prop_values.shape}).")
+            cluster_info_skipped.append(prop)
             continue
         values = pd.to_numeric(pd.Series(prop_values), errors="coerce").to_numpy(dtype="float64")
         unit_columns[prop] = (f"BombCell/Kilosort per-unit metric (from cluster_info): {prop}", values)
+        cluster_info_added.append(prop)
+    logger.debug(f"Added {len(cluster_info_added)} BombCell/Kilosort metric columns: {cluster_info_added}")
+    if cluster_info_skipped:
+        logger.debug(f"Skipped {len(cluster_info_skipped)} non-scalar properties: {cluster_info_skipped}")
 
     # Peak-channel waveform + channel id (optional 'templates' extension)
     if analyzer.has_extension("templates"):
@@ -397,12 +441,18 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
         channel_ids = analyzer.channel_ids
         unit_columns["peak_channel_id"] = ("Recording channel id with the largest-amplitude template for this unit",
                                            [str(channel_ids[peak_channel_index[uid]]) for uid in unit_ids])
+        peak_idxs = [int(peak_channel_index[uid]) for uid in unit_ids]
+        logger.debug(f"Templates extension shape {templates.shape} (units, samples, channels); peak channel "
+                     f"index range {min(peak_idxs)}..{max(peak_idxs)} across {len(set(peak_idxs))} distinct channels")
     else:
         templates = None
         logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_channel_id'. "
                        "(Was compute('templates') run on this analyzer?)")
 
     # Register all the present columns, then add each unit
+    all_column_names = list(unit_columns.keys()) + (["waveform_mean"] if templates is not None else [])
+    logger.debug(f"Writing {len(all_column_names)} metadata columns (+ spike_times) to nwb units table: "
+                 f"{all_column_names}")
     for name, (description, _values) in unit_columns.items():
         nwbfile.add_unit_column(name=name, description=description)
 
@@ -414,4 +464,5 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
             add_unit_kwargs["waveform_mean"] = templates[i, :, peak_idx].astype("float64")
         nwbfile.add_unit(id=int(unit_id), spike_times=aligned_spike_trains[i], **add_unit_kwargs)
 
-    log_and_print(logger, f"Added {num_units} units to the NWB Units table.", level="info")
+    log_and_print(logger, f"Added {num_units} units to the NWB Units table "
+                  f"({len(all_column_names)} metadata columns + spike_times).", level="info")

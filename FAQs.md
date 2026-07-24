@@ -187,7 +187,7 @@ This should work, but I haven't exhaustively tested it yet!! Because both steps 
 
 ### I did splits/merges in Phy, so the number of units differs between `analyzer.zarr` and `cluster_group.tsv`. Will that cause problems? (Kilosort/BombCell)
 
-Tthe pipeline handles this and now checks for it. Here's what's going on and what to expect.
+The pipeline handles this! Here's what's going on and what to expect.
 
 When you split/merge in Phy, the merged clusters get brand-new ids (counting up past the current max) and their old ids disappear from `cluster_group.tsv`. So if you built the `analyzer.zarr` before doing that curation, the analyzer and the curated `.tsv` end up describing related-but-not-identical cluster sets (e.g. for IM-1971 20260619, 888 units in the analyzer vs 900 clusters in the `.tsv`).
 
