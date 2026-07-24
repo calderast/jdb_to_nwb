@@ -68,9 +68,17 @@ ephys:
   port_visits_adc_channel: 2 # ADC for port visits. Defaults to 2 (ADC0 is a 1Hz sync, ADC1 is reserved for optotagging)
   port_visits_threshold_volts: 4.0 # Volts above which the port visit channel is "high". Defaults to 4.0
 
-  # If you have spike sorting data, specify the following ephys subfields:
-  mountain_sort_output_file_path: "path/to/firings.mda"
-  sampling_frequency: 30000
+  # If you have spike sorting output, specify one of the two options below.
+  #
+  # OPTION 1: Kilosort4 + BombCell output, saved as a SpikeInterface SortingAnalyzer (an
+  # analyzer.zarr directory). ALL units are written, with curation labels (BombCell bc_unitType, Kilosort
+  # ks_label, Phy phy_group), per-unit quality metrics, and a peak-channel waveform as Units table columns.
+  sorting_analyzer_path: "path/to/analyzer.zarr"
+  #
+  # OPTION 2 (legacy): MountainSort output (a firings.mda file). Also requires sampling_frequency.
+  # Only spike times and unit ids are written (the .mda itself holds no metrics).
+  # mountain_sort_output_file_path: "path/to/firings.mda"
+  # sampling_frequency: 30000
 
   # Berke Lab uses one of 4 custom silicon probes (or Neuropixels) for the hex maze task, specified below.
   # Un-comment the single probe used for your experiment (currently only one probe is supported per session).
