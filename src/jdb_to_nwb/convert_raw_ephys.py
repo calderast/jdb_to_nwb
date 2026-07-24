@@ -1674,4 +1674,11 @@ def add_raw_ephys(
     )
 
     log_and_print(logger, "Finished adding raw ephys to the nwb.", level="info")
-    return {"ephys_start": open_ephys_start, "port_visits": ephys_visit_times}
+    return {
+        "ephys_start": open_ephys_start,
+        "port_visits": ephys_visit_times,
+        # bonsai_start_time (seconds) and probe sample rate let downstream spike sorting align
+        # its sample-indexed spike times to the same "bonsai start = time 0" clock used here
+        "bonsai_start_time": bonsai_start_time,
+        "sample_rate": probe_sample_rate,
+    }
