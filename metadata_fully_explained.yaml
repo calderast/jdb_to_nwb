@@ -73,6 +73,7 @@ ephys:
   # OPTION 1: Kilosort4 + BombCell output, saved as a SpikeInterface SortingAnalyzer (an
   # analyzer.zarr directory). ALL units are written, with curation labels (BombCell bc_unitType, Kilosort
   # ks_label, Phy phy_group), per-unit quality metrics, and a peak-channel waveform as Units table columns.
+  # This pipeline also looks for the output of manual curation (e.g. cluster_groups.tsv) next to the analyzer.zarr
   sorting_analyzer_path: "path/to/analyzer.zarr"
   #
   # OPTION 2 (legacy): MountainSort output (a firings.mda file). Also requires sampling_frequency.

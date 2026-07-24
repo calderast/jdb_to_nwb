@@ -1674,6 +1674,10 @@ def add_raw_ephys(
     )
 
     log_and_print(logger, "Finished adding raw ephys to the nwb.", level="info")
+    # Total number of samples in the FULL (untrimmed) probe recording. num_samples is the count after
+    # trimming samples_to_remove off the front, so the full recording length is num_samples + samples_to_remove.
+    # Spike sorting uses this to confirm its analyzer was computed on this same recording (matching length).
+    full_recording_num_samples = int(num_samples) + int(samples_to_remove)
     return {
         "ephys_start": open_ephys_start,
         "port_visits": ephys_visit_times,
@@ -1681,4 +1685,5 @@ def add_raw_ephys(
         # its sample-indexed spike times to the same "bonsai start = time 0" clock used here
         "bonsai_start_time": bonsai_start_time,
         "sample_rate": probe_sample_rate,
+        "num_samples": full_recording_num_samples,
     }

@@ -158,6 +158,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # bonsai start time (seconds after ephys started) is used to align spike sorting output to the
     # same clock as the raw ephys (bonsai start = time 0). None if there was no raw ephys.
     metadata["ephys_bonsai_start_time"] = ephys_data_dict.get("bonsai_start_time")
+    # Total samples in the full raw recording, used to verify spike sorting was done on the full recording.
+    metadata["ephys_num_samples"] = ephys_data_dict.get("num_samples")
 
     # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)

@@ -169,7 +169,7 @@ If your session included electrophysiology, add an `ephys` field to your metadat
 ### What about spike sorting?
 If you have spike sorting output, the pipeline can add the sorted units to the NWB as a Units table, with spike times aligned to the same clock as the rest of the file. We currently support 2 types of spike sorting output:
 
-- **Kilosort4 + BombCell (Jifu):** `sorting_analyzer_path`, pointing to the SpikeInterface SortingAnalyzer directory (`analyzer.zarr`). All units are written, along with curation labels (BombCell `bc_unitType`, Kilosort `ks_label`, Phy `phy_group`), per-unit quality metrics, and a peak-channel waveform as Units table columns.
+- **Kilosort4 + BombCell (Jifu):** `sorting_analyzer_path`, pointing to the SpikeInterface SortingAnalyzer directory (`analyzer.zarr`). All units are written, along with curation labels (BombCell `bc_unitType`, Kilosort `ks_label`, Phy `phy_group`), per-unit quality metrics, and a peak-channel waveform as Units table columns. This assumes manual curation output (Phy `cluster_group.tsv`) lives next to the `analyzer.zarr`.
 - **MountainSort (legacy/Tim):** `mountain_sort_output_file_path` (a `firings.mda`) plus `sampling_frequency`. Only spike times and unit ids are written, since the `.mda` itself holds no metrics.
 
 Note that usually, we prefer to do spike sorting and decoding in Spyglass instead of adding units to the NWB. This is a convenience so we can still use old sorting or outputs of hard-earned manual curation. 
@@ -183,6 +183,20 @@ A sorter reports each spike as a sample index into the raw recording. We put tho
 2. **Ground truth alignment:** if photometry was recorded, interpolate the spike times onto the photometry clock using the port-visit pulses that both streams recorded as shared sync points. If there was no photometry, ephys is the ground truth and no interpolation is needed.
 
 This should work, but I haven't exhaustively tested it yet!! Because both steps rely on information from the raw ephys conversion (the bonsai start time and the ephys port visits), you need to convert the raw ephys for the session too*. If you provide spike sorting without raw ephys, the units are still written but their spike times will not be shifted/interpolated (you'll see a warning in the logs).
+
+
+### I did splits/merges in Phy, so the number of units differs between `analyzer.zarr` and `cluster_group.tsv`. Will that cause problems? (Kilosort/BombCell)
+
+The pipeline handles this! Here's what's going on and what to expect.
+
+When you split/merge in Phy, the merged clusters get brand-new ids (counting up past the current max) and their old ids disappear from `cluster_group.tsv`. So if you built the `analyzer.zarr` before doing that curation, the analyzer and the curated `.tsv` end up describing related-but-not-identical cluster sets (e.g. for IM-1971 20260619, 888 units in the analyzer vs 900 clusters in the `.tsv`).
+
+We attach the Phy manual label (`phy_group`) to each unit by looking up its `original_cluster_id` in `cluster_group.tsv`:
+- Units whose `original_cluster_id` still exists in the `.tsv` get the correct label. (We even double-check this is a real match: for matched units, we make sure the analyzer unit's spike train is byte-for-byte identical to the Phy cluster it points to.)
+- Units whose cluster was merged/split away no longer exist in the `.tsv`, so they get `phy_group = 'unknown'`. They're still written to the NWB - only their manual label is `'unknown'`.
+
+Every conversion logs how many units couldn't be matched (at INFO, so you'll see it), plus a more detailed correspondence check at DEBUG. If `spike_times.npy` and `spike_clusters.npy` are sitting next to the analyzer, that check also verifies the matched units byte-for-byte and warns loudly if anything is actually mismatched (as opposed to just `'unknown'`).
+
 
 ### (Windows) I got `OSError: [WinError 1455] The paging file is too small for this operation to complete`. What do I do?
 
