@@ -1209,6 +1209,12 @@ def add_electrode_data_neuropixels(
     file, so we don't mark bad channels here (all channels are treated as good). We create one
     ElectrodeGroup per shank that has recording sites, and add one electrode per recording channel.
 
+    We register the FULL probe geometry (all 5120 sites) on the Probe's Shank/ShanksElectrode objects,
+    even though only 384 are recorded this session. Spyglass builds Probe.Electrode from these under a
+    single shared probe_id, so if we only registered this session's 384 sites, a later session recording
+    a different 384-subset would fail the Electrode -> Probe.Electrode foreign key. The electrodes table
+    itself still gets ONLY the 384 recorded channels. Non-recorded sites live only on the Probe object.
+
     Parameters:
         nwbfile (NWBFile):
             The NWB file being assembled.
@@ -1245,11 +1251,11 @@ def add_electrode_data_neuropixels(
     targeted_z = metadata["ephys"].get("targeted_z")
     logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
 
-    # Make an ElectrodeGroup and a Shank for each shank that actually has recording sites.
-    # NOTE: we group one ElectrodeGroup per shank (mirrors the Berke probe per-shank structure). 
+    # Make an ElectrodeGroup for each shank that actually has recording sites. Only recorded electrodes
+    # reference an ElectrodeGroup; non-recorded sites live only on the Probe geometry (registered below).
+    # NOTE: we group one ElectrodeGroup per shank (mirrors the Berke probe per-shank structure).
     # We might later change to an electrode group per contiguous y block.
     electrode_groups_by_shank = {}
-    shanks_by_shank = {}
     for shank_index in sorted(channel_info["shank"].unique()):
         electrode_group = NwbElectrodeGroup(
             name=str(shank_index),
@@ -1264,8 +1270,29 @@ def add_electrode_data_neuropixels(
         )
         nwbfile.add_electrode_group(electrode_group)
         electrode_groups_by_shank[shank_index] = electrode_group
-        shanks_by_shank[shank_index] = Shank(name=str(shank_index))
-        logger.debug(f"Adding shank {shank_index}")
+        logger.debug(f"Adding electrode group for shank {shank_index}")
+
+    # Register the FULL probe geometry (all 5120 sites), not just this session's 384 recorded channels,
+    # on the Probe's Shank / ShanksElectrode objects (see docstring).
+    # ShanksElectrode.name is the GLOBAL electrode index (0..5119), matching probe_electrode on the
+    # electrodes table so Spyglass's Electrode -> Probe.Electrode join holds for every possible channel map.
+    all_probe_sites = pd.read_csv(ELECTRODE_COORDS_PATH_NPX_MULTISHANK)
+    for shank_index in sorted(all_probe_sites["shank"].unique()):
+        shank = Shank(name=str(shank_index))
+        shank_sites = all_probe_sites[all_probe_sites["shank"] == shank_index].sort_values("electrode")
+        for _, site in shank_sites.iterrows():
+            shank.add_shanks_electrode(
+                ShanksElectrode(
+                    name=str(int(site["electrode"])),  # GLOBAL index (0..5119), matches probe_electrode
+                    rel_x=float(site["x_um"]),
+                    rel_y=float(site["y_um"]),
+                    rel_z=0.0,
+                )
+            )
+        probe_obj.add_shank(shank)
+    logger.info(f"Registered full Neuropixels probe geometry on the Probe: {len(all_probe_sites)} sites "
+                f"across {all_probe_sites['shank'].nunique()} shanks "
+                f"({len(channel_info)} of them recorded this session).")
 
     # Add the electrode data columns (mirrors the Berke table, minus the impedance columns)
     nwbfile.add_electrode_column(
@@ -1309,22 +1336,14 @@ def add_electrode_data_neuropixels(
         description="The index of the reference electrode in this table. -1 if not set. Used by Spyglass.",
     )
 
-    # Add electrodes in channel_num order (0..383) so the electrode table row -> raw data row mapping
-    # (built downstream from intan_channel_number) is correct
+    # Add the electrodes table rows for ONLY the 384 recorded channels (the full probe geometry, including
+    # non-recorded sites, was already registered on the Probe above). Add them in channel_num order (0..383)
+    # so the electrode table row -> raw data row mapping (built downstream from intan_channel_number) is correct.
     for _, row in channel_info.sort_values("channel_num").iterrows():
         shank_index = int(row["shank"])
         electrode_index = int(row["electrode"])
         local_electrode = electrode_index % NPX_ELECTRODES_PER_SHANK
 
-        # Follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode (for Spyglass consistency)
-        shanks_by_shank[shank_index].add_shanks_electrode(
-            ShanksElectrode(
-                name=str(local_electrode),
-                rel_x=float(row["x_um"]),
-                rel_y=float(row["y_um"]),
-                rel_z=0.0,
-            )
-        )
         nwbfile.add_electrode(
             electrode_name=f"S{shank_index:02d}E{local_electrode}",
             intan_channel_number=int(row["channel_num"]),
@@ -1335,16 +1354,12 @@ def add_electrode_data_neuropixels(
             group=electrode_groups_by_shank[shank_index],
             location=electrodes_location,  # same for all electrodes
             filtering=filtering_info,  # same for all electrodes
-            probe_electrode=electrode_index,  # used by Spyglass
+            probe_electrode=electrode_index,  # GLOBAL index (0..5119), matches ShanksElectrode.name. Used by Spyglass
             probe_shank=shank_index,  # used by Spyglass
             ref_elect_id=-1,  # used by Spyglass
         )
 
-    # Add each populated Shank to the Probe
-    for shank in shanks_by_shank.values():
-        probe_obj.add_shank(shank)
-
-    logger.info(f"Added {len(channel_info)} Neuropixels electrodes across {len(electrode_groups_by_shank)} "
+    logger.info(f"Added {len(channel_info)} Neuropixels electrodes across {len(electrode_groups_by_shank)}"
                 f"shank ElectrodeGroup(s): {sorted(electrode_groups_by_shank)}")
 
 
