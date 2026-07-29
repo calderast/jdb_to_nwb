@@ -159,7 +159,10 @@ If your session included electrophysiology, add an `ephys` field to your metadat
 
 - `openephys_folder_path`: path to the Open Ephys output folder (the auto-generated one with the recording start time in the name, e.g. `2022-07-25_15-30-00`).
 - `probe`: the probe you used, referencing one of the probes in `resources/electrophysiology/ephys_devices.yaml`. Currently only one probe per session is supported. Un-comment the one you used from the list in `metadata_fully_explained.yaml`.
-- `targeted_x`, `targeted_y`, `targeted_z`: targeted implant coordinates in mm (AP, ML, DV).
+- `targeted_x`, `targeted_y`, `targeted_z`: targeted implant coordinates in mm, in the order **x=ML, y=AP, z=DV**. ML goes in `targeted_x` (negative = left hemisphere, positive = right) because Spyglass derives the target hemisphere from the sign of `targeted_x`.
+
+  > **NOTE targeted_x and targeted_y were swapped before 7/29/2026!** In jdb_to_nwb **2.3.1 and below**, `targeted_x` held AP and `targeted_y` held ML. This is backwards from what Spyglass expects, so NWBs generated with 2.3.1 or earlier have the **wrong `target_hemisphere`** in Spyglass. Sorry about that. 
+
 - `electrodes_location`: brain region (e.g. "Hippocampus CA1"). This can be however specific you want (Neuropixels often targets multiple regions). Defaults to "unspecified" with a warning if omitted.
 
 **If you used a Berke Lab custom probe, you ALSO need:**

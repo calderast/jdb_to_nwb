@@ -869,10 +869,15 @@ def add_electrode_data_berke_probe(
         logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
     else:
         logger.info(f"Electrodes location is '{electrodes_location}'")
+    # Axis convention: targeted_x is ML, targeted_y is AP, targeted_z is DV (see metadata_fully_explained.yaml).
+    # ML must be in targeted_x because Spyglass derives the target hemisphere from its sign (>=0 Right, <0 Left).
+    # These pass straight through to NwbElectrodeGroup below. We do not set the electrodes table's
+    # absolute x/y/z columns (only per-electrode rel_x/rel_y on the probe), so Spyglass has no per-
+    # electrode position and the target hemisphere depends solely on the sign of targeted_x.
     targeted_x = metadata["ephys"].get("targeted_x")
     targeted_y = metadata["ephys"].get("targeted_y")
     targeted_z = metadata["ephys"].get("targeted_z")
-    logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
+    logger.info(f"Targeted location is ML={targeted_x} (x), AP={targeted_y} (y), DV={targeted_z} (z)")
 
     electrode_to_shank_map = {}
     electrode_groups_by_shank = {}
@@ -889,9 +894,9 @@ def add_electrode_data_berke_probe(
                 description=f"Electrodes on shank {shank_index}",
                 location=electrodes_location,
                 targeted_location=electrodes_location,
-                targeted_x=float(targeted_x),
-                targeted_y=float(targeted_y),
-                targeted_z=float(targeted_z),
+                targeted_x=float(targeted_x), # ML
+                targeted_y=float(targeted_y), # AP
+                targeted_z=float(targeted_z), # DV
                 units="mm",
                 device=probe_obj,
             )
@@ -1246,10 +1251,15 @@ def add_electrode_data_neuropixels(
         logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
     else:
         logger.info(f"Electrodes location is '{electrodes_location}'")
+    # Axis convention: targeted_x is ML, targeted_y is AP, targeted_z is DV (see metadata_fully_explained.yaml).
+    # ML must be in targeted_x because Spyglass derives the target hemisphere from its sign (>=0 Right, <0 Left).
+    # These pass straight through to NwbElectrodeGroup below. We do not set the electrodes table's
+    # absolute x/y/z columns (only per-electrode rel_x/rel_y on the probe), so Spyglass has no per-
+    # electrode position and the target hemisphere depends solely on the sign of targeted_x.
     targeted_x = metadata["ephys"].get("targeted_x")
     targeted_y = metadata["ephys"].get("targeted_y")
     targeted_z = metadata["ephys"].get("targeted_z")
-    logger.info(f"Targeted location is {targeted_x}, {targeted_y}, {targeted_z}")
+    logger.info(f"Targeted location is ML={targeted_x} (x), AP={targeted_y} (y), DV={targeted_z} (z)")
 
     # Make an ElectrodeGroup for each shank that actually has recording sites. Only recorded electrodes
     # reference an ElectrodeGroup; non-recorded sites live only on the Probe geometry (registered below).
@@ -1262,9 +1272,9 @@ def add_electrode_data_neuropixels(
             description=f"Electrodes on shank {shank_index}",
             location=electrodes_location,
             targeted_location=electrodes_location,
-            targeted_x=float(targeted_x),
-            targeted_y=float(targeted_y),
-            targeted_z=float(targeted_z),
+            targeted_x=float(targeted_x), # ML
+            targeted_y=float(targeted_y), # AP
+            targeted_z=float(targeted_z), # DV
             units="mm",
             device=probe_obj,
         )

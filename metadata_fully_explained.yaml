@@ -43,8 +43,12 @@ ephys:
   # Fields used for ALL probes (Berke Lab custom probes AND Neuropixels):
   openephys_folder_path: "path/to/folder/like/2022-07-25_15-30-00"
   electrodes_location: "Hippocampus CA1"
-  targeted_x: 4.5  # AP in mm
-  targeted_y: 2.2  # ML in mm. Negative ML is the left hemisphere and positive ML is the right hemisphere
+  # NOTE the axis order: targeted_x is ML, targeted_y is AP (targeted_z is DV). ML goes in targeted_x
+  # because Spyglass derives the target hemisphere from the SIGN of targeted_x (>=0 is Right, <0 is Left).
+  # THIS WAS SWAPPED BEFORE 7/29/2026 (SORRY)! In jdb_to_nwb 2.3.1 and below, targeted_x held AP and
+  # targeted_y held ML (backwards). NWBs generated with 2.3.1 or earlier may have the wrong hemisphere in Spyglass.
+  targeted_x: 2.2   # ML in mm. Negative ML is the left hemisphere and positive ML is the right hemisphere
+  targeted_y: 4.5   # AP in mm
   targeted_z: -2.0  # DV in mm
   # OPTIONAL: which Open Ephys experiment to convert if the output folder contains more than one
   # (experiment1, experiment2, ...), which can happen if you stopped and re-started the recording. 
@@ -73,7 +77,7 @@ ephys:
   # OPTION 1: Kilosort4 + BombCell output, saved as a SpikeInterface SortingAnalyzer (an
   # analyzer.zarr directory). ALL units are written, with curation labels (BombCell bc_unitType, Kilosort
   # ks_label, Phy phy_group), per-unit quality metrics, and a peak-channel waveform as Units table columns.
-  # This pipeline also looks for the output of manual curation (e.g. cluster_groups.tsv) next to the analyzer.zarr
+  # This pipeline also looks for the output of manual curation (cluster_group.tsv) next to the analyzer.zarr
   sorting_analyzer_path: "path/to/analyzer.zarr"
   #
   # OPTION 2 (legacy): MountainSort output (a firings.mda file). Also requires sampling_frequency.
