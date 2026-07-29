@@ -291,10 +291,9 @@ def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
     trial_data = nwbfile.intervals["trials"].to_dataframe()
 
     figs = []
-    for i, block in enumerate(block_data.itertuples(index=False)):
-        # Get maze configuration and reward probabilities for this block
+    for block in block_data.itertuples(index=False):
+        # Get maze configuration for this block
         maze = block.maze_configuration
-        reward_probs = [block.pA, block.pB, block.pC]
 
         # Filter trials to only those in this block
         block_trials = trial_data[trial_data["block"] == block.block]
@@ -312,16 +311,19 @@ def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
             axes = np.array(axes).flatten()
 
         # Loop over trials in this block
-        for i, trial in enumerate(block_trials.itertuples(index=False)):
+        for trial_idx, trial in enumerate(block_trials.itertuples(index=False)):
             # Get trial start/end
             start, end = trial.start_time, trial.stop_time
+            # Get reward info
+            end_port, reward = trial.end_port, trial.reward
+            # Get rat position
             df_trial = position_df[
                 (position_df["timestamp"] >= start) & (position_df["timestamp"] <= end)
             ]
 
-            axes[i].set_title(f"Trial {i+1}")
+            axes[trial_idx].set_title(f"Trial {trial_idx+1}")
             plot_hex_maze(
-                ax=axes[i],
+                ax=axes[trial_idx],
                 barriers=maze,
                 centroids=centroids_dict,
                 snap_centroids=True,
@@ -329,11 +331,11 @@ def plot_rat_position_by_trial(nwbfile, spatial_series_name, fig_dir=None):
                 show_barriers=False,
                 show_hex_labels=False,
                 show_stats=True,
-                reward_probabilities=reward_probs,
+                reward=(end_port, reward),
             )
 
             # Plot rat position for this trial in black
-            axes[i].scatter(df_trial["x"], df_trial["y"], s=1, color='k')
+            axes[trial_idx].scatter(df_trial["x"], df_trial["y"], s=1, color='k')
 
         # Hide unused axes
         for j in range(n_trials, len(axes)):
