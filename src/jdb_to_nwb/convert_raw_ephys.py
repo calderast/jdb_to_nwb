@@ -1316,10 +1316,14 @@ def add_electrode_data_neuropixels(
         electrode_index = int(row["electrode"])
         local_electrode = electrode_index % NPX_ELECTRODES_PER_SHANK
 
-        # Follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode (for Spyglass consistency)
+        # Follow the ndx-franklab-novela/trodes-to-nwb usage of ShanksElectrode (for Spyglass consistency).
+        # NOTE ShanksElectrode.name must be the GLOBAL electrode index (0..5119), the same value we pass as
+        # probe_electrode below. Spyglass fills Probe.Electrode.probe_electrode from int(ShanksElectrode.name)
+        # and common_ephys.Electrode.probe_electrode from the electrodes-table column, then joins them on
+        # (probe_shank, probe_electrode).
         shanks_by_shank[shank_index].add_shanks_electrode(
             ShanksElectrode(
-                name=str(local_electrode),
+                name=str(electrode_index),
                 rel_x=float(row["x_um"]),
                 rel_y=float(row["y_um"]),
                 rel_z=0.0,
