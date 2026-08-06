@@ -444,39 +444,94 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
             f"but {len(DIO_nosepoke_df)} nosepokes from DIOs!"
         )
 
-    # Match statescript and DIO pokes.
-    # For each event_name and port combination, add an index column enumerating which one it is.
-    # This will allow us to merge the DIO and statescript dfs while matching the correct instances of each event
-    DIO_nosepoke_df["index"] = DIO_nosepoke_df.groupby(["event_name", "port"]).cumcount()
-    statescript_nosepoke_df["index"] = statescript_nosepoke_df.groupby(["event_name", "port"]).cumcount()
+    # Match statescript and DIO pokes using time-proximity matching.
+    # DIO timestamps are Unix seconds and statescript timestamps are ms from session start.
+    # We compute the offset between the two clocks from the first poke_in at each port,
+    # then match each statescript event to the nearest unmatched DIO event in time.
+    # This correctly handles extra DIO pokes that were not recorded by the statescript
+    # (they are excluded and logged).
+    # Changed from the previous index-based merge because we encountered a session with 
+    # an extra DIO poke that caused subsequent pokes to be mismatched.
+    # See Github issue https://github.com/calderast/jdb_to_nwb/issues/215 
 
-    # Merge based on matching event_name, port, and index (created above)
-    merged_nosepokes = pd.merge(
-        DIO_nosepoke_df,
-        statescript_nosepoke_df,
-        on=["event_name", "port", "index"],
-        how="inner",
-        suffixes=("_DIO", "_statescript"),
-    )
+    # Compute DIO-to-statescript time offset (use median across ports for robustness)
+    time_offsets = []
+    for port in ["A", "B", "C"]:
+        ss_first = statescript_nosepoke_df[
+            (statescript_nosepoke_df["port"] == port) &
+            (statescript_nosepoke_df["event_name"] == "poke_in")
+        ]
+        dio_first = DIO_nosepoke_df[
+            (DIO_nosepoke_df["port"] == port) &
+            (DIO_nosepoke_df["event_name"] == "poke_in")
+        ]
+        if len(ss_first) > 0 and len(dio_first) > 0:
+            time_offsets.append(ss_first.iloc[0]["timestamp"] - dio_first.iloc[0]["timestamp"] * 1000)
+    if not time_offsets:
+        raise Exception("Could not establish DIO-to-statescript time offset: no matching first poke found.")
+    time_offset_ms = sorted(time_offsets)[len(time_offsets) // 2] # median
+    logger.info(f"DIO-to-statescript time offset: {time_offset_ms:.1f} ms")
 
-    # Also do an outer merge that keeps all rows so we can log info about which rows (if any) do not match.
-    # This is for info/debugging purposes only.
-    merged_nosepokes_outer = pd.merge(
-        DIO_nosepoke_df,
-        statescript_nosepoke_df,
-        on=["event_name", "port", "index"],
-        how="outer",
-        suffixes=("_DIO", "_statescript"),
-    )
-    DIO_statescript_mismatches = merged_nosepokes_outer[
-        merged_nosepokes_outer["timestamp_DIO"].isna() | merged_nosepokes_outer["timestamp_statescript"].isna()
-    ]
+    # For each (event_name, port) group, match each statescript event to the nearest
+    # unmatched DIO event. Any leftover DIO events are orphans and are logged.
+    matched_pairs = []
+    orphan_count = 0
 
-    if not DIO_statescript_mismatches.empty:
-        logger.warning("Mismatched nosepokes between statescript and DIOs:")
-        logger.warning(DIO_statescript_mismatches)
+    for (event_name, port), ss_group in statescript_nosepoke_df.groupby(["event_name", "port"]):
+        dio_group = DIO_nosepoke_df[
+            (DIO_nosepoke_df["event_name"] == event_name) &
+            (DIO_nosepoke_df["port"] == port)
+        ].reset_index(drop=True)
+
+        ss_times = ss_group["timestamp"].tolist()
+        dio_times = dio_group["timestamp"].tolist()
+        n_ss, n_dio = len(ss_times), len(dio_times)
+
+        # If we ever have more statescript events than DIOs, error so we can figure out what went wrong there
+        if n_dio < n_ss:
+            logger.error(
+                f"More statescript {event_name} events at port {port} ({n_ss}) than DIO events ({n_dio})!"
+            )
+            raise Exception(
+                f"More statescript {event_name} events at port {port} ({n_ss}) than DIO events ({n_dio})!"
+            )
+
+        # Convert DIO times to statescript time scale so they can be compared directly
+        dio_times_ss = [t * 1000 + time_offset_ms for t in dio_times]
+
+        # Match each statescript event to the nearest unmatched DIO event
+        available = list(range(n_dio))
+        matched_dio_indices = []
+        for ss_time in ss_times:
+            best = min(available, key=lambda k: abs(dio_times_ss[k] - ss_time))
+            matched_dio_indices.append(best)
+            available.remove(best)
+
+        # Log any DIO events that had no statescript match (orphans)
+        for k in available:
+            orphan_count += 1
+            logger.warning(
+                f"Orphan DIO {event_name} at port {port}: DIO timestamp {dio_times[k]:.6f} "
+                f"(≈{dio_times_ss[k]:.0f} ms in statescript time) has no statescript match. "
+                "Excluding from nosepoke data."
+            )
+
+        for ss_i, dio_i in enumerate(matched_dio_indices):
+            matched_pairs.append({
+                "event_name": event_name,
+                "port": port,
+                "timestamp_DIO": dio_times[dio_i],
+                "timestamp_statescript": ss_times[ss_i],
+            })
+
+    if orphan_count:
+        logger.warning(f"Found {orphan_count} orphan DIO poke event(s) with no statescript match.")
     else:
         logger.info("All DIO and statescript nosepokes were matched successfully!")
+
+    merged_nosepokes = (
+        pd.DataFrame(matched_pairs).sort_values(by="timestamp_DIO").reset_index(drop=True)
+    )
 
     # Iterate through pairs of rows in the dataframe, keeping only rows
     # that represent poke_in and poke_out events at a new port.
@@ -549,10 +604,10 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
         nosepokes_at_new_ports.append(potential_poke_out)
 
     logger.debug("All nosepokes at new ports:")
-    logger.debug(pd.DataFrame(nosepokes_at_new_ports).drop(columns="index"))
+    logger.debug(pd.DataFrame(nosepokes_at_new_ports))
 
     # Return a dataframe of nosepokes including only nosepokes at new ports
-    return pd.DataFrame(nosepokes_at_new_ports).drop(columns="index")
+    return pd.DataFrame(nosepokes_at_new_ports)
 
 
 def combine_nosepoke_and_trial_data(nosepoke_df, trial_df, session_end, logger):
