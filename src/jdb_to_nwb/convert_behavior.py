@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 from pynwb import NWBFile
 from hdmf.common.table import DynamicTable, VectorData
-from ndx_franklab_novela import AssociatedFiles
+from .utils import log_and_print, add_associated_file
 from .timestamps_alignment import trim_sync_pulses, align_via_interpolation, handle_timestamps_reset
 from .plotting.plot_behavior import (
     plot_maze_configurations, 
@@ -179,6 +179,24 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
                     trial_within_session += 1
                     trial_within_block += 1
 
+                    # If the short beam break we just closed triggered a new block, 
+                    # handle the transition now before creating the next trial. 
+                    # This ensures the next trial gets trial_within_block = 1 and is 
+                    # assigned to the correct (new) block. This happens when a very short poke 
+                    # (one beam break line) triggers a block change: the block header prints,
+                    # but the beam break ends before a 1s gap occurs, so the normal block-transition 
+                    # check (below) never runs for this trial.
+                    # See Github issue https://github.com/calderast/jdb_to_nwb/issues/212
+                    if not current_block["start_time"]:
+                        current_block["start_time"] = float(previous_trial["end_time"])
+                        previous_block["end_time"] = float(previous_trial["end_time"])
+                        previous_block["num_trials"] = previous_trial.get("trial_within_block")
+                        logger.debug("This trial triggered a new block.")
+                        logger.debug(f"Adding previous block: {previous_block}")
+                        block_data.append(previous_block)
+                        previous_block = current_block
+                        trial_within_block = 1
+
                     # Start new trial at this port
                     current_trial = {
                         "start_time": float(previous_trial["end_time"]),
@@ -249,7 +267,7 @@ def parse_arduino_text(arduino_text: list, arduino_timestamps: list, logger):
                         # Make the current block (the new block that this trial started) empty
                         # so we don't add it. 
                         current_block = {}
-    
+
     # Append the last trial if it exists
     if current_trial:
         trial_data.append(current_trial)
@@ -607,8 +625,7 @@ def reassign_block_boundaries(trial_data, block_data, switch_after_trials, maze_
 
 def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     """Add trial and block data to the nwbfile"""
-    print("Adding behavior...")
-    logger.info("Adding behavior...")
+    log_and_print(logger, "Adding behavior...", level="info")
 
     # Get file paths for behavior from metadata file
     arduino_text_file_path = metadata["behavior"]["arduino_text_file_path"]
@@ -883,34 +900,16 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     )
     nwbfile.processing["tasks"].add(task)
 
-    # Save the raw arduino text and timestamps as strings to be used to create AssociatedFiles objects
-    logger.debug("Saving the arduino text file and arduino timestamps file as AssociatedFiles objects")
+    # Save the raw arduino text and timestamps as AssociatedFiles objects in the nwb
     with open(arduino_text_file_path, "r") as arduino_text_file:
         raw_arduino_text = arduino_text_file.read()
     with open(arduino_timestamps_file_path, "r") as arduino_timestamps_file:
         raw_arduino_timestamps = arduino_timestamps_file.read()
 
-    raw_arduino_text_file = AssociatedFiles(
-        name="arduino_text",
-        description="Raw arduino text",
-        content=raw_arduino_text,
-        task_epochs="0",  # Berke Lab only has one epoch (session) per day
-    )
-    raw_arduino_timestamps_file = AssociatedFiles(
-        name="arduino_timestamps",
-        description="Raw arduino timestamps",
-        content=raw_arduino_timestamps,
-        task_epochs="0",  # Berke Lab only has one epoch (session) per day
-    )
-
-    # If it doesn't exist already, make a processing module for associated files
-    if "associated_files" not in nwbfile.processing:
-        logger.debug("Creating nwb processing module for associated files")
-        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
-
-    # Add arduino text and timestamps to the NWB as associated files
-    nwbfile.processing["associated_files"].add(raw_arduino_text_file)
-    nwbfile.processing["associated_files"].add(raw_arduino_timestamps_file)
+    add_associated_file(nwbfile, name="arduino_text", description="Raw arduino text",
+                        content=raw_arduino_text, logger=logger)
+    add_associated_file(nwbfile, name="arduino_timestamps", description="Raw arduino timestamps",
+                        content=raw_arduino_timestamps, logger=logger)
 
     # Return photometry start in arduino time for video/DLC and behavioral alignment with photometry
     return {'photometry_start_in_arduino_time': photometry_start_in_arduino_time, 'port_visits': arduino_visit_times}

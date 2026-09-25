@@ -20,8 +20,8 @@ ephys:
   impedance_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/impedance.csv"
   openephys_folder_path: "/Volumes/Tim/Ephys/IM-1478/07192022/2022-07-19_13-12-30"
   electrodes_location: "Hippocampus CA1"
-  targeted_x: 4.5   # AP in mm
-  targeted_y: -2.2  # ML in mm
+  targeted_x: -2.2  # ML in mm (negative = left hemisphere, positive = right; Spyglass reads hemisphere from this)
+  targeted_y: 4.5   # AP in mm
   targeted_z: -2.0  # DV in mm
 
   mountain_sort_output_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/mntsort_output/firings.mda"

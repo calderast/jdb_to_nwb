@@ -6,6 +6,7 @@ from pynwb.behavior import Position
 from scipy.interpolate import interp1d
 from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
 from .plotting.plot_combined import plot_rat_position_heatmap, plot_rat_position_by_trial
+from .utils import log_and_print
 
 
 def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9, cam_fps=15):
@@ -31,8 +32,7 @@ def read_dlc(deeplabcut_file_path, pixels_per_cm, logger, likelihood_cutoff=0.9,
     
     # The bodypart names are stored as second-level columns
     body_part_names = set(dlc_position.columns.get_level_values('bodyparts'))
-    print(f"Found DeepLabCut bodyparts: {body_part_names}")
-    logger.info(f"Found DeepLabCut bodyparts: {body_part_names}")
+    log_and_print(logger, f"Found DeepLabCut bodyparts: {body_part_names}", level="info")
 
     body_part_dfs = []
     for body_part in list(body_part_names):
@@ -175,8 +175,7 @@ def add_position_to_nwb(nwbfile: NWBFile, position_data: list[tuple], pixels_per
 
     # Add x,y position to the nwb as a SpatialSeries for each tracked body part
     for body_part_name, body_part_position_df in position_data:
-        logger.info(f"Adding position data for {body_part_name} to the nwb...")
-        print(f"Adding position data for {body_part_name} to the nwb...")
+        log_and_print(logger, f"Adding position data for {body_part_name} to the nwb...", level="info")
         position.create_spatial_series(
             name=f"{body_part_name}_position",
             description="xloc, yloc",
@@ -223,20 +222,17 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     # It is ok if we have video field in metadata but not DLC data
     # The user may wish to only convert the raw video file and do position tracking later
     if "dlc_path" not in metadata["video"]:
-        print("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
-        logger.warning("No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.")
+        log_and_print(logger, "No DeepLabCut (DLC) metadata found for this session. Skipping DLC conversion.",
+                      level="warning")
         return
 
     # If we do have dlc_path, we must also have video timestamps for DLC conversion
     if "video_timestamps_file_path" not in metadata["video"]:
-        logger.error("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
+        log_and_print(logger,
+            "Video subfield 'video_timestamps_file_path' not found in metadata. \n"
             "This is required along with 'dlc_path' for DLC position conversion. \n"
-            "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
-            )
-        print("Video subfield 'video_timestamps_file_path' not found in metadata. \n"
-            "This is required along with 'dlc_path' for DLC position conversion. \n"
-            "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata."
-            )
+            "If you do not wish to convert DeepLabCut data, please remove field 'dlc_path' from metadata.",
+            level="error")
         return
 
     # At this point, pixels_per_cm must exist in metadata. If it did not exist, 
@@ -282,8 +278,7 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
             logger.info("No ground truth port visits found, keeping original position (video) timestamps.")
             true_video_timestamps = video_timestamps_seconds
 
-    print("Adding position data from DeepLabCut...")
-    logger.info("Adding position data from DeepLabCut...")
+    log_and_print(logger, "Adding position data from DeepLabCut...", level="info")
 
     # Metadata should include the full path to the DLC h5 file
     # e.g. Behav_Vid0DLC_resnet50_Triangle_Maze_EphysDec7shuffle1_800000.h5

@@ -3,6 +3,8 @@ import sys
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from pynwb import NWBFile
+from ndx_franklab_novela import AssociatedFiles
 
 
 def to_datetime(date_str):
@@ -126,6 +128,22 @@ def setup_stdout_logger(log_name: str) -> logging.Logger:
     return logger
 
 
+def log_and_print(logger: logging.Logger, message: str, level: str = "info") -> None:
+    """
+    Print a message to stdout and log it at the given level.
+
+    We often want the user to see a message at the console AND have it saved to the logfile,
+    which otherwise means writing the same string twice. This helper does both.
+
+    Parameters:
+        logger (logging.Logger): Logger to track conversion progress
+        message (str): The message to print and log
+        level (str): Log level to use ("info", "warning", "error", or "debug"). Defaults to "info"
+    """
+    print(message)
+    getattr(logger, level)(message)
+
+
 def get_logger_directory(logger: logging.Logger) -> str:
     """
     Helper to get the directory path where the first FileHandler of the logger writes logs.
@@ -140,3 +158,47 @@ def get_logger_directory(logger: logging.Logger) -> str:
         if isinstance(handler, logging.FileHandler):
             return os.path.dirname(handler.baseFilename)
     raise ValueError("Logger has no FileHandler with a valid log file path.")
+
+
+def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: str, logger,
+                        task_epochs: str = "0", log_filename: str = None) -> None:
+    """
+    Add a file to the nwbfile's 'associated_files' processing module (creating the module if needed),
+    and optionally save a copy of it alongside the log files
+
+    We save several raw provenance files this way (the Open Ephys settings.xml and structure.oebin, the
+    electrode info CSV, etc). This helper centralizes the boilerplate and logs each save.
+
+    Parameters:
+        nwbfile (NWBFile): The NWB file being assembled.
+        name (str): Name for the AssociatedFiles object
+        description (str): Human-readable description of the file
+        content (str): The file contents as a string
+        logger (Logger): Logger to track conversion progress
+        task_epochs (str): Task epoch the file belongs to. Defaults to "0" (Berke Lab has one epoch per day)
+        log_filename (str): Optional. If given, also write a copy of the content to the log directory
+            under this filename (e.g. "settings.xml"). Skipped if the logger has no logfile.
+    """
+    if "associated_files" not in nwbfile.processing:
+        logger.debug("Creating nwb processing module for associated files")
+        nwbfile.create_processing_module(name="associated_files", description="Contains all associated files")
+    logger.info(f"Saving '{name}' as an AssociatedFiles object in the nwb ({len(content)} chars)")
+    nwbfile.processing["associated_files"].add(AssociatedFiles(
+        name=name,
+        description=description,
+        content=content,
+        task_epochs=task_epochs,
+    ))
+
+    # Also save a copy to the logging directory
+    # Skip if the logger writes only to stdout (no log directory)
+    if log_filename is not None:
+        try:
+            log_dir = get_logger_directory(logger)
+        except ValueError:
+            logger.debug(f"No log directory available; not saving a copy of '{log_filename}' alongside logs")
+            return
+        save_path = os.path.join(log_dir, log_filename)
+        with open(save_path, "w") as f:
+            f.write(content)
+        logger.info(f"Saved a copy of '{log_filename}' to the log directory: {save_path}")

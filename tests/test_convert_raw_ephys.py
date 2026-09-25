@@ -7,13 +7,16 @@ from pynwb import NWBFile
 import pytest
 import re
 
+from jdb_to_nwb import convert_raw_ephys
 from jdb_to_nwb.convert_raw_ephys import (
-    add_raw_ephys, 
+    add_raw_ephys,
     get_raw_ephys_data,
     add_probe_info,
 #    get_electrode_info, # TODO add test for this
     read_open_ephys_settings_xml,
     add_electrode_data_berke_probe,
+    add_electrode_data_neuropixels,
+    find_open_ephys_paths,
 )
 
 
@@ -81,8 +84,8 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["targeted_x"] = 4.5   # AP in mm
-    metadata["ephys"]["targeted_y"] = 2.2   # ML in mm
+    metadata["ephys"]["targeted_x"] = 2.2   # ML in mm
+    metadata["ephys"]["targeted_y"] = 4.5   # AP in mm
     metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     metadata["ephys"]["plug_order"] = "chip_first"
@@ -144,9 +147,9 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     # Check data for each electrode group
     for name, egroup in nwbfile.electrode_groups.items():
         assert egroup.location == "Hippocampus CA1"
-        assert egroup.targeted_x == 4.5
-        assert egroup.targeted_y == 2.2
-        assert egroup.targeted_z == -2.0
+        assert egroup.targeted_x == 2.2   # ML
+        assert egroup.targeted_y == 4.5   # AP
+        assert egroup.targeted_z == -2.0  # DV
         assert egroup.device is probe
 
         # Electrode group description should be "Electrodes on shank {shank_index}"
@@ -199,6 +202,101 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     assert nwbfile.electrodes.ref_elect_id.data[:] == [-1] * 256
 
 
+@pytest.mark.slow
+def test_add_electrode_data_neuropixels(dummy_logger):
+    """
+    Test add_electrode_data_neuropixels adds the FULL neuropixels probe geometry (all 5120 sites, all 4 shanks) 
+    to the Probe's Shank/ShanksElectrode objects, even sites/shanks not recorded this session. 
+    The electrodes table gets ONLY the recorded channels.
+    """
+    import pandas as pd
+
+    sites_per_shank = convert_raw_ephys.NPX_ELECTRODES_PER_SHANK  # 1280
+
+    # Real canonical NPX 2.0 4-shank geometry (5120 sites) that the converter registers on the Probe.
+    coords = pd.read_csv(convert_raw_ephys.ELECTRODE_COORDS_PATH_NPX_MULTISHANK)
+    assert len(coords) == 5120 and sorted(coords["shank"].unique()) == [0, 1, 2, 3]
+
+    # Simulate a session recording 384 channels on shanks 0/1/2 only (like a real IM-1971 session)
+    recorded = pd.concat([coords[coords["shank"] == s].head(128) for s in [0, 1, 2]], ignore_index=True)
+    recorded["channel_num"] = range(len(recorded))
+    # channel_info has exactly the columns get_channel_map_neuropixels produces (real coords + a channel_num)
+    channel_info = recorded[["channel_num", "shank", "electrode", "shank_column", "shank_row", "x_um", "y_um"]]
+    assert len(channel_info) == 384
+
+    nwbfile = NWBFile(session_description="Mock session", session_start_time=datetime.now(tz.tzlocal()),
+                      identifier="mock_session")
+    metadata = {"ephys": {"probe": ["Neuropixels 2.0 (4-shank)"], "electrodes_location": "Hippocampus CA1",
+                          "targeted_x": 2.9, "targeted_y": -3.6, "targeted_z": -1.8}}  # x=ML, y=AP, z=DV
+    _, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    add_electrode_data_neuropixels(nwbfile=nwbfile, channel_info=channel_info, filtering_info="hw filtering",
+                                   metadata=metadata, probe_obj=probe_obj, logger=dummy_logger)
+
+    # The Probe device exists under 'devices' with the expected Neuropixels metadata (from ephys_devices.yaml)
+    assert "Neuropixels 2.0 (4-shank)" in nwbfile.devices
+    probe = nwbfile.devices["Neuropixels 2.0 (4-shank)"]
+    assert probe is probe_obj
+    assert probe.probe_description.startswith("4 shanks x 1280 electrodes per shank for 5120 total recording sites")
+    assert probe.manufacturer == "IMEC"
+    assert probe.contact_side_numbering
+    assert probe.contact_size == 12
+    assert probe.units == "um"
+
+    # One ElectrodeGroup per RECORDED shank (0, 1, 2); shank 3 recorded nothing so gets no group
+    assert len(nwbfile.electrode_groups) == 3
+    found_shanks = set()
+    for name, egroup in nwbfile.electrode_groups.items():
+        assert egroup.location == "Hippocampus CA1"
+        assert egroup.targeted_x == 2.9     # ML
+        assert egroup.targeted_y == -3.6    # AP
+        assert egroup.targeted_z == -1.8    # DV
+        assert egroup.device is probe
+        match = re.match(r"Electrodes on shank (\d+)", egroup.description)
+        assert match, f"Unexpected description in group {name}: {egroup.description}"
+        found_shanks.add(int(match.group(1)))
+    assert found_shanks == {0, 1, 2}
+
+    # Check the FULL geometry (all 4 shanks, all 5120 sites) is on the Probe
+    assert len(probe_obj.shanks) == 4
+    assert sum(len(shank.shanks_electrodes) for shank in probe_obj.shanks.values()) == 5120
+    # ShanksElectrode.name is the GLOBAL electrode index, partitioned per shank (0-1279, 1280-2559, ...)
+    names_by_shank = {}
+    for shank in range(4):
+        names = sorted(int(e.name) for e in probe_obj.shanks[str(shank)].shanks_electrodes.values())
+        assert names == list(range(shank * sites_per_shank, (shank + 1) * sites_per_shank))
+        names_by_shank[shank] = set(names)
+
+    # Check the electrodes table has ONLY the recorded channels (shanks 0/1/2 -> 384 rows)
+    assert len(nwbfile.electrodes) == 384
+    electrodes = nwbfile.electrodes.to_dataframe()
+    assert set(electrodes["probe_shank"]) == {0, 1, 2}  # unrecorded shank 3 is not in the table
+
+    # Every recorded electrode's global probe_electrode matches a ShanksElectrode.name on its shank
+    for _, row in electrodes.iterrows():
+        assert int(row["probe_electrode"]) in names_by_shank[int(row["probe_shank"])]
+
+    # Check the electrode-table columns against the recorded channel_info (electrodes are added in
+    # channel_num order, which is the row order of `recorded`, so the columns line up positionally)
+    assert list(electrodes["intan_channel_number"]) == list(recorded["channel_num"])  # 0..383
+    assert list(electrodes["electrode_index"]) == list(recorded["electrode"])          # global index
+    assert list(electrodes["probe_electrode"]) == list(recorded["electrode"])          # global (used by Spyglass)
+    assert list(electrodes["probe_shank"]) == list(recorded["shank"])
+    assert list(electrodes["group_name"]) == [str(s) for s in recorded["shank"]]
+    np.testing.assert_allclose(electrodes["rel_x"], recorded["x_um"])
+    np.testing.assert_allclose(electrodes["rel_y"], recorded["y_um"])
+    # electrode_name is the cosmetic 'S{shank:02d}E{local}' label (local = global % sites_per_shank)
+    expected_electrode_names = [
+        f"S{int(s):02d}E{int(e) % sites_per_shank}" for s, e in zip(recorded["shank"], recorded["electrode"])
+    ]
+    assert list(electrodes["electrode_name"]) == expected_electrode_names
+    # Columns that are constant across all electrodes for Neuropixels
+    assert not electrodes["bad_channel"].any()  # no impedance file, so no channels marked bad
+    assert list(electrodes["filtering"]) == ["hw filtering"] * 384
+    assert list(electrodes["location"]) == ["Hippocampus CA1"] * 384
+    assert list(electrodes["ref_elect_id"]) == [-1] * 384
+
+
 def test_get_raw_ephys_data(dummy_logger):
     """
     Test the get_raw_ephys_data function.
@@ -211,6 +309,52 @@ def test_get_raw_ephys_data(dummy_logger):
     assert traces_as_iterator.maxshape == (3_000, 256)
     np.testing.assert_allclose(channel_conversion_factor, [0.19499999284744263] * 256)
     assert len(original_timestamps) == 3_000
+
+
+def test_find_open_ephys_paths_autodetects_experiment_1():
+    """The real test data is experiment1 (settings.xml), so auto-detection should pick experiment 1."""
+    folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+    paths = find_open_ephys_paths(folder_path)  # experiment_number=None -> auto-detect
+    assert paths["settings_file"].endswith("settings.xml")
+    assert not paths["settings_file"].endswith("settings_2.xml")
+
+
+def _make_open_ephys_experiment(base_dir: Path, experiment_number: int, probe_names):
+    """Create a minimal Open Ephys folder tree (settings + continuous.dat per probe) for one experiment."""
+    suffix = "" if experiment_number == 1 else f"_{experiment_number}"
+    record_node = base_dir / "Record Node 101"
+    (record_node / f"settings{suffix}.xml").parent.mkdir(parents=True, exist_ok=True)
+    (record_node / f"settings{suffix}.xml").write_text("<SETTINGS/>")
+    continuous = record_node / f"experiment{experiment_number}" / "recording1" / "continuous"
+    for probe_name in probe_names:
+        probe_dir = continuous / probe_name
+        probe_dir.mkdir(parents=True, exist_ok=True)
+        (probe_dir / "continuous.dat").write_bytes(b"\x00\x00")
+
+
+def test_find_open_ephys_paths_autodetects_experiment_2(tmp_path):
+    """A Neuropixels-style experiment2 recording (settings_2.xml) should be auto-detected."""
+    _make_open_ephys_experiment(tmp_path, 2, ["OneBox-100.ProbeA", "OneBox-100.OneBox-ADC"])
+    paths = find_open_ephys_paths(str(tmp_path))  # auto-detect
+    assert paths["settings_file"].endswith("settings_2.xml")
+    assert set(paths["recording_files"]) == {"OneBox-100.ProbeA", "OneBox-100.OneBox-ADC"}
+
+
+def test_find_open_ephys_paths_ambiguous_experiments_raises(tmp_path):
+    """If multiple experiments are present, auto-detection must refuse and ask the user to specify."""
+    _make_open_ephys_experiment(tmp_path, 1, ["ProbeA"])
+    _make_open_ephys_experiment(tmp_path, 2, ["ProbeA"])
+    with pytest.raises(ValueError, match="multiple Open Ephys experiments"):
+        find_open_ephys_paths(str(tmp_path))
+    # ...but an explicit experiment_number resolves the ambiguity
+    paths = find_open_ephys_paths(str(tmp_path), experiment_number=2)
+    assert paths["settings_file"].endswith("settings_2.xml")
+
+
+def test_find_open_ephys_paths_no_settings_raises(tmp_path):
+    """No settings*.xml anywhere should raise FileNotFoundError."""
+    with pytest.raises(FileNotFoundError, match="No settings.xml"):
+        find_open_ephys_paths(str(tmp_path))
 
 
 def test_read_open_ephys_settings_xml(dummy_logger):
@@ -255,8 +399,8 @@ def test_add_raw_ephys(dummy_logger):
     metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["targeted_x"] = 4.5   # AP in mm
-    metadata["ephys"]["targeted_y"] = 2.2   # ML in mm
+    metadata["ephys"]["targeted_x"] = 2.2   # ML in mm
+    metadata["ephys"]["targeted_y"] = 4.5   # AP in mm
     metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     
@@ -363,6 +507,13 @@ def test_add_raw_ephys_complete_data():
 
     NOTE: This test does not actually write the file to disk. That should be tested as well.
     """
+    # This test needs the full (large) OpenEphys recording, which is not committed to the repo. Point
+    # this at a local copy; the test SKIPS (rather than errors) if it isn't present on this machine.
+    openephys_folder_path = "/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00"
+    if not Path(openephys_folder_path).exists():
+        pytest.skip(f"Full OpenEphys recording not found at {openephys_folder_path}; this test only runs "
+                    "locally where the large recording is present.")
+
     nwbfile = NWBFile(
         session_description="Mock session",
         session_start_time=datetime.now(tz.tzlocal()),
@@ -371,11 +522,11 @@ def test_add_raw_ephys_complete_data():
 
     metadata = {}
     metadata["ephys"] = {}
-    metadata["ephys"]["openephys_folder_path"] = "/Users/rly/Documents/NWB/berke-lab-to-nwb/data/2022-07-25_15-30-00"
+    metadata["ephys"]["openephys_folder_path"] = openephys_folder_path
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
     metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["targeted_x"] = 4.5   # AP in mm
-    metadata["ephys"]["targeted_y"] = 2.2   # ML in mm
+    metadata["ephys"]["targeted_x"] = 2.2   # ML in mm
+    metadata["ephys"]["targeted_y"] = 4.5   # AP in mm
     metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
     metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
     

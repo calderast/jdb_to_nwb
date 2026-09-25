@@ -10,6 +10,8 @@ from pynwb import NWBFile
 from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
 from ndx_franklab_novela import CameraDevice
+
+from .utils import log_and_print
 from hdmf.common import DynamicTable
 from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
 from .plotting.plot_combined import plot_maze_on_video_frame
@@ -58,8 +60,8 @@ def add_hex_centroids(nwbfile: NWBFile, metadata: dict, logger):
         hex_centroids = pd.read_csv(hex_centroids_file)
         logger.debug(f"Found hex centroids file at '{hex_centroids_file}'")
     except FileNotFoundError:
-        logger.error(f"The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
-        print(f"Error: The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.")
+        log_and_print(logger, f"The file '{hex_centroids_file}' was not found! Skipping adding hex centroids.",
+                      level="error")
         return
 
     # Check that the hex centroids file is in the format we expect
@@ -164,8 +166,7 @@ def compress_avi_to_mp4(input_video_path, output_video_path, logger, crf=23, pre
             ffmpeg.input(str(input_video_path)).output(str(output_video_path), vcodec="libx264", crf=crf, preset=preset)
             .run(cmd=ffmpeg_exe, overwrite_output=True, capture_stdout=False, capture_stderr=True)
         )
-        logger.info(f"Compressed video at {input_video_path} to {output_video_path}")
-        print(f"Compressed video at {input_video_path} to {output_video_path}")
+        log_and_print(logger, f"Compressed video at {input_video_path} to {output_video_path}", level="info")
     except Exception as e:
         logger.error(f"An error occurred during video compression: {str(e)}")
         print("An error occurred during video compression:")
@@ -224,32 +225,32 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger, fig_d
     metadata["pixels_per_cm"] = pixels_per_cm
 
     # Add camera once we ensure pixels_per_cm is in metadata
-    print("Adding camera...")
-    logger.info("Adding camera...")
+    log_and_print(logger, "Adding camera...", level="info")
     add_camera(nwbfile=nwbfile, metadata=metadata)
 
     # Now check if we actually have video data to add
     if "video" not in metadata:
-        print("No video metadata found for this session. Skipping video conversion.")
-        logger.warning("No video metadata found for this session. Skipping video conversion.")
+        log_and_print(logger, "No video metadata found for this session. Skipping video conversion.",
+                      level="warning")
         return None
 
     if "hex_centroids_file_path" in metadata["video"]:
         add_hex_centroids(nwbfile=nwbfile, metadata=metadata, logger=logger)
     else:
-        print("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
-        logger.warning("No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.")
+        log_and_print(logger,
+                      "No subfield 'hex_centroids_file_path' found in video metadata! Skipping adding hex centroids.",
+                      level="warning")
 
     if "video_file_path" not in metadata["video"] or "video_timestamps_file_path" not in metadata["video"]:
-        print("Skipping video file conversion (requires both 'video_file_path' and 'video_timestamps_file_path')")
-        logger.warning("Skipping video file conversion "
-                       "(requires both 'video_file_path' and 'video_timestamps_file_path')")
+        log_and_print(logger,
+                      "Skipping video file conversion "
+                      "(requires both 'video_file_path' and 'video_timestamps_file_path')",
+                      level="warning")
         # Warn but don't raise an error here because it is technically ok for a user to specify the "video"
         # field in metadata but not the actual video data, because DLC (position) also lives under the video field
         return None
 
-    print("Adding video...")
-    logger.info("Adding video...")
+    log_and_print(logger, "Adding video...", level="info")
 
     # Get file paths for video from metadata file
     video_file_path = metadata["video"]["video_file_path"]
@@ -290,8 +291,7 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger, fig_d
                  f"{np.array(true_video_timestamps) - np.array(video_timestamps_seconds)}")
 
     # Convert video from .avi to .mp4 and copy it to the nwb output directory
-    print("Compressing video from .avi to .mp4 and copying to nwb output directory...")
-    logger.info("Compressing video from .avi to .mp4 and copying to nwb output directory...")
+    log_and_print(logger, "Compressing video from .avi to .mp4 and copying to nwb output directory...", level="info")
     compress_avi_to_mp4(input_video_path=video_file_path, output_video_path=output_video_path, logger=logger)
 
     # Create nwb processing module for video files
