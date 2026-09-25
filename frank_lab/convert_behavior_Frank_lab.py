@@ -4,11 +4,44 @@ import ast
 import h5py
 import logging
 import pandas as pd
-from . import __version__
+import subprocess
 from pathlib import Path
 from collections import Counter
 from hdmf.common import DynamicTable
 from pynwb import NWBFile, NWBHDF5IO
+
+
+def _get_source_version() -> str:
+    """
+    Get a string identifying the version of the code that ran the conversion.
+
+    This script lives outside the jdb_to_nwb package so it can also be run standalone,
+    which means the package version is only available if jdb_to_nwb is installed.
+    If it isn't, fall back to the git commit of this file's repo so we can still tell
+    exactly which code ran.
+
+    Returns:
+    str: the installed package version, else "git <commit>", else "unknown"
+    """
+    try:
+        from jdb_to_nwb import __version__ as package_version
+
+        return package_version
+    except ImportError:
+        pass
+
+    try:
+        commit = subprocess.check_output(
+            ["git", "-C", str(Path(__file__).resolve().parent), "describe", "--always", "--dirty"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return f"git {commit} (jdb_to_nwb not installed)"
+    except Exception:
+        return "unknown"
+
+
+__version__ = _get_source_version()
 
 # Define regex for parsing stateScriptLog
 poke_in_regex = re.compile(r"^(\d+)\sUP\s(\d+)")  # matches: timestamp UP port_num
@@ -1878,8 +1911,10 @@ def add_behavioral_data_to_nwb(
                 del f["processing/behavior/hex_centroids"]
             removed_old_data_from_nwb = True
 
-    # Now actually open the file in append mode to do behavior parsing
-    with NWBHDF5IO(nwb_path, mode="r+") as io:
+    # Only open the nwb for writing if we are actually saving to it. Otherwise open it read-only
+    # so we can never modify (or leave an HDF5 write flag on) a large shared raw nwbfile.
+    nwb_open_mode = "r+" if save_type and "nwb" in save_type else "r"
+    with NWBHDF5IO(nwb_path, mode=nwb_open_mode) as io:
         nwbfile = io.read()
         logger.info(f"Parsing behavior for {nwbfile.session_id} ...")
         logger.info(f"Using source script jdb_to_nwb {__version__}")
