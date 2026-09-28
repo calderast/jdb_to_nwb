@@ -2061,20 +2061,26 @@ def add_behavioral_data_to_nwb(
 
             # Filter excel data for this epoch
             excel_data_for_epoch = excel_data.iloc[[run_session_num]]
-
-            # Parse statescriptlog and DIO events for this epoch into tables of trial and block data
-            if nwbfile.session_id == 'BraveLu_20240617' and epoch['tags'][0] == '03_r2': # This was due to starting recording after session started
-                #XS added this to solve the extra dio nosepoke before trial 1; need to systematically solve this with Steph.
+            
+            # Workaround for BraveLu_20240617 03_r2 due to starting recording after session started
+            # XS added this to solve the extra dio nosepoke before trial 1
+            # TODO: systematically solve this 
+            # (see PR #216 - maybe make it not anchor the offset to the first poke at each port?)
+            if nwbfile.session_id == 'BraveLu_20240617' and epoch['tags'][0] == '03_r2':
                 temp = list(DIO_events_in_epoch['wellA_poke'])
                 temp[0] = DIO_events_in_epoch['wellA_poke'][0][1:]
                 temp[1] = DIO_events_in_epoch['wellA_poke'][1][1:]
                 DIO_events_in_epoch['wellA_poke'] = tuple(temp)
                 temp = list(DIO_events_in_epoch['wellA_pump'])
                 temp[0] = [1,0]+temp[0]
-                temp[1] = [DIO_events_in_epoch['wellA_poke'][1][0]+0.03,DIO_events_in_epoch['wellA_poke'][1][0]+0.35]+temp[1]
+                temp[1] = [
+                    DIO_events_in_epoch['wellA_poke'][1][0]+0.03,
+                    DIO_events_in_epoch['wellA_poke'][1][0]+0.35,
+                ]+temp[1]
                 DIO_events_in_epoch['wellA_pump'] = tuple(temp)
                 print(len(DIO_events_in_epoch['wellA_pump'][0]))
-                
+
+            # Parse statescriptlog and DIO events for this epoch into tables of trial and block data
             trial_data, block_data = parse_state_script_log(
                 statescriptlog, DIO_events_in_epoch, excel_data_for_epoch, logger
             )
