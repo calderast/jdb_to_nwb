@@ -398,7 +398,9 @@ def parse_nosepoke_events(nosepoke_events, nosepoke_DIOs, logger, poke_time_thre
 
     # Convert statescript pokes from list of dicts to a dataframe (mapping DIO 1, 2, 4 to ports A, B, C)
     statescript_nosepoke_df = pd.DataFrame(nosepoke_events)
-    statescript_nosepoke_df["port"] = statescript_nosepoke_df["port"].map({1: "A", 2: "B", 4: "C"})
+    ###### TODO: make this port number assignment automatic based on the metafile. XS added one row below for Nova and Vinnie ######
+    # statescript_nosepoke_df["port"] = statescript_nosepoke_df["port"].map({1: "A", 2: "B", 4: "C"}) # For Lily and other rats before Lily.
+    statescript_nosepoke_df["port"] = statescript_nosepoke_df["port"].map({1: "A", 2: "B", 29: "C"}) # For Nova and Vinnie.
 
     # Create a dataframe of DIO pokes that matches the dataframe from the statescript
     port_map = {"wellA_poke": "A", "wellB_poke": "B", "wellC_poke": "C"}
@@ -1029,7 +1031,14 @@ def adjust_block_start_trials(trial_data, block_data, DIO_events, excel_data, lo
                 "Barrier_shift DIOs match data from excel sheet, "
                 f"with barrier shifts at trials {barrier_shift_trials_DIO}!"
             )
-        barrier_shift_trials = barrier_shift_trials_DIO
+        if len(barrier_shift_trials_DIO) < len(barrier_shift_trials_excel): 
+            # XS added this to deal with days (e.g. luna0219 r4) where DIO missed barrier shift
+            # Note that this could cause problems for days where excel sheet is wrong
+            barrier_shift_trials = barrier_shift_trials_excel 
+            logger.warning("Using excel sheet as true barrier shift trials as DIO may be missing pokes.")
+        else:
+            barrier_shift_trials = barrier_shift_trials_DIO
+            logger.warning("Using DIOs as true barrier shift trials.")
 
     # If only DIOs, use that
     elif barrier_shift_trials_DIO is not None:
@@ -1214,9 +1223,10 @@ def validate_trial_and_block_data(trial_data, block_data, logger):
             block_data["pC"].nunique() == 1
         ), f"pC must not vary in a barrier change session, but got pC={block_data['pC'].tolist()}"
         # Maze configurations should be different for each block
-        assert block_data["maze_configuration"].nunique() == len(block_data), (
+        ##### XS changed the following line becaues reverse shift wouldnt work with the original function of taking unique entries of the barrier configs.
+        assert len(block_data["maze_configuration"]) == len(block_data), (
             f"Expected {len(block_data)} maze configurations for {len(block_data)} blocks, "
-            f"got {block_data['maze_configuration'].nunique()} configs: {block_data['maze_configuration']}"
+            f"got {len(block_data)['maze_configuration']} configs: {block_data['maze_configuration']}"
         )
         logger.debug(
             "Check passed: All maze configurations differ and all reward probabilities stay the same across blocks"
@@ -1885,6 +1895,7 @@ def add_behavioral_data_to_nwb(
 
     # Create directory for conversion log files
     log_dir = f"{session_id}_logs"
+    log_dir = f"/home/xulu/code/jdb_to_nwb/frank_lab/conversion_logs/{session_id}_logs" # XS changed this from current wd to a consistent log folder
     os.makedirs(log_dir, exist_ok=True)
 
     # Then set up logging with paths to log files
@@ -1938,7 +1949,7 @@ def add_behavioral_data_to_nwb(
         # Get all stateScriptLogs from run sessions (ignoring logs from sleep sessions)
         module = nwbfile.get_processing_module("associated_files")
         run_statescript_logs = {
-            name: log for name, log in module.data_interfaces.items() if name.startswith("statescript r")
+            name: log for name, log in module.data_interfaces.items() if (name.startswith("statescript r") or name.startswith("statescript_r")) # XS added the or logic due to changes in metafile naming convention
         }
         assert len(run_statescript_logs) == len(run_epochs) == len(excel_data), (
             f"Found {len(run_statescript_logs)} stateScriptLogs, {len(run_epochs)} run epochs, "
@@ -2006,6 +2017,18 @@ def add_behavioral_data_to_nwb(
             excel_data_for_epoch = excel_data.iloc[[run_session_num]]
 
             # Parse statescriptlog and DIO events for this epoch into tables of trial and block data
+            if nwbfile.session_id == 'BraveLu_20240617' and epoch['tags'][0] == '03_r2': # This was due to starting recording after session started
+                #XS added this to solve the extra dio nosepoke before trial 1; need to systematically solve this with Steph.
+                temp = list(DIO_events_in_epoch['wellA_poke'])
+                temp[0] = DIO_events_in_epoch['wellA_poke'][0][1:]
+                temp[1] = DIO_events_in_epoch['wellA_poke'][1][1:]
+                DIO_events_in_epoch['wellA_poke'] = tuple(temp)
+                temp = list(DIO_events_in_epoch['wellA_pump'])
+                temp[0] = [1,0]+temp[0]
+                temp[1] = [DIO_events_in_epoch['wellA_poke'][1][0]+0.03,DIO_events_in_epoch['wellA_poke'][1][0]+0.35]+temp[1]
+                DIO_events_in_epoch['wellA_pump'] = tuple(temp)
+                print(len(DIO_events_in_epoch['wellA_pump'][0]))
+                
             trial_data, block_data = parse_state_script_log(
                 statescriptlog, DIO_events_in_epoch, excel_data_for_epoch, logger
             )
