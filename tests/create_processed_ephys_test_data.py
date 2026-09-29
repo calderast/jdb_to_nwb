@@ -19,7 +19,15 @@
 
 from pathlib import Path
 
-from spikeinterface.extractors import read_mda_sorting, MdaSortingExtractor
+# The read_* functions stay in spikeinterface.extractors, but the extractor classes moved to
+# spikeinterface.extractors.extractor_classes in spikeinterface 0.103 (the old location stops
+# working entirely in 0.105), so import the class from wherever this version keeps it.
+from spikeinterface.extractors import read_mda_sorting
+
+try:
+    from spikeinterface.extractors.extractor_classes import MdaSortingExtractor
+except ImportError:  # spikeinterface < 0.103
+    from spikeinterface.extractors import MdaSortingExtractor
 
 # NOTE: Adjust this path to point to the location of Tim's sorted data for IM-1478/2022-07-25_15-30-00
 firings_mda_file_path = Path("/Users/rly/Documents/NWB/berke-lab-to-nwb/data/ephys/mntsort_output/firings.mda")

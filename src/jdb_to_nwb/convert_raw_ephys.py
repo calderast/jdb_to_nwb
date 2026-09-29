@@ -22,7 +22,14 @@ from neuroconv.tools.spikeinterface.spikeinterfacerecordingdatachunkiterator imp
 )
 from pynwb import NWBFile
 from pynwb.ecephys import ElectricalSeries
-from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
+# spikeinterface >= 0.103 exports only the read_* functions from spikeinterface.extractors and moved
+# the extractor classes to spikeinterface.extractors.extractor_classes (the old location stops working
+# entirely in 0.105). We need the class rather than the read_openephys function because we call
+# OpenEphysBinaryRecordingExtractor.get_streams() to list streams before creating a recording.
+try:
+    from spikeinterface.extractors.extractor_classes import OpenEphysBinaryRecordingExtractor
+except ImportError:  # spikeinterface < 0.103
+    from spikeinterface.extractors import OpenEphysBinaryRecordingExtractor
 
 from .utils import log_and_print, add_associated_file
 from .timestamps_alignment import align_via_interpolation
