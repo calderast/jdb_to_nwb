@@ -26,7 +26,25 @@ def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
     ephys = metadata["ephys"]
 
     if "sorting_analyzer_path" in ephys:
-        add_kilosort_bombcell_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
+        logger.error("Found 'sorting_analyzer_path' directly under 'ephys'.")
+        raise ValueError("Found 'sorting_analyzer_path' directly under 'ephys'. Each probe is sorted "
+                         "separately, so this moved into the probe's own entry in the 'probes' list.")
+
+    # Each probe is sorted on its own channels, so each has its own analyzer
+    probe_entries = ephys.get("probes") or []
+    probes_with_sorting = [
+        (probe_index, probe) for probe_index, probe in enumerate(probe_entries)
+        if probe.get("sorting_analyzer_path")
+    ]
+    if probes_with_sorting:
+        for probe_index, probe in probes_with_sorting:
+            add_kilosort_bombcell_spikes(
+                nwbfile=nwbfile,
+                metadata=metadata,
+                probe=probe,
+                probe_index=probe_index,
+                logger=logger,
+            )
     elif "mountain_sort_output_file_path" in ephys and "sampling_frequency" in ephys:
         add_mountainsort_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
     else:
@@ -252,7 +270,8 @@ def verify_analyzer_phy_correspondence(sorting, analyzer_path: Path, phy_group_b
                        "so phy_group labels may be wrong. Check that the analyzer was built from this Phy output.")
 
 
-def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
+def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
+                                 probe_index: int, logger):
     """
     Add Kilosort4 + BombCell spike sorting output to the NWB file as a Units table.
 
@@ -281,8 +300,22 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     import spikeinterface as si  # local import; heavy dependency only needed when spikes are present
     from spikeinterface.core import get_template_extremum_channel
 
-    log_and_print(logger, "Adding Kilosort4 spikes...", level="info")
-    analyzer_path = Path(metadata["ephys"]["sorting_analyzer_path"])
+    # The label and recording length come from the raw ephys conversion, matched by this probe's
+    # position in the metadata 'probes' list. They are not re-derived from the metadata here,
+    # because a probe may be named by any of the forms its Open Ephys stream goes by.
+    probe_results = (metadata.get("ephys_probe_results") or [])
+    if probe_index < len(probe_results):
+        probe_label = probe_results[probe_index]["label"]
+        recording_num_samples = probe_results[probe_index]["num_samples"]
+    elif probe.get("stream"):
+        probe_label = str(probe["stream"]).split("#")[-1].split(".")[-1]
+        recording_num_samples = None
+    else:
+        logger.error("Cannot tell which probe these units belong to.")
+        raise ValueError("Cannot tell which probe these units belong to: no raw ephys was converted "
+                         "this session, and the probe does not name its 'stream'.")
+    log_and_print(logger, f"Adding Kilosort4 spikes for '{probe_label}'...", level="info")
+    analyzer_path = Path(probe["sorting_analyzer_path"])
     logger.debug(f"Found Kilosort/BombCell spikes from SortingAnalyzer at {analyzer_path}")
 
     analyzer = si.load_sorting_analyzer(analyzer_path)
@@ -304,12 +337,11 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     # The analyzer retains its recording's total sample count (even though it is recordingless), which
     # must match the raw ephys we converted for this session. If they differ, the spike sample indices
     # index a different (or cropped) recording, so aligning them to this session's clock would be silently wrong.
-    # ephys_num_samples is set by add_raw_ephys; if it is absent (no raw ephys this session) 
-    # we can't do this check, so we warn and continue.
-    recording_num_samples = metadata.get("ephys_num_samples")
+    # The length comes from add_raw_ephys via ephys_probe_results; if it is absent (no raw ephys
+    # this session) we can't do this check, so we warn and continue.
     if recording_num_samples is None:
-        logger.warning("No 'ephys_num_samples' in metadata (raw ephys not converted this session?); cannot "
-                       "verify the spike sorting was done on this session's full recording.")
+        logger.warning(f"No recorded sample count for '{probe_label}' (raw ephys not converted this "
+                       "session?); cannot verify the spike sorting was done on this session's recording.")
     else:
         analyzer_num_samples = analyzer.get_num_samples()
         logger.debug(f"analyzer={analyzer_num_samples} samples vs full raw ephys={recording_num_samples} samples "
@@ -320,8 +352,8 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
                 f"at {analyzer_path} was computed on a recording of {analyzer_num_samples} samples "
                 f"({analyzer_num_samples / fs:.1f}s), but this session's raw ephys recording has "
                 f"{recording_num_samples} samples ({recording_num_samples / fs:.1f}s). The spike times would "
-                "be aligned to the wrong recording. Check that 'sorting_analyzer_path' points to the sorting "
-                "for this session's 'openephys_folder_path'."
+                f"be aligned to the wrong recording. Check that the 'sorting_analyzer_path' for "
+                f"'{probe_label}' points to the sorting for this session's recording."
             )
         log_and_print(logger, f"Verified spike sorting matches this session's recording "
                       f"({recording_num_samples} samples).", level="info")
@@ -448,12 +480,22 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
         logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_channel_id'. "
                        "(Was compute('templates') run on this analyzer?)")
 
+    # Which probe each unit came from, and its id in that probe's own sorting. The nwb assigns the
+    # row ids: both probes have Kilosort cluster ids starting at 0, so the sorter's id cannot be the
+    # row id without colliding.
+    unit_columns["probe"] = ("The probe this unit was sorted from", [probe_label] * num_units)
+    unit_columns["sorter_unit_id"] = ("This unit's id in its own probe's sorting (Kilosort cluster id)",
+                                      [int(unit_id) for unit_id in unit_ids])
+
     # Register all the present columns, then add each unit
     all_column_names = list(unit_columns.keys()) + (["waveform_mean"] if templates is not None else [])
     logger.debug(f"Writing {len(all_column_names)} metadata columns (+ spike_times) to nwb units table: "
                  f"{all_column_names}")
+    # This runs once per probe, so only declare each column the first time
+    existing_unit_columns = set(nwbfile.units.colnames) if nwbfile.units is not None else set()
     for name, (description, _values) in unit_columns.items():
-        nwbfile.add_unit_column(name=name, description=description)
+        if name not in existing_unit_columns:
+            nwbfile.add_unit_column(name=name, description=description)
 
     for i, unit_id in enumerate(unit_ids):
         add_unit_kwargs = {name: values[i] for name, (_description, values) in unit_columns.items()}
@@ -461,7 +503,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
             # Waveform mean on the unit's peak channel (1D over samples)
             peak_idx = peak_channel_index[unit_id]
             add_unit_kwargs["waveform_mean"] = templates[i, :, peak_idx].astype("float64")
-        nwbfile.add_unit(id=int(unit_id), spike_times=aligned_spike_trains[i], **add_unit_kwargs)
+        nwbfile.add_unit(spike_times=aligned_spike_trains[i], **add_unit_kwargs)
 
     log_and_print(logger, f"Added {num_units} units to the NWB Units table "
                   f"({len(all_column_names)} metadata columns + spike_times).", level="info")
