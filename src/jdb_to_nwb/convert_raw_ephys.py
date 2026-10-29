@@ -463,6 +463,8 @@ def get_port_visits(continuous_dat_file_path: Path,
     return port_visits, bonsai_start_time
 
 
+### Functions for resolving the probes and recordings named in the metadata
+
 def probe_name_token(name: str) -> str:
     """
     Reduce any of the names a probe goes by to the one token used to MATCH them.
@@ -487,7 +489,6 @@ def probe_name_token(name: str) -> str:
     """
     return str(name).split("#")[-1].split(".")[-1].lower()
 
-
 def probe_label_for_stream(requested_stream: str, resolved_stream: str) -> str:
     """
     The name a probe is called by in the nwb: its electrode groups, its 'probe' electrode column,
@@ -508,6 +509,169 @@ def probe_label_for_stream(requested_stream: str, resolved_stream: str) -> str:
         return str(requested_stream).split("#")[-1]
     return str(resolved_stream).split("#")[-1]
 
+
+def get_session_folders(metadata: dict, logger) -> list:
+    """
+    Resolve the raw Open Ephys folder(s) to convert, in the order they should be concatenated.
+
+    One recording is the common case. Two or more (e.g. a behavior session followed by an
+    optotagging session) are concatenated into one ElectricalSeries, which is what lets them be
+    spike sorted together. Each folder is labelled, and the labels become the nwb epoch tags -
+    Spyglass turns each epoch tag into an interval list of that name, so these are the names you
+    later restrict a sort to.
+
+    Parameters:
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml)
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        list[dict]: one entry per recording, in concatenation order, with keys "path" and "session"
+    """
+    ephys_metadata = metadata["ephys"]
+
+    if "openephys_folder_path" in ephys_metadata:
+        logger.error("Found 'openephys_folder_path' in the ephys metadata.")
+        raise ValueError("Found 'openephys_folder_path' in the ephys metadata. This became "
+                         "'openephys_folder_paths', a list of recordings to concatenate, each with "
+                         "a 'path' and a 'session' label.")
+
+    session_folders = ephys_metadata.get("openephys_folder_paths")
+    if not session_folders:
+        logger.error("No 'openephys_folder_paths' in the ephys metadata.")
+        raise ValueError("No 'openephys_folder_paths' in the ephys metadata. List each Open Ephys "
+                         "recording to convert, with its 'path' and 'session' label.")
+
+    resolved_folders = []
+    for session_folder in session_folders:
+        missing = [field for field in ("path", "session") if not session_folder.get(field)]
+        if missing:
+            logger.error(f"Open Ephys recording entry is missing {missing}: {session_folder}")
+            raise ValueError(f"Open Ephys recording entry is missing {missing}. Every recording "
+                             "needs a 'path' and a 'session' label.")
+        resolved_folders.append({"path": session_folder["path"], "session": session_folder["session"]})
+
+    session_labels = [folder["session"] for folder in resolved_folders]
+    if len(set(session_labels)) != len(session_labels):
+        logger.error(f"Duplicate session labels {session_labels}")
+        raise ValueError(f"Duplicate session labels {session_labels}. Each recording needs a "
+                         "distinct label, because the labels name the nwb epochs.")
+
+    logger.info(f"Converting {len(resolved_folders)} Open Ephys recording(s) in order: {session_labels}")
+    return resolved_folders
+
+
+def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
+    """
+    Resolve which probes to convert and where each one is implanted.
+
+    metadata["ephys"]["probes"] is the only place probes are specified: listing a probe both
+    selects it for conversion and gives its implant location. There is no fallback - a probe that
+    is not listed is not converted, and a listed probe must carry its own location.
+
+    Each probe needs its own location because Spyglass derives the target hemisphere from the SIGN
+    of targeted_x, so bilateral probes sharing one location would land in the same hemisphere.
+
+    'stream' names the Open Ephys probe stream (e.g. "ProbeA"). It is required when the recording
+    holds more than one probe, and may be omitted when there is only one.
+
+    Parameters:
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml)
+        probe_file_paths (dict):
+            Open Ephys probe stream name -> continuous.dat path, for the streams in the recording
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        list[dict]: one entry per probe to convert, in the order given, with keys
+        "stream" (the full Open Ephys stream name), "label" (the short name, e.g. "ProbeA"),
+        "electrodes_location", "targeted_x", "targeted_y", "targeted_z"
+    """
+    ephys_metadata = metadata["ephys"]
+
+    # The location used to live directly under "ephys". Fail loudly on an un-migrated file rather
+    # than converting it with no location at all.
+    outdated_fields = [
+        field for field in ("electrodes_location", "targeted_x", "targeted_y", "targeted_z", "probe")
+        if field in ephys_metadata
+    ]
+    if outdated_fields:
+        logger.error(f"Found {outdated_fields} directly under 'ephys'. These moved into the "
+                     "'probes' list, where each probe carries its own location.")
+        raise ValueError(f"Found {outdated_fields} directly under 'ephys' in the metadata. These "
+                         "moved into the 'probes' list - give each probe its own entry with "
+                         "electrodes_location and targeted_x/y/z.")
+
+    probe_entries = ephys_metadata.get("probes")
+    if not probe_entries:
+        logger.error("No 'probes' in the ephys metadata.")
+        raise ValueError("No 'probes' in the ephys metadata. List each probe to convert, with its "
+                         "electrodes_location and targeted_x/y/z.")
+
+    # 'stream' may only be omitted when the recording holds exactly one probe
+    streams_given = ["stream" in entry for entry in probe_entries]
+    if len(probe_entries) > 1 and not all(streams_given):
+        logger.error(f"{len(probe_entries)} probes listed but not all give a 'stream'.")
+        raise ValueError(f"{len(probe_entries)} probes are listed in the metadata, so each one must "
+                         f"name its 'stream' (one of {sorted(probe_file_paths)}).")
+
+    probe_configs = []
+    for probe_entry in probe_entries:
+        requested_stream = probe_entry.get("stream")
+        if requested_stream is None:
+            if len(probe_file_paths) != 1:
+                logger.error(f"No 'stream' given but the recording holds {len(probe_file_paths)} "
+                             f"probe streams: {sorted(probe_file_paths)}")
+                raise ValueError(f"The recording holds {len(probe_file_paths)} probe streams "
+                                 f"{sorted(probe_file_paths)}, so the probe must name its 'stream'.")
+            stream = next(iter(probe_file_paths))
+        else:
+            matches = [name for name in probe_file_paths
+                       if probe_name_token(name) == probe_name_token(requested_stream)]
+            if len(matches) != 1:
+                logger.error(f"Expected one probe stream matching '{requested_stream}', found "
+                             f"{matches} among {sorted(probe_file_paths)}")
+                raise ValueError(f"Expected one probe stream matching '{requested_stream}', found "
+                                 f"{matches} among {sorted(probe_file_paths)}.")
+            stream = matches[0]
+
+        missing_fields = [
+            field for field in
+            ("probe_type", "electrodes_location", "targeted_x", "targeted_y", "targeted_z")
+            if probe_entry.get(field) is None
+        ]
+        if missing_fields:
+            logger.error(f"Probe '{stream}' is missing {missing_fields}")
+            raise ValueError(f"Probe '{stream}' is missing {missing_fields}. Every probe carries its "
+                             "own type and location, because bilateral probes are in opposite hemispheres.")
+
+        probe_configs.append({
+            "stream": stream,
+            "label": probe_label_for_stream(requested_stream=requested_stream, resolved_stream=stream),
+            "probe_type": probe_entry["probe_type"],
+            "electrodes_location": probe_entry["electrodes_location"],
+            "targeted_x": probe_entry["targeted_x"],
+            "targeted_y": probe_entry["targeted_y"],
+            "targeted_z": probe_entry["targeted_z"],
+        })
+
+    # One conversion handles one kind of probe: the Berke and Neuropixels paths read different
+    # files and find port visits in different places, so a mix of types cannot be converted together
+    probe_types = {config["probe_type"] for config in probe_configs}
+    if len(probe_types) > 1:
+        logger.error(f"Probes have different types: {sorted(probe_types)}")
+        raise ValueError(f"Probes have different types ({sorted(probe_types)}). A single conversion "
+                         "handles one probe type.")
+
+    for probe_config in probe_configs:
+        logger.info(f"Converting probe '{probe_config['label']}' ({probe_config['probe_type']}, stream "
+                    f"'{probe_config['stream']}') at "
+                    f"{probe_config['electrodes_location']}, ML={probe_config['targeted_x']} "
+                    f"AP={probe_config['targeted_y']} DV={probe_config['targeted_z']}")
+    return probe_configs
+### Functions for combining probes and concatenating recordings
 
 def resolve_probe_stream(folder_path: Path, logger, stream_name: str = None) -> str:
     """
@@ -1779,171 +1943,6 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None, probe_
                          fig_dir=fig_dir)
 
     return neuropixels_channel_data
-
-
-def get_session_folders(metadata: dict, logger) -> list:
-    """
-    Resolve the raw Open Ephys folder(s) to convert, in the order they should be concatenated.
-
-    One recording is the common case. Two or more (e.g. a behavior session followed by an
-    optotagging session) are concatenated into one ElectricalSeries, which is what lets them be
-    spike sorted together. Each folder is labelled, and the labels become the nwb epoch tags -
-    Spyglass turns each epoch tag into an interval list of that name, so these are the names you
-    later restrict a sort to.
-
-    Parameters:
-        metadata (dict):
-            Full metadata dictionary (from user-specified yaml)
-        logger (Logger):
-            Logger to track conversion progress
-
-    Returns:
-        list[dict]: one entry per recording, in concatenation order, with keys "path" and "session"
-    """
-    ephys_metadata = metadata["ephys"]
-
-    if "openephys_folder_path" in ephys_metadata:
-        logger.error("Found 'openephys_folder_path' in the ephys metadata.")
-        raise ValueError("Found 'openephys_folder_path' in the ephys metadata. This became "
-                         "'openephys_folder_paths', a list of recordings to concatenate, each with "
-                         "a 'path' and a 'session' label.")
-
-    session_folders = ephys_metadata.get("openephys_folder_paths")
-    if not session_folders:
-        logger.error("No 'openephys_folder_paths' in the ephys metadata.")
-        raise ValueError("No 'openephys_folder_paths' in the ephys metadata. List each Open Ephys "
-                         "recording to convert, with its 'path' and 'session' label.")
-
-    resolved_folders = []
-    for session_folder in session_folders:
-        missing = [field for field in ("path", "session") if not session_folder.get(field)]
-        if missing:
-            logger.error(f"Open Ephys recording entry is missing {missing}: {session_folder}")
-            raise ValueError(f"Open Ephys recording entry is missing {missing}. Every recording "
-                             "needs a 'path' and a 'session' label.")
-        resolved_folders.append({"path": session_folder["path"], "session": session_folder["session"]})
-
-    session_labels = [folder["session"] for folder in resolved_folders]
-    if len(set(session_labels)) != len(session_labels):
-        logger.error(f"Duplicate session labels {session_labels}")
-        raise ValueError(f"Duplicate session labels {session_labels}. Each recording needs a "
-                         "distinct label, because the labels name the nwb epochs.")
-
-    logger.info(f"Converting {len(resolved_folders)} Open Ephys recording(s) in order: {session_labels}")
-    return resolved_folders
-
-
-def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
-    """
-    Resolve which probes to convert and where each one is implanted.
-
-    metadata["ephys"]["probes"] is the only place probes are specified: listing a probe both
-    selects it for conversion and gives its implant location. There is no fallback - a probe that
-    is not listed is not converted, and a listed probe must carry its own location.
-
-    Each probe needs its own location because Spyglass derives the target hemisphere from the SIGN
-    of targeted_x, so bilateral probes sharing one location would land in the same hemisphere.
-
-    'stream' names the Open Ephys probe stream (e.g. "ProbeA"). It is required when the recording
-    holds more than one probe, and may be omitted when there is only one.
-
-    Parameters:
-        metadata (dict):
-            Full metadata dictionary (from user-specified yaml)
-        probe_file_paths (dict):
-            Open Ephys probe stream name -> continuous.dat path, for the streams in the recording
-        logger (Logger):
-            Logger to track conversion progress
-
-    Returns:
-        list[dict]: one entry per probe to convert, in the order given, with keys
-        "stream" (the full Open Ephys stream name), "label" (the short name, e.g. "ProbeA"),
-        "electrodes_location", "targeted_x", "targeted_y", "targeted_z"
-    """
-    ephys_metadata = metadata["ephys"]
-
-    # The location used to live directly under "ephys". Fail loudly on an un-migrated file rather
-    # than converting it with no location at all.
-    outdated_fields = [
-        field for field in ("electrodes_location", "targeted_x", "targeted_y", "targeted_z", "probe")
-        if field in ephys_metadata
-    ]
-    if outdated_fields:
-        logger.error(f"Found {outdated_fields} directly under 'ephys'. These moved into the "
-                     "'probes' list, where each probe carries its own location.")
-        raise ValueError(f"Found {outdated_fields} directly under 'ephys' in the metadata. These "
-                         "moved into the 'probes' list - give each probe its own entry with "
-                         "electrodes_location and targeted_x/y/z.")
-
-    probe_entries = ephys_metadata.get("probes")
-    if not probe_entries:
-        logger.error("No 'probes' in the ephys metadata.")
-        raise ValueError("No 'probes' in the ephys metadata. List each probe to convert, with its "
-                         "electrodes_location and targeted_x/y/z.")
-
-    # 'stream' may only be omitted when the recording holds exactly one probe
-    streams_given = ["stream" in entry for entry in probe_entries]
-    if len(probe_entries) > 1 and not all(streams_given):
-        logger.error(f"{len(probe_entries)} probes listed but not all give a 'stream'.")
-        raise ValueError(f"{len(probe_entries)} probes are listed in the metadata, so each one must "
-                         f"name its 'stream' (one of {sorted(probe_file_paths)}).")
-
-    probe_configs = []
-    for probe_entry in probe_entries:
-        requested_stream = probe_entry.get("stream")
-        if requested_stream is None:
-            if len(probe_file_paths) != 1:
-                logger.error(f"No 'stream' given but the recording holds {len(probe_file_paths)} "
-                             f"probe streams: {sorted(probe_file_paths)}")
-                raise ValueError(f"The recording holds {len(probe_file_paths)} probe streams "
-                                 f"{sorted(probe_file_paths)}, so the probe must name its 'stream'.")
-            stream = next(iter(probe_file_paths))
-        else:
-            matches = [name for name in probe_file_paths
-                       if probe_name_token(name) == probe_name_token(requested_stream)]
-            if len(matches) != 1:
-                logger.error(f"Expected one probe stream matching '{requested_stream}', found "
-                             f"{matches} among {sorted(probe_file_paths)}")
-                raise ValueError(f"Expected one probe stream matching '{requested_stream}', found "
-                                 f"{matches} among {sorted(probe_file_paths)}.")
-            stream = matches[0]
-
-        missing_fields = [
-            field for field in
-            ("probe_type", "electrodes_location", "targeted_x", "targeted_y", "targeted_z")
-            if probe_entry.get(field) is None
-        ]
-        if missing_fields:
-            logger.error(f"Probe '{stream}' is missing {missing_fields}")
-            raise ValueError(f"Probe '{stream}' is missing {missing_fields}. Every probe carries its "
-                             "own type and location, because bilateral probes are in opposite hemispheres.")
-
-        probe_configs.append({
-            "stream": stream,
-            "label": probe_label_for_stream(requested_stream=requested_stream, resolved_stream=stream),
-            "probe_type": probe_entry["probe_type"],
-            "electrodes_location": probe_entry["electrodes_location"],
-            "targeted_x": probe_entry["targeted_x"],
-            "targeted_y": probe_entry["targeted_y"],
-            "targeted_z": probe_entry["targeted_z"],
-        })
-
-    # One conversion handles one kind of probe: the Berke and Neuropixels paths read different
-    # files and find port visits in different places, so a mix of types cannot be converted together
-    probe_types = {config["probe_type"] for config in probe_configs}
-    if len(probe_types) > 1:
-        logger.error(f"Probes have different types: {sorted(probe_types)}")
-        raise ValueError(f"Probes have different types ({sorted(probe_types)}). A single conversion "
-                         "handles one probe type.")
-
-    for probe_config in probe_configs:
-        logger.info(f"Converting probe '{probe_config['label']}' ({probe_config['probe_type']}, stream "
-                    f"'{probe_config['stream']}') at "
-                    f"{probe_config['electrodes_location']}, ML={probe_config['targeted_x']} "
-                    f"AP={probe_config['targeted_y']} DV={probe_config['targeted_z']}")
-    return probe_configs
-
-
 def add_electrode_data_neuropixels(
     *,
     nwbfile: NWBFile,
@@ -2138,10 +2137,10 @@ def add_electrode_data_neuropixels(
                 f"shank ElectrodeGroup(s): {sorted(electrode_groups_by_shank)}")
 
 
-### Functions for preprocessed (optonpx) ephys data
-
 # The preprocessing pipeline writes its per-probe folders in lower camel case ("probeA") while
 # Open Ephys names the streams "ProbeA", so probe names are matched case-insensitively.
+### The function convert.py calls
+
 def add_raw_ephys(
     *,
     nwbfile: NWBFile,
