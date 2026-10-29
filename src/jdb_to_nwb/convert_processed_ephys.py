@@ -208,6 +208,7 @@ def open_processed_probe_sessions(
 
 def get_processed_session_recordings(
     processed_ephys_path: Path,
+    session_boundaries: dict,
     probe_streams_by_label: dict,
     session_labels: list,
     probe_start_times: dict,
@@ -227,6 +228,8 @@ def get_processed_session_recordings(
     Parameters:
         processed_ephys_path (Path):
             The preprocessed session directory
+        session_boundaries (dict):
+            The already-parsed session_boundaries.json (from read_session_boundaries)
         probe_streams_by_label (dict):
             Short probe label -> full Open Ephys stream name, in ElectricalSeries channel order
         session_labels (list):
@@ -244,9 +247,10 @@ def get_processed_session_recordings(
         session_recordings (list): one combined recording per session, in order
         session_timestamps (list): each session's own timestamps
         num_samples_by_probe (dict): each probe's full concatenated length, for the sorting guard
+        sessions_by_probe (dict): probe label -> {session label: that probe's recording}, so a
+            caller can check one against the raw traces without opening it again
     """
-    boundaries = read_session_boundaries(processed_ephys_path=processed_ephys_path, logger=logger)
-    streams = boundaries["streams"]
+    streams = session_boundaries["streams"]
 
     # The metadata's session names have to be the ones the preprocessing pipeline used, or the
     # recordings would be matched to the wrong segments of the concatenated file
@@ -296,7 +300,7 @@ def get_processed_session_recordings(
         session_recordings.append(combined_recording)
         session_timestamps.append(timestamps)
 
-    return session_recordings, session_timestamps, num_samples_by_probe
+    return session_recordings, session_timestamps, num_samples_by_probe, sessions_by_probe
 
 def verify_processed_matches_raw(processed_recording, raw_recording, logger,
                                  num_samples: int = 30_000, min_correlation: float = 0.9) -> None:

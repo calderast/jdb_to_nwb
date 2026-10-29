@@ -465,20 +465,48 @@ def get_port_visits(continuous_dat_file_path: Path,
 
 def probe_name_token(name: str) -> str:
     """
-    Reduce any of the names a probe goes by to the one token that identifies it.
+    Reduce any of the names a probe goes by to the one token used to MATCH them.
 
     The same probe is written differently depending on where the name came from: the metadata says
     "ProbeA", the Open Ephys continuous folder is "OneBox-100.ProbeA", SpikeInterface reports
     "Record Node 101#OneBox-100.ProbeA", and the preprocessing pipeline writes "probeA". Comparing
     tokens lets all of those match, and keeps one definition of probe identity in one place.
 
+    This is for matching ONLY, not for naming. It is the last dot-separated component, which is
+    the probe name for a OneBox stream but is the stream index for others ("Rhythm_FPGA-100.0"
+    reduces to "0"), so it makes a poor label. probe_label_for_stream does the naming.
+
+    Two streams differing only before the last dot reduce to the same token. That does not pick
+    the wrong one silently: every caller requires exactly one match and raises otherwise.
+
     Parameters:
         name (str): a probe name in any of those forms
 
     Returns:
-        str: the identifying token, lowercased (e.g. "probea")
+        str: the matching token, lowercased (e.g. "probea")
     """
     return str(name).split("#")[-1].split(".")[-1].lower()
+
+
+def probe_label_for_stream(requested_stream: str, resolved_stream: str) -> str:
+    """
+    The name a probe is called by in the nwb: its electrode groups, its 'probe' electrode column,
+    and the 'probe' column on its units.
+
+    This is what the user called it in the metadata, when they named one. Otherwise it is the
+    recording's own stream name, with the Record Node prefix removed. It is never a parsed
+    fragment of the stream name, which would label a Berke probe "0".
+
+    Parameters:
+        requested_stream (str): the 'stream' from the probe's metadata entry, or None
+        resolved_stream (str): the full Open Ephys stream name it resolved to
+
+    Returns:
+        str: the label for this probe
+    """
+    if requested_stream:
+        return str(requested_stream).split("#")[-1]
+    return str(resolved_stream).split("#")[-1]
 
 
 def resolve_probe_stream(folder_path: Path, logger, stream_name: str = None) -> str:
@@ -1892,7 +1920,7 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
 
         probe_configs.append({
             "stream": stream,
-            "label": stream.split(".")[-1],
+            "label": probe_label_for_stream(requested_stream=requested_stream, resolved_stream=stream),
             "probe_type": probe_entry["probe_type"],
             "electrodes_location": probe_entry["electrodes_location"],
             "targeted_x": probe_entry["targeted_x"],
@@ -2236,7 +2264,6 @@ def add_raw_ephys(
     # Read recording params (channel count, sample rate, conversion factor) from structure.oebin.
     # This works the same for Berke lab probes and Neuropixels. Every probe sharing one
     # ElectricalSeries must agree on these, so check rather than assume.
-    session_labels_for_error = [session_folder["session"] for session_folder in session_folders]
     oebin_params_per_probe = {
         probe_label: read_oebin_params(continuous_dat_file_path=path, logger=logger)
         for probe_label, path in zip(probe_labels, probe_streams_to_convert.values())
@@ -2263,11 +2290,11 @@ def add_raw_ephys(
                 first = oebin_params_per_probe[probe_config["label"]][param]
                 if other_params[param] != first:
                     logger.error(f"'{probe_config['label']}' {param} differs between recordings: "
-                                 f"{session_labels_for_error[0]}={first}, "
+                                 f"{session_folders[0]['session']}={first}, "
                                  f"{session_folder['session']}={other_params[param]}")
                     raise ValueError(
                         f"'{probe_config['label']}' {param} differs between recordings "
-                        f"({session_labels_for_error[0]}={first}, "
+                        f"({session_folders[0]['session']}={first}, "
                         f"{session_folder['session']}={other_params[param]}). They cannot share "
                         "one ElectricalSeries."
                     )
@@ -2416,8 +2443,6 @@ def add_raw_ephys(
         # so a module-level import either way round would be circular.
         from .convert_processed_ephys import (
             get_processed_session_recordings,
-            match_probe_key,
-            open_processed_probe_sessions,
             read_session_boundaries,
             verify_processed_matches_raw,
         )
@@ -2441,6 +2466,7 @@ def add_raw_ephys(
             processed_ephys_path=processed_ephys_path, logger=logger
         )
         processed_session_recordings_result = get_processed_session_recordings(
+            session_boundaries=processed_session_boundaries,
             processed_ephys_path=processed_ephys_path,
             probe_streams_by_label=probe_streams_by_label,
             session_labels=session_labels,
@@ -2449,20 +2475,13 @@ def add_raw_ephys(
             samples_to_remove=samples_to_remove,
             logger=logger,
         )
-        session_recordings, session_timestamps, num_samples_by_probe = processed_session_recordings_result
+        (session_recordings, session_timestamps, num_samples_by_probe,
+         processed_sessions_by_probe) = processed_session_recordings_result
 
-        # Compare the first recording's first probe against the raw traces it came from
-        first_processed_sessions = open_processed_probe_sessions(
-            processed_ephys_path=processed_ephys_path,
-            probe_label=first_probe_label,
-            probe_boundaries=processed_session_boundaries["streams"][
-                match_probe_key(processed_session_boundaries["streams"], first_probe_label)],
-            conversion_factor_uv=channel_conversion_factor_uv,
-            session_start_times=probe_start_times[first_probe_label],
-            logger=logger,
-        )
+        # Compare the first recording's first probe against the raw traces it came from, reusing
+        # the recording that was already opened above
         verify_processed_matches_raw(
-            processed_recording=first_processed_sessions[session_labels[0]],
+            processed_recording=processed_sessions_by_probe[first_probe_label][session_labels[0]],
             raw_recording=first_raw_recording,
             logger=logger,
         )

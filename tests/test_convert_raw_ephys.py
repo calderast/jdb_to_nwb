@@ -834,7 +834,9 @@ def test_get_probe_configs_matches_a_fully_qualified_stream_name(dummy_logger):
     configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
 
     assert configs[0]["stream"] == "OneBox-100.ProbeB"
-    assert configs[0]["label"] == "ProbeB"
+    # The label is what the user wrote (minus the Record Node prefix), not a guess at which part
+    # of it names the probe - so it is predictable from the metadata
+    assert configs[0]["label"] == "OneBox-100.ProbeB"
 
 
 def test_get_session_time_offsets_places_recordings_by_folder_name(dummy_logger):
@@ -1002,7 +1004,9 @@ def test_add_raw_ephys_hands_spike_sorting_one_label_per_probe(dummy_logger, tmp
     # One result per probe, in the same order as the metadata's probes list
     probe_results = ephys_data_dict["probe_results"]
     assert len(probe_results) == len(metadata["ephys"]["probes"])
-    assert probe_results[0]["label"] == "0"            # the Rhythm_FPGA-100.0 stream
+    # With no 'stream' in the metadata the label is the recording's own stream name. It is not a
+    # parsed fragment of it, which for this probe would be the useless "0".
+    assert probe_results[0]["label"] == "Rhythm_FPGA-100.0"
     assert probe_results[0]["num_samples"] == 3_000    # the probe's own full length
 def test_add_raw_ephys_rejects_recordings_that_disagree(dummy_logger, tmp_path):
     """
