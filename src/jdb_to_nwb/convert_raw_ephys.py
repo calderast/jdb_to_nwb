@@ -809,8 +809,8 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
     aligned_recordings = []
     for probe_index, (stream, recording) in enumerate(recordings_by_stream.items()):
         # Always slice (even when the length already matches) so we work on a new recording object.
-        # We clear the time bookkeeping below, and that mutates in place - without this, we would be
-        # modifying the caller's recording.
+        # We clear the time bookkeeping below and offset the probe geometry just after, and both of
+        # those can mutate in place - without this, we would be modifying the caller's recording.
         recording = recording.frame_slice(start_frame=0, end_frame=common_num_samples)
 
         # SpikeInterface refuses to aggregate recordings whose channel locations overlap, and every
@@ -821,7 +821,11 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
             try:
                 probe = recording.get_probe()
                 probe.move([probe_index * PROBE_LOCATION_OFFSET_UM, 0.0])
-                recording = recording.set_probe(probe)
+                # set_probe returns a new recording in spikeinterface < 0.105, but modifies the
+                # recording in place and returns None from 0.105 on, so keep whichever we get.
+                moved_recording = recording.set_probe(probe)
+                if moved_recording is not None:
+                    recording = moved_recording
             except Exception as error:
                 logger.debug(f"Could not offset probe geometry for '{stream}' ({type(error).__name__}: "
                              f"{error}). Continuing - this only matters if locations collide.")

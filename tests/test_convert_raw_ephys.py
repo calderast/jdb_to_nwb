@@ -639,6 +639,8 @@ def test_combine_probe_recordings_combines_channels(dummy_logger):
     combined_traces = combined.get_traces(end_frame=100)
     np.testing.assert_allclose(combined_traces[:, :4], probe_a.get_traces(end_frame=100))
     np.testing.assert_allclose(combined_traces[:, 4:], probe_b.get_traces(end_frame=100))
+
+
 def test_combine_probe_recordings_rejects_mismatched_sampling_rates(dummy_logger):
     """
     Combining probes sampled at different rates into one ElectricalSeries would be meaningless,
