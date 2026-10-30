@@ -1,6 +1,42 @@
 # NOTE: We could have used NeuroConv to convert the ephys data but we want to use the Frank Lab's 
 # ndx-franklab-novela extension to store the Probe information for maximal integration with Spyglass, 
 # so we are doing the conversion manually using PyNWB.
+#
+# ============================================================================================
+# ASSUMPTIONS
+#
+# These are the things this module takes to be true and does NOT verify, or verifies only
+# indirectly. If a conversion produces something surprising, check these first.
+#
+# About the recordings
+#   1. All probes being converted are the same model, and every recording holds every probe.
+#      Checked: a mixed probe_type raises, and a missing stream in a later recording raises.
+#   2. Probes share one hardware clock, so samples can be combined by index without resampling.
+#      Measured on IM-1979 via laser artifacts seen by both probes: drift < 0.01 ppm over 457s.
+#      Probes still START a few samples apart, which IS corrected (by time, per session).
+#   3. Recordings are listed in the order they were recorded, and the gap between them is real
+#      dead time. Checked: out-of-order folder times raise, as does an overlap.
+#   4. A recording's wall-clock start is the datetime in its Open Ephys folder name, so the gap
+#      between recordings is only accurate to ~1 second. Fine for sorting (the gap just has to
+#      exist); NOT a sync, so cross-recording timing finer than a second is not supported.
+#   5. Each probe's own timestamps are a usable clock within a recording. They are used as-is.
+#   6. 'experiment_number' (when given) is the same for every recording.
+#
+# About preprocessed traces
+#   7. When processed_ephys_path is set the ElectricalSeries holds preprocessed traces instead of
+#      raw ones. That path and its own assumptions live in convert_processed_ephys.py.
+#
+# About the nwb and Spyglass
+#  11. Spyglass reads raw ephys with nwbfile.get_acquisition(), which requires EXACTLY ONE
+#      acquisition object - which is why every probe and every recording share one
+#      ElectricalSeries rather than getting one each.
+#  12. Spyglass turns each nwb epoch's FIRST tag into an interval list of that name, so the
+#      'session' labels become the names a spike sort is restricted to.
+#  13. Spyglass casts Shank and ShanksElectrode names to int, so those stay numeric. Electrode
+#      GROUP names are varchar, so they can carry the probe prefix.
+#  14. Spyglass keys Probe on probe_type, so two physical probes of the same model resolve to one
+#      Spyglass Probe entry even though they are two nwb devices.
+# ============================================================================================
 
 import os
 import re
@@ -46,6 +82,12 @@ MAX_IMPEDANCE_OHMS = 3e6
 # Both the channel and the threshold are overridable via metadata["ephys"]
 NPX_DEFAULT_PORT_VISITS_ADC_CHANNEL = 2
 NPX_PORT_VISITS_THRESHOLD_VOLTS = 4.0
+
+# When combining multiple probes into one recording, SpikeInterface requires every channel location
+# to be unique, but all Neuropixels probes have sites at the same relative positions. We shift each
+# probe's SpikeInterface geometry apart by this much (um) to keep the locations distinct. This never
+# reaches the nwb: the rel_x/rel_y we write come from our own electrode coordinates table.
+PROBE_LOCATION_OFFSET_UM = 10_000
 
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
@@ -421,54 +463,755 @@ def get_port_visits(continuous_dat_file_path: Path,
     return port_visits, bonsai_start_time
 
 
-def get_raw_ephys_data(
-    folder_path: Path,
-    logger,
-    exclude_channels: list[str] = [],
-    samples_to_remove: int = 0
-) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray]:
+### Functions for resolving the probes and recordings named in the metadata
+
+def probe_name_token(name: str) -> str:
     """
-    Get the raw ephys data from the OpenEphys binary recording.
+    Reduce any of the names a probe goes by to the one token used to MATCH them.
+
+    The same probe is written differently depending on where the name came from: the metadata says
+    "ProbeA", the Open Ephys continuous folder is "OneBox-100.ProbeA", SpikeInterface reports
+    "Record Node 101#OneBox-100.ProbeA", and the preprocessing pipeline writes "probeA". Comparing
+    tokens lets all of those match, and keeps one definition of probe identity in one place.
+
+    This is for matching ONLY, not for naming. It is the last dot-separated component, which is
+    the probe name for a OneBox stream but is the stream index for others ("Rhythm_FPGA-100.0"
+    reduces to "0"), so it makes a poor label. probe_label_for_stream does the naming.
+
+    Two streams differing only before the last dot reduce to the same token. That does not pick
+    the wrong one silently: every caller requires exactly one match and raises otherwise.
+
+    Parameters:
+        name (str): a probe name in any of those forms
+
+    Returns:
+        str: the matching token, lowercased (e.g. "probea")
+    """
+    return str(name).split("#")[-1].split(".")[-1].lower()
+
+def probe_label_for_stream(requested_stream: str, resolved_stream: str) -> str:
+    """
+    The name a probe is called by in the nwb: its electrode groups, its 'probe' electrode column,
+    and the 'probe' column on its units.
+
+    This is what the user called it in the metadata, when they named one. Otherwise it is the
+    recording's own stream name, with the Record Node prefix removed. It is never a parsed
+    fragment of the stream name, which would label a Berke probe "0".
+
+    Parameters:
+        requested_stream (str): the 'stream' from the probe's metadata entry, or None
+        resolved_stream (str): the full Open Ephys stream name it resolved to
+
+    Returns:
+        str: the label for this probe
+    """
+    if requested_stream:
+        return str(requested_stream).split("#")[-1]
+    return str(resolved_stream).split("#")[-1]
+
+
+def get_session_folders(metadata: dict, logger) -> list:
+    """
+    Resolve the raw Open Ephys folder(s) to convert, in the order they should be concatenated.
+
+    One recording is the common case. Two or more (e.g. a behavior session followed by an
+    optotagging session) are concatenated into one ElectricalSeries, which is what lets them be
+    spike sorted together. Each folder is labelled, and the labels become the nwb epoch tags -
+    Spyglass turns each epoch tag into an interval list of that name, so these are the names you
+    later restrict a sort to.
+
+    Parameters:
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml)
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        list[dict]: one entry per recording, in concatenation order, with keys "path" and "session"
+    """
+    ephys_metadata = metadata["ephys"]
+
+    if "openephys_folder_path" in ephys_metadata:
+        logger.error("Found 'openephys_folder_path' in the ephys metadata.")
+        raise ValueError("Found 'openephys_folder_path' in the ephys metadata. This became "
+                         "'openephys_folder_paths', a list of recordings to concatenate, each with "
+                         "a 'path' and a 'session' label.")
+
+    session_folders = ephys_metadata.get("openephys_folder_paths")
+    if not session_folders:
+        logger.error("No 'openephys_folder_paths' in the ephys metadata.")
+        raise ValueError("No 'openephys_folder_paths' in the ephys metadata. List each Open Ephys "
+                         "recording to convert, with its 'path' and 'session' label.")
+
+    resolved_folders = []
+    for session_folder in session_folders:
+        missing = [field for field in ("path", "session") if not session_folder.get(field)]
+        if missing:
+            logger.error(f"Open Ephys recording entry is missing {missing}: {session_folder}")
+            raise ValueError(f"Open Ephys recording entry is missing {missing}. Every recording "
+                             "needs a 'path' and a 'session' label.")
+        resolved_folders.append({"path": session_folder["path"], "session": session_folder["session"]})
+
+    session_labels = [folder["session"] for folder in resolved_folders]
+    if len(set(session_labels)) != len(session_labels):
+        logger.error(f"Duplicate session labels {session_labels}")
+        raise ValueError(f"Duplicate session labels {session_labels}. Each recording needs a "
+                         "distinct label, because the labels name the nwb epochs.")
+
+    logger.info(f"Converting {len(resolved_folders)} Open Ephys recording(s) in order: {session_labels}")
+    return resolved_folders
+
+
+def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
+    """
+    Resolve which probes to convert and where each one is implanted.
+
+    metadata["ephys"]["probes"] is the only place probes are specified: listing a probe both
+    selects it for conversion and gives its implant location. There is no fallback - a probe that
+    is not listed is not converted, and a listed probe must carry its own location.
+
+    Each probe needs its own location because Spyglass derives the target hemisphere from the SIGN
+    of targeted_x, so bilateral probes sharing one location would land in the same hemisphere.
+
+    'stream' names the Open Ephys probe stream (e.g. "ProbeA"). It is required when the recording
+    holds more than one probe, and may be omitted when there is only one.
+
+    Parameters:
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml)
+        probe_file_paths (dict):
+            Open Ephys probe stream name -> continuous.dat path, for the streams in the recording
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        list[dict]: one entry per probe to convert, in the order given, with keys
+        "stream" (the full Open Ephys stream name), "label" (the short name, e.g. "ProbeA"),
+        "electrodes_location", "targeted_x", "targeted_y", "targeted_z"
+    """
+    ephys_metadata = metadata["ephys"]
+
+    # The location used to live directly under "ephys". Fail loudly on an un-migrated file rather
+    # than converting it with no location at all.
+    outdated_fields = [
+        field for field in ("electrodes_location", "targeted_x", "targeted_y", "targeted_z", "probe")
+        if field in ephys_metadata
+    ]
+    if outdated_fields:
+        logger.error(f"Found {outdated_fields} directly under 'ephys'. These moved into the "
+                     "'probes' list, where each probe carries its own location.")
+        raise ValueError(f"Found {outdated_fields} directly under 'ephys' in the metadata. These "
+                         "moved into the 'probes' list - give each probe its own entry with "
+                         "electrodes_location and targeted_x/y/z.")
+
+    probe_entries = ephys_metadata.get("probes")
+    if not probe_entries:
+        logger.error("No 'probes' in the ephys metadata.")
+        raise ValueError("No 'probes' in the ephys metadata. List each probe to convert, with its "
+                         "electrodes_location and targeted_x/y/z.")
+
+    # 'stream' may only be omitted when the recording holds exactly one probe
+    streams_given = ["stream" in entry for entry in probe_entries]
+    if len(probe_entries) > 1 and not all(streams_given):
+        logger.error(f"{len(probe_entries)} probes listed but not all give a 'stream'.")
+        raise ValueError(f"{len(probe_entries)} probes are listed in the metadata, so each one must "
+                         f"name its 'stream' (one of {sorted(probe_file_paths)}).")
+
+    probe_configs = []
+    for probe_entry in probe_entries:
+        requested_stream = probe_entry.get("stream")
+        if requested_stream is None:
+            if len(probe_file_paths) != 1:
+                logger.error(f"No 'stream' given but the recording holds {len(probe_file_paths)} "
+                             f"probe streams: {sorted(probe_file_paths)}")
+                raise ValueError(f"The recording holds {len(probe_file_paths)} probe streams "
+                                 f"{sorted(probe_file_paths)}, so the probe must name its 'stream'.")
+            stream = next(iter(probe_file_paths))
+        else:
+            matches = [name for name in probe_file_paths
+                       if probe_name_token(name) == probe_name_token(requested_stream)]
+            if len(matches) != 1:
+                logger.error(f"Expected one probe stream matching '{requested_stream}', found "
+                             f"{matches} among {sorted(probe_file_paths)}")
+                raise ValueError(f"Expected one probe stream matching '{requested_stream}', found "
+                                 f"{matches} among {sorted(probe_file_paths)}.")
+            stream = matches[0]
+
+        missing_fields = [
+            field for field in
+            ("probe_type", "electrodes_location", "targeted_x", "targeted_y", "targeted_z")
+            if probe_entry.get(field) is None
+        ]
+        if missing_fields:
+            logger.error(f"Probe '{stream}' is missing {missing_fields}")
+            raise ValueError(f"Probe '{stream}' is missing {missing_fields}. Every probe carries its "
+                             "own type and location, because bilateral probes are in opposite hemispheres.")
+
+        probe_configs.append({
+            "stream": stream,
+            "label": probe_label_for_stream(requested_stream=requested_stream, resolved_stream=stream),
+            "probe_type": probe_entry["probe_type"],
+            "electrodes_location": probe_entry["electrodes_location"],
+            "targeted_x": probe_entry["targeted_x"],
+            "targeted_y": probe_entry["targeted_y"],
+            "targeted_z": probe_entry["targeted_z"],
+        })
+
+    # One conversion handles one kind of probe: the Berke and Neuropixels paths read different
+    # files and find port visits in different places, so a mix of types cannot be converted together
+    probe_types = {config["probe_type"] for config in probe_configs}
+    if len(probe_types) > 1:
+        logger.error(f"Probes have different types: {sorted(probe_types)}")
+        raise ValueError(f"Probes have different types ({sorted(probe_types)}). A single conversion "
+                         "handles one probe type.")
+
+    for probe_config in probe_configs:
+        logger.info(f"Converting probe '{probe_config['label']}' ({probe_config['probe_type']}, stream "
+                    f"'{probe_config['stream']}') at "
+                    f"{probe_config['electrodes_location']}, ML={probe_config['targeted_x']} "
+                    f"AP={probe_config['targeted_y']} DV={probe_config['targeted_z']}")
+    return probe_configs
+### Functions for combining probes and concatenating recordings
+
+def resolve_probe_stream(folder_path: Path, logger, stream_name: str = None) -> str:
+    """
+    Find the full name of the probe (neural data) stream to convert from an OpenEphys recording.
+
+    The ADC stream carries sync pulses, port visits and laser events rather than neural data, so it
+    is never a candidate here (it is read separately by get_port_visits).
 
     Parameters:
         folder_path (Path):
-            Path to the folder containing the OpenEphys binary recording. The folder
-            should have the date in the name and contain a file called "settings.xml".
+            Path to the OpenEphys output folder
         logger (Logger):
             Logger to track conversion progress
-        exclude_channels (list[str]):
-            List of channel names to exclude, if any. 
-            Channel names are 1-based and should start with 'CH', e.g. 'CH64'
-        samples_to_remove (int):
-            Number of samples to trim off of the start of the raw ephys data.
-            Used to remove data before bonsai start time
+        stream_name (str):
+            Optional. The probe stream to convert, either the full Open Ephys stream name
+            ("OneBox-100.ProbeA") or just the probe part ("ProbeA", as written in metadata).
+            If None, there must be exactly one probe stream in the recording.
 
     Returns:
-        traces_as_iterator (SpikeInterfaceRecordingDataChunkIterator):
-            To be used as the data argument in pynwb.ecephys.ElectricalSeries.
-        channel_conversion_factor (float):
-            The conversion factor from the raw data to uV.
-        original_timestamps (np.ndarray):
-            Array that could be used as the timestamps argument in pynwb.ecephys.ElectricalSeries
-            or may need to be time aligned with the other data streams in the NWB file.
-            Should start at time=0, which is the bonsai start time.
+        str: the full Open Ephys stream name to pass to OpenEphysBinaryRecordingExtractor
     """
-    # Create a SpikeInterface recording extractor for the OpenEphys binary data
-    # NOTE: We could write our own extractor to handle the relatively simple OpenEphys binary format
-    # and surrounding files but it is nice to build on the well-tested code of others when possible.
-    # However, we should remember that external code may not be well-maintained or may have bugs of their own.
     streams, _ = OpenEphysBinaryRecordingExtractor.get_streams(folder_path=folder_path)
     logger.debug(f"Found streams in the OpenEphys binary data: {streams}")
 
-    streams_without_adc = [s for s in streams if not s.endswith("ADC")]
-    assert len(streams_without_adc) == 1, \
-        (f"More than one non-ADC stream found in the OpenEphys binary data: {streams_without_adc}")
+    probe_streams = [s for s in streams if not s.upper().endswith("ADC")]
+    if not probe_streams:
+        logger.error(f"No probe (non-ADC) streams found in {folder_path}. Streams: {streams}")
+        raise ValueError(f"No probe (non-ADC) streams found in {folder_path}. Streams: {streams}")
 
-    # NOTE: For bilateral Neuropixels we will have 2 streams without ADC (one for each probe)
-    # We will deal with this later. Probably just do all of the following in a loop (once per probe)?
+    # If no particular stream was requested, there must be exactly one probe stream to convert
+    if stream_name is None:
+        if len(probe_streams) != 1:
+            logger.error(f"Found {len(probe_streams)} probe streams {probe_streams} but no stream was "
+                         "requested. Specify which probe(s) to convert in the ephys metadata.")
+            raise ValueError(f"Found {len(probe_streams)} probe streams {probe_streams} but no stream "
+                             "was requested. Specify which probe(s) to convert in the ephys metadata.")
+        return probe_streams[0]
+
+    # Match on the shared probe token so every form of the name resolves to the same stream
+    matches = [s for s in probe_streams if probe_name_token(s) == probe_name_token(stream_name)]
+    if len(matches) != 1:
+        logger.error(f"Expected exactly one probe stream matching '{stream_name}', found {matches} "
+                     f"among {probe_streams}")
+        raise ValueError(f"Expected exactly one probe stream matching '{stream_name}', found {matches} "
+                         f"among {probe_streams}")
+    logger.debug(f"Resolved requested probe stream '{stream_name}' to Open Ephys stream '{matches[0]}'")
+    return matches[0]
+
+
+def combine_probe_recordings(recordings_by_stream: dict, logger):
+    """
+    Combine one recording per probe into a single recording holding every probe's channels, so that
+    multi-probe (e.g. bilateral Neuropixels) data can be written as a single ElectricalSeries.
+
+    Spyglass reads raw ephys with nwbfile.get_acquisition(), which requires exactly ONE acquisition
+    object, so all probes must share one ElectricalSeries rather than getting one each.
+
+    Channels are kept in probe order: all of the first probe's channels, then all of the second's.
+    The returned channel ids are prefixed with the stream name ("ProbeA_CH0") because every
+    Neuropixels probe uses the same CH0..CH383 channel names, which would otherwise collide.
+
+    Probes are hardware-synced to the same clock (verified on IM-1979: laser artifacts seen by both
+    probes drift by <0.01 ppm over a session), so samples can be combined by index without
+    resampling. Probes can still START a few samples apart, so recordings are trimmed to the
+    shortest length and any difference is logged.
+
+    Parameters:
+        recordings_by_stream (dict):
+            stream name -> SpikeInterface recording for that probe, already channel-sliced
+            and trimmed to the conversion start time
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        combined_recording:
+            The combined SpikeInterface recording (all probes' channels, common sample count)
+        timestamps (np.ndarray):
+            Timestamps (seconds) for the combined recording, taken from the first probe after
+            alignment. All probes share this clock by construction.
+    """
+    from spikeinterface.core import aggregate_channels
+
+    stream_names = list(recordings_by_stream)
+    if len(stream_names) == 1:
+        logger.debug(f"Only one probe stream ('{stream_names[0]}'), no combining needed")
+        single_recording = recordings_by_stream[stream_names[0]]
+        return single_recording, single_recording.get_times()
+
+    # All probes must share a sampling rate for a combined ElectricalSeries to be meaningful
+    sampling_rates = {name: rec.get_sampling_frequency() for name, rec in recordings_by_stream.items()}
+    if len(set(sampling_rates.values())) != 1:
+        logger.error(f"Probe streams do not share a sampling rate: {sampling_rates}")
+        raise ValueError(f"Probe streams do not share a sampling rate: {sampling_rates}")
+
+    # Align the probes in TIME before combining. They share a hardware clock, but can start a few
+    # samples apart (measured on IM-1979 via laser artifacts seen by both probes: ~0 samples on
+    # 2026-09-04, ~45 samples / 1.5 ms on 2026-09-11). Without this, one ElectricalSeries row would
+    # hold samples that were actually recorded at slightly different times.
+    # sample_index_to_time avoids materializing the whole (multi-GB) timestamp vector.
+    sampling_rate = next(iter(sampling_rates.values()))
+    start_times = {name: rec.sample_index_to_time(0) for name, rec in recordings_by_stream.items()}
+    if max(start_times.values()) != min(start_times.values()):
+        log_and_print(
+            logger,
+            f"Probe streams do not start at the same time: {start_times}. Trimming the front of the "
+            "earlier stream(s) so all probes begin at the same time in the combined ElectricalSeries.",
+            level="warning",
+        )
+    common_start_time = max(start_times.values())
+    time_aligned_recordings = {}
+    for name, recording in recordings_by_stream.items():
+        samples_to_align = int(round((common_start_time - start_times[name]) * sampling_rate))
+        if samples_to_align > 0:
+            logger.info(f"Trimming {samples_to_align} sample(s) from the start of '{name}' to align probes")
+            recording = recording.frame_slice(start_frame=samples_to_align, end_frame=None)
+        time_aligned_recordings[name] = recording
+    recordings_by_stream = time_aligned_recordings
+
+    # Trim all probes to the shortest length. Probes are synced to one clock but can start/stop a
+    # few samples apart, so this drops a handful of samples off the end of the longer stream(s).
+    sample_counts = {name: rec.get_num_samples() for name, rec in recordings_by_stream.items()}
+    common_num_samples = min(sample_counts.values())
+    logger.info(f"Combining {len(stream_names)} probe streams: samples per stream {sample_counts}")
+    if len(set(sample_counts.values())) != 1:
+        log_and_print(
+            logger,
+            f"Probe streams have different numbers of samples {sample_counts}. Trimming all probes to the "
+            f"shortest ({common_num_samples} samples) so they can share one ElectricalSeries. "
+            f"At most {max(sample_counts.values()) - common_num_samples} samples are dropped from the end "
+            "of the longer stream(s).",
+            level="warning",
+        )
+
+    combined_channel_ids = []
+    aligned_recordings = []
+    for probe_index, (stream, recording) in enumerate(recordings_by_stream.items()):
+        # Always slice (even when the length already matches) so we work on a new recording object.
+        # We clear the time bookkeeping below and offset the probe geometry just after, and both of
+        # those can mutate in place - without this, we would be modifying the caller's recording.
+        recording = recording.frame_slice(start_frame=0, end_frame=common_num_samples)
+
+        # SpikeInterface refuses to aggregate recordings whose channel locations overlap, and every
+        # Neuropixels probe has sites at the same relative positions. Shift each probe's geometry
+        # apart so the locations are unique. This only affects the SpikeInterface object used to read
+        # traces - the rel_x/rel_y written to the nwb come from our own coordinates table.
+        if probe_index > 0:
+            try:
+                probe = recording.get_probe()
+                probe.move([probe_index * PROBE_LOCATION_OFFSET_UM, 0.0])
+                # set_probe returns a new recording in spikeinterface < 0.105, but modifies the
+                # recording in place and returns None from 0.105 on, so keep whichever we get.
+                moved_recording = recording.set_probe(probe)
+                if moved_recording is not None:
+                    recording = moved_recording
+            except Exception as error:
+                logger.debug(f"Could not offset probe geometry for '{stream}' ({type(error).__name__}: "
+                             f"{error}). Continuing - this only matters if locations collide.")
+
+        aligned_recordings.append(recording)
+        combined_channel_ids.extend(f"{stream}_{channel_id}" for channel_id in recording.channel_ids)
+
+    # Capture the real timestamps from the (now aligned and length-matched) first probe BEFORE
+    # clearing the per-recording time bookkeeping below. These are the timestamps written to the
+    # ElectricalSeries - all probes are aligned to this same clock by construction.
+    timestamps = aligned_recordings[0].get_times()
+
+    # SpikeInterface refuses to aggregate recordings whose time bookkeeping disagrees ("All segments
+    # should have the same t_start"), and slicing the front of one probe leaves them inconsistent.
+    # Clear it on every recording so they agree: we already captured the timestamps we need, and the
+    # combined recording is only used to read traces.
+    for recording in aligned_recordings:
+        recording.reset_times()
+
+    combined_recording = aggregate_channels(aligned_recordings, renamed_channel_ids=combined_channel_ids)
+    logger.info(f"Combined recording is {combined_recording.get_num_samples()} samples x "
+                f"{combined_recording.get_num_channels()} channels across probes {stream_names}")
+    return combined_recording, timestamps
+
+
+def get_raw_probe_start_times(session_folders: list, probe_streams_by_label: dict, logger) -> dict:
+    """
+    Read each probe's start time in each recording, from the raw Open Ephys timestamps.
+
+    Only needed when the traces come from the preprocessed files, which are flat binaries with no
+    time axis of their own. The probes share a hardware clock but start a few samples apart, and by
+    a different amount in each recording, so these start times are what lets the probes be aligned
+    to each other per session.
+
+    Only the small per-stream timestamp files are touched - the raw continuous.dat is never read.
+
+    Parameters:
+        session_folders (list):
+            The recordings, in order, each with "path" and "session"
+        probe_streams_by_label (dict):
+            Short probe label -> full Open Ephys stream name
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        dict: probe label -> {session label: start time in seconds}
+    """
+    start_times = {probe_label: {} for probe_label in probe_streams_by_label}
+    for session_folder in session_folders:
+        for probe_label, stream in probe_streams_by_label.items():
+            recording, _conversion_factor = open_probe_stream_recording(
+                folder_path=session_folder["path"], logger=logger, stream_name=stream,
+                samples_to_remove=0,
+            )
+            start_times[probe_label][session_folder["session"]] = float(recording.sample_index_to_time(0))
+
+    for probe_label, by_session in start_times.items():
+        logger.info(f"Raw start times for '{probe_label}': "
+                    f"{ {session: round(t, 6) for session, t in by_session.items()} }")
+    return start_times
+
+
+def get_raw_session_recordings(
+    session_folders: list,
+    probe_streams_by_label: dict,
+    exclude_channel_names: list,
+    samples_to_remove: int,
+    logger,
+) -> tuple:
+    """
+    Build one combined recording per session, straight from the raw Open Ephys recordings.
+
+    Each recording is read on its own and its probes aligned and combined, so that the sessions can
+    then be concatenated into a single ElectricalSeries.
+
+    Parameters:
+        session_folders (list):
+            The recordings, in concatenation order, each with "path" and "session"
+        probe_streams_by_label (dict):
+            Short probe label -> full Open Ephys stream name, in ElectricalSeries channel order
+        exclude_channel_names (list):
+            Channel names to drop (the extra channels on the 252-channel Berke probes)
+        samples_to_remove (int):
+            Samples to trim from the start of the FIRST recording (data before bonsai start)
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        session_recordings (list): one combined recording per session, in order
+        session_timestamps (list): each session's own timestamps, as recorded
+        num_samples_by_probe (dict): each probe's full length across every recording
+        channel_conversion_factor_uv (float): the conversion factor from raw data to uV
+    """
+    session_recordings = []
+    session_timestamps = []
+    num_samples_by_probe = {}
+    channel_conversion_factor_uv = None
+    conversion_factors_by_session = {}
+
+    for session_index, session_folder in enumerate(session_folders):
+        # Only the first recording is trimmed: bonsai start is a time within that recording, and
+        # the later recordings are separate acquisitions that happen after it
+        session_samples_to_remove = samples_to_remove if session_index == 0 else 0
+        logger.info(f"Reading recording '{session_folder['session']}' from {session_folder['path']}")
+        (
+            session_recording,
+            channel_conversion_factor_uv,
+            session_recorded_timestamps,
+            session_num_samples_by_probe,
+        ) = get_combined_raw_ephys_data(folder_path=session_folder["path"],
+                                        probe_streams_by_label=probe_streams_by_label,
+                                        logger=logger,
+                                        exclude_channels=exclude_channel_names,
+                                        samples_to_remove=session_samples_to_remove,
+                                        )
+        # An ElectricalSeries has ONE conversion factor, so every recording must share it.
+        # Overwriting it per recording would silently scale part of the data differently.
+        if conversion_factors_by_session and channel_conversion_factor_uv not in conversion_factors_by_session.values():
+            conversion_factors_by_session[session_folder["session"]] = channel_conversion_factor_uv
+            logger.error(f"Recordings have different conversion factors: {conversion_factors_by_session}")
+            raise ValueError(f"Recordings have different conversion factors: "
+                             f"{conversion_factors_by_session}. They cannot share one ElectricalSeries.")
+        conversion_factors_by_session[session_folder["session"]] = channel_conversion_factor_uv
+
+        session_recordings.append(session_recording)
+        session_timestamps.append(session_recorded_timestamps)
+        # A probe's full length is the sum over the recordings it was sorted across
+        for probe_label, probe_num_samples in session_num_samples_by_probe.items():
+            num_samples_by_probe[probe_label] = num_samples_by_probe.get(probe_label, 0) + probe_num_samples
+
+    return session_recordings, session_timestamps, num_samples_by_probe, channel_conversion_factor_uv
+def get_session_time_offsets(session_folders: list, logger) -> list:
+    """
+    Work out when each recording started, relative to the first one.
+
+    Separate Open Ephys recordings are separate acquisitions with no shared sample numbering, so
+    the only link between them is wall-clock time, which Open Ephys puts in the folder name
+    ("2026-09-04_14-20-43"). The gap between recordings is real dead time - on IM-1979 2026-09-04
+    the behavior session runs 7,883s and the optotagging session starts 8,335s later, so about
+    452s of nothing. Keeping that gap in the timestamps is what makes Spyglass derive one valid
+    interval per session instead of treating the file as continuous.
+
+    Folder names carry whole seconds, so these offsets are only good to ~1s. That is fine for
+    sorting (the gap just has to exist) but is not a sync, and anything needing sample-accurate
+    cross-session timing needs a real sync signal instead.
+
+    Parameters:
+        session_folders (list):
+            The recordings, in concatenation order, each with "path" and "session" (from
+            get_session_folders)
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        list[float]: seconds from the first recording's start to each recording's start
+        (the first is always 0.0)
+    """
+    session_start_times = []
+    for session_folder in session_folders:
+        folder_name = str(session_folder["path"]).replace("\\", "/").rstrip("/").split("/")[-1]
+        match = re.search(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}", folder_name)
+        if not match:
+            logger.error(f"No date and time in the Open Ephys folder name '{folder_name}'")
+            raise ValueError(f"No date and time in the Open Ephys folder name '{folder_name}'. "
+                             "The recordings are placed in time by their folder names.")
+        session_start_times.append(datetime.strptime(match.group(0), "%Y-%m-%d_%H-%M-%S"))
+
+    first_start = session_start_times[0]
+    offsets = [(start - first_start).total_seconds() for start in session_start_times]
+
+    if any(offset < 0 for offset in offsets):
+        ordering = {folder["session"]: str(start) for folder, start in zip(session_folders, session_start_times)}
+        logger.error(f"Recordings are not in chronological order: {ordering}")
+        raise ValueError(f"Recordings are not in chronological order: {ordering}. List them in the "
+                         "order they were recorded.")
+
+    for session_folder, start, offset in zip(session_folders, session_start_times, offsets):
+        logger.info(f"Recording '{session_folder['session']}' started {start} (+{offset:.0f}s)")
+    return offsets
+
+
+def concatenate_session_recordings(session_recordings: list, session_timestamps: list,
+                                   session_offsets: list, session_labels: list, logger) -> tuple:
+    """
+    Join each session's recording into ONE recording, with timestamps that keep the real gaps.
+
+    The traces are contiguous (the gap holds no samples), but the timestamps are not: sample i
+    keeps its true time, so a reader sees two stretches of data separated by dead time. Spyglass
+    splits on that gap and derives one valid interval per session, which is what lets a sort be
+    restricted to one session or run across both.
+
+    Parameters:
+        session_recordings (list):
+            One combined recording per session, in order. Every session must have the same
+            channels, since they become one ElectricalSeries.
+        session_timestamps (list):
+            Each session's own timestamps, as recorded. They are shifted to start at that session's
+            offset, which keeps any real irregularity inside a session rather than assuming a
+            perfectly uniform clock.
+        session_offsets (list):
+            Each session's start time on the nwb clock, in seconds (the first is usually 0.0 after
+            trimming to bonsai start)
+        session_labels (list):
+            Each session's name, used for the nwb epochs
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        concatenated_recording:
+            All sessions end to end, as one recording
+        timestamps (np.ndarray):
+            Timestamp per sample, carrying the real gaps between sessions
+        epochs (list[dict]):
+            One entry per session with "session", "start_time" and "stop_time", for the nwb
+            epochs table
+    """
+    from spikeinterface.core import concatenate_recordings
+
+    if len(session_recordings) == 1:
+        logger.debug("Only one recording, no concatenation needed")
+
+    channel_counts = {label: rec.get_num_channels() for label, rec in zip(session_labels, session_recordings)}
+    if len(set(channel_counts.values())) != 1:
+        logger.error(f"Recordings have different channel counts: {channel_counts}")
+        raise ValueError(f"Recordings have different channel counts: {channel_counts}. They cannot "
+                         "share one ElectricalSeries.")
+
+    sampling_rates = {label: rec.get_sampling_frequency()
+                      for label, rec in zip(session_labels, session_recordings)}
+    if len(set(sampling_rates.values())) != 1:
+        logger.error(f"Recordings have different sampling rates: {sampling_rates}")
+        raise ValueError(f"Recordings have different sampling rates: {sampling_rates}.")
+
+    timestamps = []
+    epochs = []
+    for label, recording, recorded_timestamps, offset in zip(
+        session_labels, session_recordings, session_timestamps, session_offsets
+    ):
+        num_samples = recording.get_num_samples()
+        if len(recorded_timestamps) != num_samples:
+            logger.error(f"Recording '{label}' has {num_samples} samples but "
+                         f"{len(recorded_timestamps)} timestamps")
+            raise ValueError(f"Recording '{label}' has {num_samples} samples but "
+                             f"{len(recorded_timestamps)} timestamps.")
+        # Keep the session's own timing, moved to where the session sits on the nwb clock
+        placed_timestamps = np.asarray(recorded_timestamps) - recorded_timestamps[0] + offset
+        timestamps.append(placed_timestamps)
+        epochs.append({
+            "session": label,
+            "start_time": float(placed_timestamps[0]),
+            "stop_time": float(placed_timestamps[-1]),
+        })
+        logger.info(f"Recording '{label}': {num_samples} samples, "
+                    f"{placed_timestamps[0]:.3f}s to {placed_timestamps[-1]:.3f}s")
+
+    # Each gap is real dead time between two separate acquisitions
+    for earlier, later in zip(epochs, epochs[1:]):
+        gap = later["start_time"] - earlier["stop_time"]
+        if gap <= 0:
+            logger.error(f"Recording '{later['session']}' starts before '{earlier['session']}' ends "
+                         f"(overlap of {-gap:.3f}s)")
+            raise ValueError(f"Recording '{later['session']}' starts before '{earlier['session']}' "
+                             f"ends (overlap of {-gap:.3f}s). Check the recording order and folder names.")
+        logger.info(f"{gap:.1f}s gap between '{earlier['session']}' and '{later['session']}'")
+
+    # concatenate_recordings ignores the recordings' own times, which is what we want: the
+    # timestamps above are the authority, and they carry the gaps the samples do not
+    concatenated_recording = (session_recordings[0] if len(session_recordings) == 1
+                              else concatenate_recordings(session_recordings))
+    timestamps = np.concatenate(timestamps)
+
+    logger.info(f"Concatenated {len(session_recordings)} recording(s): "
+                f"{concatenated_recording.get_num_samples()} samples x "
+                f"{concatenated_recording.get_num_channels()} channels, "
+                f"spanning {timestamps[0]:.1f}s to {timestamps[-1]:.1f}s")
+    return concatenated_recording, timestamps, epochs
+
+
+def get_combined_raw_ephys_data(
+    folder_path: Path,
+    probe_streams_by_label: dict,
+    logger,
+    exclude_channels: list = (),
+    samples_to_remove: int = 0,
+) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray]:
+    """
+    Get the raw ephys data for one or more probes as a SINGLE recording, so that multi-probe
+    (e.g. bilateral Neuropixels) data can be written as one ElectricalSeries.
+
+    Each probe stream is opened and trimmed the same way as the single-probe path, then the probes
+    are aligned in time and combined channel-wise (see combine_probe_recordings).
+
+    Parameters:
+        folder_path (Path):
+            Path to the Open Ephys output folder
+        probe_streams_by_label (dict):
+            Short probe label -> full Open Ephys stream name, in the order the probes' channels
+            should appear in the ElectricalSeries (e.g. {"ProbeA": "OneBox-100.ProbeA", ...}).
+            The short label prefixes the combined channel ids.
+        logger (Logger):
+            Logger to track conversion progress
+        exclude_channels (list):
+            Channel names to exclude, if any
+        samples_to_remove (int):
+            Number of samples to trim off the start of each probe (to drop data before bonsai start)
+
+    Returns:
+        combined_recording:
+            All probes' channels as one recording, for this one session
+        channel_conversion_factor_uv (float):
+            The conversion factor from the raw data to uV (shared by all probes)
+        original_timestamps (np.ndarray):
+            This session's own timestamps, as recorded (the caller places the session in time)
+        num_samples_by_probe (dict):
+            probe label -> that probe's own full (untrimmed) recording length in samples. Spike
+            sorting uses it to confirm each analyzer was computed on that probe's recording.
+    """
+    recordings_by_stream = {}
+    conversion_factors = {}
+    num_samples_by_probe = {}
+    for probe_label, stream in probe_streams_by_label.items():
+        recording, conversion_factor = open_probe_stream_recording(
+            folder_path=folder_path,
+            logger=logger,
+            stream_name=stream,
+            exclude_channels=exclude_channels,
+            samples_to_remove=samples_to_remove,
+        )
+        recordings_by_stream[probe_label] = recording
+        conversion_factors[probe_label] = conversion_factor
+        # This probe's own full length, before any alignment trim. The spike sorting guard compares
+        # it against the analyzer, and each probe was sorted on its OWN recording - which can be a
+        # few samples longer or shorter than the others.
+        num_samples_by_probe[probe_label] = recording.get_num_samples() + samples_to_remove
+
+    # An ElectricalSeries has a single conversion factor, so every probe must share one
+    if len(set(conversion_factors.values())) != 1:
+        logger.error(f"Probe streams have different conversion factors: {conversion_factors}")
+        raise ValueError(f"Probe streams have different conversion factors: {conversion_factors}. "
+                         "They cannot share a single ElectricalSeries.")
+    channel_conversion_factor_uv = next(iter(conversion_factors.values()))
+
+    combined_recording, original_timestamps = combine_probe_recordings(recordings_by_stream, logger)
+    return (
+        combined_recording,
+        channel_conversion_factor_uv,
+        original_timestamps,
+        num_samples_by_probe,
+    )
+
+
+def open_probe_stream_recording(
+    folder_path: Path,
+    logger,
+    stream_name: str = None,
+    exclude_channels: list = (),
+    samples_to_remove: int = 0,
+):
+    """
+    Open a single probe stream of an Open Ephys recording as a SpikeInterface recording, keeping
+    only the neural "CH" channels and trimming samples before the conversion start time.
+
+    Used by get_combined_raw_ephys_data, once per probe, so every probe is treated identically.
+
+    Parameters:
+        folder_path (Path):
+            Path to the Open Ephys output folder
+        logger (Logger):
+            Logger to track conversion progress
+        stream_name (str):
+            Optional. Which probe stream to open. If None, the recording must contain exactly one.
+        exclude_channels (list):
+            Channel names to exclude, if any
+        samples_to_remove (int):
+            Number of samples to trim off the start of the recording
+
+    Returns:
+        recording_sliced:
+            The channel-sliced, time-trimmed SpikeInterface recording
+        channel_conversion_factor_uv (float):
+            The conversion factor from the raw data to uV
+    """
+    stream_to_convert = resolve_probe_stream(folder_path=folder_path, stream_name=stream_name, logger=logger)
 
     # Ignore the "ADC" channels
-    recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=streams_without_adc[0])
+    recording = OpenEphysBinaryRecordingExtractor(folder_path=folder_path, stream_name=stream_to_convert)
     # Exclude extra channels
     if exclude_channels:
         logger.debug(f"Excluding {len(exclude_channels)} channels: {exclude_channels}")
@@ -512,35 +1255,18 @@ def get_raw_ephys_data(
     logger.debug(f"Trimmed {samples_to_remove} samples ({float(samples_to_remove/fs)}s) from the start of "
                  "ephys data to exclude data before bonsai start.")
 
-    # Get the original timestamps (in seconds)
-    # NOTE THAT THESE TIMESTAMPS DO NOT START FROM 0
-    original_timestamps = recording_sliced.get_times()
-
-    # We set the first timestamp (the bonsai start time) as time=0 
-    # so the timestamps match the sync pulses for alignment with photometry
-    original_timestamps = original_timestamps - original_timestamps[0]
-
-    # Create a SpikeInterfaceRecordingDataChunkIterator using all default buffering and
-    # chunking options. This will be passed to the pynwb.ecephys.ElectricalSeries
-    # constructor.
-    traces_as_iterator = SpikeInterfaceRecordingDataChunkIterator(recording=recording_sliced)
-
-    return (
-        traces_as_iterator,
-        channel_conversion_factor_uv,
-        original_timestamps,
-    )
+    return recording_sliced, channel_conversion_factor_uv
 
 
-def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
+def add_probe_info(nwbfile: NWBFile, probe_type: str, logger, probe_label: str = None, probe_id: int = 0):
     """
     Add the Probe as a device to the nwbfile
 
     Parameters:
         nwbfile (NWBFile):
             The NWB file being assembled.
-        metadata (dict):
-            Metadata dictionary
+        probe_type (str):
+            The probe model, matching a name in resources/electrophysiology/ephys_devices.yaml
         logger (Logger):
             Logger to track conversion progress
 
@@ -554,10 +1280,10 @@ def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
     with open(DEVICES_PATH, "r") as f:
         devices = yaml.safe_load(f)
 
-    probe_args = metadata["ephys"]["probe"]
-    assert len(probe_args) == 1, "Only one probe is supported at this time."
-    probe_name = probe_args[0]
-    logger.info(f"Probe name is: {probe_name}")
+    # metadata lists the probe type(s) used. Multiple physical probes of the same type share one
+    # entry, so a single-entry list is normal even for bilateral recordings.
+    probe_name = probe_type
+    logger.info(f"Probe type is: {probe_name}")
     # Find the matching device by name in the devices list
     for device in devices["probe"]:
         if device["name"] == probe_name:
@@ -583,10 +1309,16 @@ def add_probe_info(nwbfile: NWBFile, metadata: dict, logger):
     assert required_probe_keys.issubset(probe_metadata.keys()), (
         f"Probe is missing required keys {required_probe_keys - probe_metadata.keys()}"
     )
-    # Create the Probe device and add it to the nwb
+    # Create the Probe device and add it to the nwb.
+    # Device names must be unique within an nwbfile, so when there is more than one physical probe
+    # (e.g. bilateral Neuropixels, which are the same model) the stream name is appended to make the
+    # device name distinct. probe_type stays the model name, which is what Spyglass keys Probe on,
+    # so both physical probes still resolve to the same Spyglass Probe entry.
+    device_name = f"{probe_metadata['name']} {probe_label}" if probe_label else probe_metadata["name"]
+    logger.info(f"Adding Probe device '{device_name}' (probe_type '{probe_metadata['name']}')")
     probe_obj = Probe(
-        id=0,  # int
-        name=probe_metadata["name"],  # str
+        id=probe_id,  # int
+        name=device_name,  # str
         probe_type=probe_metadata["name"],  # str
         probe_description=probe_metadata["description"],  # str
         manufacturer=probe_metadata["manufacturer"],  # str
@@ -677,7 +1409,7 @@ def read_open_ephys_settings_xml(settings_file_path: Path, logger) -> str:
     return filtering_info
 
 
-def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataFrame:
+def get_electrode_info(metadata: dict, probe_type: str, logger, fig_dir: Path = None) -> pd.DataFrame:
     """
     Create a DataFrame of complete electrode information for a Berke Lab silicon probe.
     Combines channel map, electrode coordinates, and impedance data.
@@ -697,9 +1429,7 @@ def get_electrode_info(metadata: dict, logger, fig_dir: Path = None) -> pd.DataF
     """
 
     # Get info for this probe
-    probe_args = metadata["ephys"]["probe"]
-    assert len(probe_args) == 1, "Only one probe is supported at this time."
-    probe_name = probe_args[0]
+    probe_name = probe_type
 
     try:
         probe_info = BERKE_LAB_PROBES[probe_name]
@@ -829,6 +1559,7 @@ def add_electrode_data_berke_probe(
     metadata: dict,
     probe_metadata: dict,
     probe_obj,
+    probe_location: dict,
     logger,
     fig_dir: Path = None,
 ) -> list[pd.Series]:
@@ -858,7 +1589,8 @@ def add_electrode_data_berke_probe(
     """
 
     # Get dataframe of electrode information (channel map, x/y coordinates, and impedance info)
-    electrode_info = get_electrode_info(metadata=metadata, logger=logger, fig_dir=fig_dir)
+    electrode_info = get_electrode_info(metadata=metadata, probe_type=probe_metadata["name"],
+                                        logger=logger, fig_dir=fig_dir)
 
     # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory)
     add_associated_file(
@@ -871,20 +1603,16 @@ def add_electrode_data_berke_probe(
     )
 
     # Get general metadata for the Probe
-    electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
-    if electrodes_location == "unspecified":
-        logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
-    else:
-        logger.info(f"Electrodes location is '{electrodes_location}'")
     # Axis convention: targeted_x is ML, targeted_y is AP, targeted_z is DV (see metadata_fully_explained.yaml).
     # ML must be in targeted_x because Spyglass derives the target hemisphere from its sign (>=0 Right, <0 Left).
     # These pass straight through to NwbElectrodeGroup below. We do not set the electrodes table's
     # absolute x/y/z columns (only per-electrode rel_x/rel_y on the probe), so Spyglass has no per-
     # electrode position and the target hemisphere depends solely on the sign of targeted_x.
-    targeted_x = metadata["ephys"].get("targeted_x")
-    targeted_y = metadata["ephys"].get("targeted_y")
-    targeted_z = metadata["ephys"].get("targeted_z")
-    logger.info(f"Targeted location is ML={targeted_x} (x), AP={targeted_y} (y), DV={targeted_z} (z)")
+    # Each probe has its OWN location - bilateral probes sit in opposite hemispheres.
+    electrodes_location = probe_location["electrodes_location"]
+    targeted_x = probe_location["targeted_x"]
+    targeted_y = probe_location["targeted_y"]
+    targeted_z = probe_location["targeted_z"]
 
     electrode_to_shank_map = {}
     electrode_groups_by_shank = {}
@@ -1089,7 +1817,7 @@ def _parse_np_probe_element(probe, tag: str, logger) -> dict:
     return {int(name[2:]): value for name, value in element.attrib.items() if name.startswith("CH")}
 
 
-def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dict:
+def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None, probe_stream_names=None) -> dict:
     """
     Read the OpenEphys settings.xml for a Neuropixels 2.0 multishank probe and build a channel map:
     which physical electrode each recording channel (CH0..CH383) is wired to, plus its geometry.
@@ -1128,11 +1856,27 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dic
         logger.error("Could not find any NP_PROBE elements in the settings.xml file.")
         raise ValueError("Could not find any NP_PROBE elements in the settings.xml file.")
 
-    # Parse each probe (there will be more than one if we ever do bilateral recordings)
+    # Each NP_PROBE describes one recorded probe stream (e.g. "ProbeA", "ProbeB" for bilateral
+    # recordings). Open Ephys lists the NP_PROBEs in hardware order and names the probe streams
+    # alphabetically in that same order, so sort both and zip them to label each NP_PROBE with the
+    # stream its data actually lands in. Without stream names (or if the counts disagree, which
+    # would mean we misunderstand the recording) fall back to positional probe_0, probe_1, ... keys.
+    probes = sorted(probes, key=lambda p: tuple(int(p.get(attr) or 0) for attr in ("slot", "port", "dock")))
+    if probe_stream_names is not None and len(probe_stream_names) == len(probes):
+        probe_labels = sorted(probe_stream_names)
+        logger.info(f"Mapping {len(probes)} NP_PROBE(s) in settings.xml to probe streams {probe_labels}")
+    else:
+        if probe_stream_names is not None:
+            logger.warning(f"Found {len(probes)} NP_PROBE(s) in settings.xml but {len(probe_stream_names)} "
+                           f"probe stream(s) {probe_stream_names}! Falling back to positional probe names.")
+        probe_labels = [f"probe_{i}" for i in range(len(probes))]
+
+    # Parse each probe (there will be more than one for bilateral recordings)
     neuropixels_channel_data = {}
-    for i, probe in enumerate(probes):
-        probe_id = f"probe_{i}"
-        logger.debug(f"NP_PROBE {i}: electrodeConfigurationPreset = '{probe.get('electrodeConfigurationPreset')}'")
+    for i, (probe, probe_id) in enumerate(zip(probes, probe_labels)):
+        logger.debug(f"NP_PROBE {i} -> '{probe_id}': serial={probe.get('probe_serial_number')} "
+                     f"slot={probe.get('slot')} port={probe.get('port')} dock={probe.get('dock')} "
+                     f"electrodeConfigurationPreset='{probe.get('electrodeConfigurationPreset')}'")
 
         # Parse the per-channel elements, each keyed by channel number
         bank_shank = _parse_np_probe_element(probe, "CHANNELS", logger)  # "bank:shank"
@@ -1203,16 +1947,16 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None) -> dic
                          fig_dir=fig_dir)
 
     return neuropixels_channel_data
-
-
 def add_electrode_data_neuropixels(
     *,
     nwbfile: NWBFile,
     channel_info: pd.DataFrame,
     filtering_info: str,
-    metadata: dict,
     probe_obj,
+    probe_location: dict,
+    probe_label: str,
     logger,
+    prefix_names: bool = False,
 ) -> None:
     """
     Add electrode groups and the electrode table for a Neuropixels probe.
@@ -1235,48 +1979,52 @@ def add_electrode_data_neuropixels(
             channel_num, shank, electrode, shank_column, shank_row, x_um, y_um
         filtering_info (str):
             The filtering applied to all channels (Neuropixels applies hardware filtering)
-        metadata (dict):
-            Full metadata dictionary (from user-specified yaml)
         probe_obj (Probe):
             The Probe object added to the nwbfile
         logger (Logger):
             Logger to track conversion progress
     """
-    # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory)
+    # Save electrode info as an AssociatedFiles object in the NWB (and save a copy to the log directory).
+    # The name includes the probe because this runs once per probe and AssociatedFiles names must be unique.
+    electrode_info_name = f"electrode_info_{probe_label}" if prefix_names else "electrode_info"
     add_associated_file(
         nwbfile,
-        name="electrode_info",
-        description="Neuropixels channel map (recording channel -> electrode geometry) (CSV)",
+        name=electrode_info_name,
+        description=(f"Neuropixels channel map for probe {probe_label} "
+                     "(recording channel -> electrode geometry) (CSV)" if prefix_names else
+                     "Neuropixels channel map (recording channel -> electrode geometry) (CSV)"),
         content=channel_info.to_csv(index=False),
         logger=logger,
-        log_filename="electrode_info.csv",
+        log_filename=f"{electrode_info_name}.csv",
     )
 
     # General metadata for the electrode groups
-    electrodes_location = metadata["ephys"].get("electrodes_location", "unspecified")
-    if electrodes_location == "unspecified":
-        logger.warning("No 'electrodes_location' in ephys metadata, setting to 'unspecified'!")
-    else:
-        logger.info(f"Electrodes location is '{electrodes_location}'")
     # Axis convention: targeted_x is ML, targeted_y is AP, targeted_z is DV (see metadata_fully_explained.yaml).
     # ML must be in targeted_x because Spyglass derives the target hemisphere from its sign (>=0 Right, <0 Left).
     # These pass straight through to NwbElectrodeGroup below. We do not set the electrodes table's
     # absolute x/y/z columns (only per-electrode rel_x/rel_y on the probe), so Spyglass has no per-
     # electrode position and the target hemisphere depends solely on the sign of targeted_x.
-    targeted_x = metadata["ephys"].get("targeted_x")
-    targeted_y = metadata["ephys"].get("targeted_y")
-    targeted_z = metadata["ephys"].get("targeted_z")
-    logger.info(f"Targeted location is ML={targeted_x} (x), AP={targeted_y} (y), DV={targeted_z} (z)")
+    # Each probe has its OWN location - bilateral probes sit in opposite hemispheres.
+    electrodes_location = probe_location["electrodes_location"]
+    targeted_x = probe_location["targeted_x"]
+    targeted_y = probe_location["targeted_y"]
+    targeted_z = probe_location["targeted_z"]
 
     # Make an ElectrodeGroup for each shank that actually has recording sites. Only recorded electrodes
     # reference an ElectrodeGroup; non-recorded sites live only on the Probe geometry (registered below).
     # NOTE: we group one ElectrodeGroup per shank (mirrors the Berke probe per-shank structure).
     # We might later change to an electrode group per contiguous y block.
+    # With more than one probe the shank numbers repeat, so prefix the group name with the probe
+    # stream ("ProbeA_0"). Spyglass stores electrode_group_name as a varchar, so a non-numeric name
+    # is fine here (unlike Shank/ShanksElectrode names, which Spyglass casts to int).
     electrode_groups_by_shank = {}
     for shank_index in sorted(channel_info["shank"].unique()):
+        group_name = f"{probe_label}_{shank_index}" if prefix_names else str(shank_index)
+        group_description = (f"Electrodes on shank {shank_index} of probe {probe_label}"
+                             if prefix_names else f"Electrodes on shank {shank_index}")
         electrode_group = NwbElectrodeGroup(
-            name=str(shank_index),
-            description=f"Electrodes on shank {shank_index}",
+            name=group_name,
+            description=group_description,
             location=electrodes_location,
             targeted_location=electrodes_location,
             targeted_x=float(targeted_x), # ML
@@ -1287,7 +2035,7 @@ def add_electrode_data_neuropixels(
         )
         nwbfile.add_electrode_group(electrode_group)
         electrode_groups_by_shank[shank_index] = electrode_group
-        logger.debug(f"Adding electrode group for shank {shank_index}")
+        logger.debug(f"Adding electrode group '{group_name}'")
 
     # Register the FULL probe geometry (all 5120 sites), not just this session's 384 recorded channels,
     # on the Probe's Shank / ShanksElectrode objects (see docstring).
@@ -1311,44 +2059,56 @@ def add_electrode_data_neuropixels(
                 f"across {all_probe_sites['shank'].nunique()} shanks "
                 f"({len(channel_info)} of them recorded this session).")
 
-    # Add the electrode data columns (mirrors the Berke table, minus the impedance columns)
-    nwbfile.add_electrode_column(
+    # Add the electrode data columns (mirrors the Berke table, minus the impedance columns).
+    # This function runs once per probe, so only add each column the first time -
+    # pynwb raises if the same column is added twice.
+    existing_electrode_columns = set(nwbfile.electrodes.colnames) if nwbfile.electrodes is not None else set()
+
+    def add_electrode_column_once(name, description):
+        if name not in existing_electrode_columns:
+            nwbfile.add_electrode_column(name=name, description=description)
+
+    add_electrode_column_once(
         name="electrode_name",
         description="The name of the electrode, in 'S(shank number)E(electrode number)' format",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="intan_channel_number",
         description="The recording channel number (0-indexed) for the electrode (CH0..CH383 -> 0..383)",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="electrode_index",
         description="The global Neuropixels electrode index (0-indexed, 0..5119)",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="bad_channel",
         description="Whether the channel is a bad channel. Always False for Neuropixels (no impedance file)",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="rel_x",
         description="The relative x coordinate of the electrode (um)",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="rel_y",
         description="The relative y coordinate of the electrode (um)",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="filtering",
         description="The filtering applied to the electrode",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="probe_electrode",
         description="The global index of the electrode on the probe (0-indexed)",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
         name="probe_shank",
         description="The index of the shank this electrode is on",
     )
-    nwbfile.add_electrode_column(
+    add_electrode_column_once(
+        name="probe",
+        description="The probe (Open Ephys stream name) this electrode belongs to",
+    )
+    add_electrode_column_once(
         name="ref_elect_id",
         description="The index of the reference electrode in this table. -1 if not set. Used by Spyglass.",
     )
@@ -1363,6 +2123,7 @@ def add_electrode_data_neuropixels(
 
         nwbfile.add_electrode(
             electrode_name=f"S{shank_index:02d}E{local_electrode}",
+            probe=probe_label,
             intan_channel_number=int(row["channel_num"]),
             electrode_index=electrode_index,
             bad_channel=False,  # no impedance file for Neuropixels, so no channels are marked bad
@@ -1379,6 +2140,10 @@ def add_electrode_data_neuropixels(
     logger.info(f"Added {len(channel_info)} Neuropixels electrodes across {len(electrode_groups_by_shank)}"
                 f"shank ElectrodeGroup(s): {sorted(electrode_groups_by_shank)}")
 
+
+# The preprocessing pipeline writes its per-probe folders in lower camel case ("probeA") while
+# Open Ephys names the streams "ProbeA", so probe names are matched case-insensitively.
+### The function convert.py calls
 
 def add_raw_ephys(
     *,
@@ -1410,7 +2175,7 @@ def add_raw_ephys(
     # If we do have "ephys" in metadata, check for the required keys.
     # (impedance_file_path is required for Berke Lab probes but not Neuropixels, so it is checked
     # in the Berke branch below rather than here.)
-    required_ephys_keys = {"openephys_folder_path", "probe"}
+    required_ephys_keys = {"openephys_folder_paths", "probes"}
     missing_keys = required_ephys_keys - metadata["ephys"].keys()
     if missing_keys:
         log_and_print(
@@ -1423,7 +2188,13 @@ def add_raw_ephys(
         return {}
 
     log_and_print(logger, "Adding raw ephys...", level="info")
-    openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
+
+    # The recording(s) to convert, in concatenation order
+    session_folders = get_session_folders(metadata=metadata, logger=logger)
+    session_time_offsets = get_session_time_offsets(session_folders=session_folders, logger=logger)
+    # The first recording defines the session: its settings.xml gives the channel map, its ADC
+    # gives the port visits, and its bonsai start is time zero
+    openephys_folder_path = session_folders[0]["path"]
 
     # Get Open Ephys start time as datetime object based on the time specified in the folder name
     openephys_folder_name = openephys_folder_path.split('/')[-1]
@@ -1442,6 +2213,12 @@ def add_raw_ephys(
     # rare case of multiple experiments recorded into the same Open Ephys output folder.
     # This happens when you start and stop the ephys recording multiple times.
     experiment_number = metadata["ephys"].get("experiment_number", None)
+    # Paths for every recording, so a disagreement between them is caught before anything is written
+    session_paths = [
+        find_open_ephys_paths(open_ephys_folder_path=session_folder["path"],
+                              experiment_number=experiment_number, logger=logger)
+        for session_folder in session_folders
+    ]
     open_ephys_paths_dict = find_open_ephys_paths(open_ephys_folder_path=openephys_folder_path,
                                                   experiment_number=experiment_number, logger=logger)
     settings_file_path = open_ephys_paths_dict["settings_file"]
@@ -1453,19 +2230,79 @@ def add_raw_ephys(
     adc_file_paths = {name: path for name, path in recording_file_paths_dict.items() if "ADC" in name.upper()}
     probe_file_paths = {name: path for name, path in recording_file_paths_dict.items() if "ADC" not in name.upper()}
 
-    # For now, only allow a single probe
-    if len(probe_file_paths) != 1:
-        logger.error(f"Expected exactly one probe continuous.dat, found: {probe_file_paths}")
-        raise NotImplementedError("Currently only one probe continuous.dat is supported.")
-    probe_stream_name, continuous_dat_file_path = next(iter(probe_file_paths.items()))
-    logger.info(f"Found probe continuous.dat for '{probe_stream_name}' at {continuous_dat_file_path}")
+    if not probe_file_paths:
+        logger.error(f"No probe (non-ADC) continuous.dat found in {openephys_folder_path}")
+        raise ValueError(f"No probe (non-ADC) continuous.dat found in {openephys_folder_path}")
 
-    logger.info("Adding probe...")
-    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=logger)
-    
-    # Read recording params (channel count, sample rate, conversion factor) from structure.oebin
-    # This works the same for Berke lab probes and Neuropixels
-    oebin_params = read_oebin_params(continuous_dat_file_path=continuous_dat_file_path, logger=logger)
+    # Which probes to convert, and where each is implanted, both come from the 'probes' metadata.
+    # Multiple probes are combined into ONE ElectricalSeries (Spyglass reads a single acquisition).
+    probe_configs = get_probe_configs(metadata=metadata, probe_file_paths=probe_file_paths, logger=logger)
+    probe_streams_to_convert = {config["stream"]: probe_file_paths[config["stream"]] for config in probe_configs}
+    probe_labels = [config["label"] for config in probe_configs]
+    probe_locations_by_label = {config["label"]: config for config in probe_configs}
+    multiple_probes = len(probe_configs) > 1
+
+    # Labels for EVERY probe in the recording, not just the ones being converted. settings.xml
+    # describes all of them, so the NP_PROBE -> stream mapping is only correct if we hand over the
+    # full set. Converting a subset (e.g. just ProbeB of a bilateral recording) selects from it.
+    all_probe_labels = sorted(name.split(".")[-1] for name in probe_file_paths)
+
+    for stream_name, continuous_dat_file_path in probe_streams_to_convert.items():
+        logger.info(f"Found probe continuous.dat for '{stream_name}' at {continuous_dat_file_path}")
+
+    logger.info("Adding probe(s)...")
+    probe_objs_by_label = {}
+    for probe_index, probe_label in enumerate(probe_labels):
+        # Only suffix the device name when there is more than one probe, so single-probe nwb files
+        # keep exactly the device and electrode group names they had before
+        probe_metadata, probe_obj = add_probe_info(
+            nwbfile=nwbfile,
+            probe_type=probe_locations_by_label[probe_label]["probe_type"],
+            logger=logger,
+            probe_label=probe_label if multiple_probes else None,
+            probe_id=probe_index,
+        )
+        probe_objs_by_label[probe_label] = probe_obj
+
+    # Read recording params (channel count, sample rate, conversion factor) from structure.oebin.
+    # This works the same for Berke lab probes and Neuropixels. Every probe sharing one
+    # ElectricalSeries must agree on these, so check rather than assume.
+    oebin_params_per_probe = {
+        probe_label: read_oebin_params(continuous_dat_file_path=path, logger=logger)
+        for probe_label, path in zip(probe_labels, probe_streams_to_convert.values())
+    }
+    for param in ("channel_count", "sample_rate", "bit_volts"):
+        values = {label: params[param] for label, params in oebin_params_per_probe.items()}
+        if len(set(values.values())) != 1:
+            logger.error(f"Probe streams disagree on {param}: {values}")
+            raise ValueError(f"Probe streams disagree on {param}: {values}. "
+                             "They cannot share a single ElectricalSeries.")
+    # Every recording must agree too: the series has one channel count, one sample rate and one
+    # conversion factor, so a mismatch between recordings would silently misdescribe part of it.
+    for session_folder, paths in list(zip(session_folders, session_paths))[1:]:
+        for probe_config in probe_configs:
+            stream = probe_config["stream"]
+            if stream not in paths["recording_files"]:
+                logger.error(f"Recording '{session_folder['session']}' has no probe stream '{stream}'")
+                raise ValueError(f"Recording '{session_folder['session']}' has no probe stream "
+                                 f"'{stream}'. Every recording must hold every probe being converted.")
+            other_params = read_oebin_params(
+                continuous_dat_file_path=paths["recording_files"][stream], logger=logger
+            )
+            for param in ("channel_count", "sample_rate", "bit_volts"):
+                first = oebin_params_per_probe[probe_config["label"]][param]
+                if other_params[param] != first:
+                    logger.error(f"'{probe_config['label']}' {param} differs between recordings: "
+                                 f"{session_folders[0]['session']}={first}, "
+                                 f"{session_folder['session']}={other_params[param]}")
+                    raise ValueError(
+                        f"'{probe_config['label']}' {param} differs between recordings "
+                        f"({session_folders[0]['session']}={first}, "
+                        f"{session_folder['session']}={other_params[param]}). They cannot share "
+                        "one ElectricalSeries."
+                    )
+
+    oebin_params = next(iter(oebin_params_per_probe.values()))
     total_channels = oebin_params["channel_count"]
 
     # Berke Lab probes and Neuropixels store their electrode info and port visits differently, so each
@@ -1501,7 +2338,8 @@ def add_raw_ephys(
                                     filtering_info=filtering_info,
                                     metadata=metadata,
                                     probe_metadata=probe_metadata,
-                                    probe_obj=probe_obj,
+                                    probe_obj=next(iter(probe_objs_by_label.values())),
+                                    probe_location=probe_configs[0],
                                     logger=logger,
                                     fig_dir=fig_dir,
                                 )
@@ -1538,22 +2376,31 @@ def add_raw_ephys(
         # Neuropixels applies hardware filtering (not recorded in settings.xml like the Berke bandpass)
         filtering_info = "Neuropixels 2.0 hardware filtering (see IMEC Neuropixels documentation)"
 
-        # Build the channel map, then create electrode groups and add electrode data to the NWB file.
-        # We only support a single probe for now, so take the one probe's channel info.
+        # Build the channel map for each probe, then create electrode groups and add electrode data.
         channel_map = get_channel_map_neuropixels(settings_file_path=settings_file_path,
-                                                  logger=logger, fig_dir=fig_dir)
-        if len(channel_map) != 1:
-            raise NotImplementedError(f"Expected exactly one Neuropixels probe, found {len(channel_map)}.")
-        channel_info = next(iter(channel_map.values()))
+                                                  logger=logger, fig_dir=fig_dir,
+                                                  probe_stream_names=all_probe_labels)
+        missing_channel_maps = [label for label in probe_labels if label not in channel_map]
+        if missing_channel_maps:
+            logger.error(f"No channel map for probe stream(s) {missing_channel_maps}. "
+                         f"settings.xml gave channel maps for {list(channel_map)}.")
+            raise ValueError(f"No channel map for probe stream(s) {missing_channel_maps}. "
+                             f"settings.xml gave channel maps for {list(channel_map)}.")
 
-        add_electrode_data_neuropixels(
-            nwbfile=nwbfile,
-            channel_info=channel_info,
-            filtering_info=filtering_info,
-            metadata=metadata,
-            probe_obj=probe_obj,
-            logger=logger,
-        )
+        # Add electrodes probe by probe, in the SAME order the probes are combined into the
+        # ElectricalSeries below, so that electrode table row i is channel i of the series.
+        for probe_label in probe_labels:
+            add_electrode_data_neuropixels(
+                nwbfile=nwbfile,
+                channel_info=channel_map[probe_label],
+                filtering_info=filtering_info,
+                probe_obj=probe_objs_by_label[probe_label],
+                probe_location=probe_locations_by_label[probe_label],
+                probe_label=probe_label,
+                logger=logger,
+                # Keep single-probe files naming their groups "0".."3" as they always have
+                prefix_names=multiple_probes,
+            )
 
         # All Neuropixels recording channels are kept (no ECoG-screw channels to exclude)
         exclude_channel_names = []
@@ -1580,16 +2427,89 @@ def add_raw_ephys(
     logger.debug(f"Trimming {samples_to_remove} samples ({bonsai_start_time}s at {probe_sample_rate} Hz) "
                  "from the start of the probe data")
 
-    # Get raw ephys data (with times before bonsai start removed)
-    (
-        traces_as_iterator,
-        channel_conversion_factor_uv,
-        original_timestamps,
-    ) = get_raw_ephys_data(folder_path=openephys_folder_path, 
-                           logger=logger, 
-                           exclude_channels=exclude_channel_names,
-                           samples_to_remove=samples_to_remove
-                           )
+    # Build each recording, then join them end to end. Within a session the probes are aligned and
+    # combined channel-wise; across sessions the recordings are concatenated with the real gap kept
+    # in the timestamps. Everything ends up in ONE ElectricalSeries, which is what Spyglass reads.
+    probe_streams_by_label = dict(zip(probe_labels, probe_streams_to_convert))
+    session_labels = [session_folder["session"] for session_folder in session_folders]
+
+    # The traces can come from the preprocessed files instead of the raw ones. Everything else
+    # still comes from raw: the ADC gives the port visits, settings.xml the channel map, and the
+    # per-stream timestamps the start times the probes are aligned by.
+    processed_ephys_path = metadata["ephys"].get("processed_ephys_path")
+    session_recordings = []
+    session_timestamps = []
+    num_samples_by_probe = {}
+
+    if processed_ephys_path:
+        # Imported here, not at the top: convert_processed_ephys imports helpers from this module,
+        # so a module-level import either way round would be circular.
+        from .convert_processed_ephys import (
+            get_processed_session_recordings,
+            read_session_boundaries,
+            verify_processed_matches_raw,
+        )
+
+        log_and_print(logger, f"Writing PREPROCESSED traces from {processed_ephys_path} "
+                              "(laser artifacts and common-mode noise interpolated over, phase "
+                              "shift applied) instead of the raw traces.", level="info")
+        probe_start_times = get_raw_probe_start_times(
+            session_folders=session_folders, probe_streams_by_label=probe_streams_by_label, logger=logger
+        )
+        # Nothing in the preprocessed file says its channels are in the raw order, and if they are
+        # not then every electrode maps to the wrong trace. Check it against the raw recording.
+        first_probe_label, first_probe_stream = next(iter(probe_streams_by_label.items()))
+        first_raw_recording, _factor = open_probe_stream_recording(
+            folder_path=session_folders[0]["path"], logger=logger,
+            stream_name=first_probe_stream, samples_to_remove=0,
+        )
+        # The preprocessed binary carries no scale of its own; preprocessing preserves the raw one
+        channel_conversion_factor_uv = oebin_params["bit_volts"]
+        processed_session_boundaries = read_session_boundaries(
+            processed_ephys_path=processed_ephys_path, logger=logger
+        )
+        processed_session_recordings_result = get_processed_session_recordings(
+            session_boundaries=processed_session_boundaries,
+            processed_ephys_path=processed_ephys_path,
+            probe_streams_by_label=probe_streams_by_label,
+            session_labels=session_labels,
+            probe_start_times=probe_start_times,
+            conversion_factor_uv=channel_conversion_factor_uv,
+            samples_to_remove=samples_to_remove,
+            logger=logger,
+        )
+        (session_recordings, session_timestamps, num_samples_by_probe,
+         processed_sessions_by_probe) = processed_session_recordings_result
+
+        # Compare the first recording's first probe against the raw traces it came from, reusing
+        # the recording that was already opened above
+        verify_processed_matches_raw(
+            processed_recording=processed_sessions_by_probe[first_probe_label][session_labels[0]],
+            raw_recording=first_raw_recording,
+            logger=logger,
+        )
+    else:
+        processed_session_boundaries = None
+        probe_start_times = None
+        (session_recordings, session_timestamps, num_samples_by_probe,
+         raw_conversion_factor_uv) = get_raw_session_recordings(
+            session_folders=session_folders,
+            probe_streams_by_label=probe_streams_by_label,
+            exclude_channel_names=exclude_channel_names,
+            samples_to_remove=samples_to_remove,
+            logger=logger,
+        )
+        channel_conversion_factor_uv = raw_conversion_factor_uv
+
+    combined_recording, ephys_timestamps_unaligned, session_epochs = concatenate_session_recordings(
+        session_recordings=session_recordings,
+        session_timestamps=session_timestamps,
+        session_offsets=session_time_offsets,
+        session_labels=[folder["session"] for folder in session_folders],
+        logger=logger,
+    )
+    traces_as_iterator = SpikeInterfaceRecordingDataChunkIterator(recording=combined_recording)
+    original_timestamps = ephys_timestamps_unaligned
     num_samples, num_channels = traces_as_iterator.maxshape
 
     # Check that the number of electrodes in the NWB file is the same as the number of channels in traces_as_iterator
@@ -1602,10 +2522,17 @@ def add_raw_ephys(
 
     # Get electrodes table (added to nwb in `add_electrode_data_berke_probe`)
     electrodes = nwbfile.electrodes
-    # Get the mapping of electrode to channel number (0-indexed)
-    electrode_table_row_to_raw_data_row = electrodes['intan_channel_number'].data[:]
-    # Get the reverse mapping of row in the raw ElectricalSeries to row in the electrode table
-    raw_data_row_to_electrode_table_row = np.argsort(electrode_table_row_to_raw_data_row)
+    if multiple_probes:
+        # With more than one probe, intan_channel_number repeats (every Neuropixels probe uses
+        # CH0..CH383), so it cannot order the rows. Electrodes were added probe by probe in the same
+        # order the probes were combined, and each probe's electrodes are in channel order, so row i
+        # of the ElectricalSeries is already row i of the electrode table.
+        raw_data_row_to_electrode_table_row = list(range(len(electrodes)))
+    else:
+        # Get the mapping of electrode to channel number (0-indexed)
+        electrode_table_row_to_raw_data_row = electrodes['intan_channel_number'].data[:]
+        # Get the reverse mapping of row in the raw ElectricalSeries to row in the electrode table
+        raw_data_row_to_electrode_table_row = np.argsort(electrode_table_row_to_raw_data_row)
 
     # Create the electrode table region encompassing all electrodes
     electrode_table_region = nwbfile.create_electrode_table_region(
@@ -1666,11 +2593,28 @@ def add_raw_ephys(
         metadata["ground_truth_time_source"] = "ephys"
         metadata["ground_truth_visit_times"] = ephys_visit_times
 
+    # Say what the traces actually are. Preprocessed traces hold samples that were never recorded
+    # (laser artifacts and common-mode noise are interpolated over), so the series must not claim
+    # to be raw acquisition data.
+    if processed_ephys_path:
+        electrical_series_description = (
+            "PREPROCESSED ephys data, in uV (multiply by conversion factor to get data in V). "
+            "Laser artifacts and common-mode noise events have been replaced by linear "
+            "interpolation and a Neuropixels 2.0 phase shift has been applied; no common average "
+            "reference was applied (Kilosort applies its own). These are the traces the spike "
+            f"sorting was run on, read from {processed_ephys_path}. See the 'preprocessing' "
+            "associated file for the exact parameters."
+        )
+    else:
+        electrical_series_description = (
+            "Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V)."
+        )
+
     # Create the ElectricalSeries
     # For now, we do not chunk or compress the timestamps, which are relatively small
     eseries = ElectricalSeries(
         name="ElectricalSeries",
-        description="Raw ephys data from OpenEphys recording, in uV (multiply by conversion factor to get data in V).",
+        description=electrical_series_description,
         data=data_data_io,
         timestamps=ephys_timestamps,
         electrodes=electrode_table_region,
@@ -1680,6 +2624,35 @@ def add_raw_ephys(
     # Add the ElectricalSeries to the NWBFile
     logger.info("Adding raw ephys to the nwbfile as an ElectricalSeries")
     nwbfile.add_acquisition(eseries)
+
+    # Record where each source recording sits in the file. Spyglass turns every epoch tag into an
+    # interval list of that name, so these tags are what a spike sort is later restricted to -
+    # one session, or both. The epoch times come from the timestamps, so they already account for
+    # the bonsai trim and the gaps between recordings.
+    for epoch in session_epochs:
+        nwbfile.add_epoch(start_time=epoch["start_time"], stop_time=epoch["stop_time"],
+                          tags=[epoch["session"]])
+        logger.info(f"Added epoch '{epoch['session']}': {epoch['start_time']:.3f}s to "
+                    f"{epoch['stop_time']:.3f}s")
+
+    # Laser pulses, placed on the same clock as the ElectricalSeries. The conversion from a
+    # recording's hardware clock to the nwb clock is taken from what this conversion actually did -
+    # each session's first converted sample, in both clocks - rather than re-derived from the trims.
+    if processed_ephys_path:
+        from .convert_processed_ephys import add_laser_events
+
+        add_laser_events(
+            nwbfile=nwbfile,
+            processed_ephys_path=processed_ephys_path,
+            session_boundaries=processed_session_boundaries,
+            probe_start_times=probe_start_times,
+            session_hardware_starts={
+                label: float(timestamps[0])
+                for label, timestamps in zip(session_labels, session_timestamps)
+            },
+            session_nwb_starts=dict(zip(session_labels, session_time_offsets)),
+            logger=logger,
+        )
 
     # Save the raw Open Ephys settings.xml and structure.oebin as AssociatedFiles
     with open(settings_file_path, "r") as settings_file:
@@ -1705,11 +2678,34 @@ def add_raw_ephys(
         log_filename="structure.oebin",
     )
 
+    # When the traces are preprocessed, the file has to carry how they were made - the masking
+    # parameters, the laser lags, and where each source recording sits in the concatenated data.
+    if processed_ephys_path:
+        provenance_files = ["preprocessing.json", "session_boundaries.json",
+                            "laser_events.csv", "noise_events.csv"]
+        # The laser protocol file is named after the rig, so find it rather than assuming the name
+        provenance_files += [path.name for path in
+                             sorted(Path(processed_ephys_path).glob("laser_control_protocol*.csv"))]
+        for provenance_file_name in provenance_files:
+            provenance_name = Path(provenance_file_name).stem
+            provenance_path = Path(processed_ephys_path) / provenance_file_name
+            if not provenance_path.exists():
+                logger.info(f"No {provenance_file_name} at {provenance_path}; not recording it.")
+                continue
+            with open(provenance_path, "r") as provenance_file:
+                add_associated_file(
+                    nwbfile,
+                    name=provenance_name,
+                    description=f"{provenance_file_name} from the preprocessing pipeline "
+                                "(how the traces in the ElectricalSeries were produced)",
+                    content=provenance_file.read(),
+                    logger=logger,
+                    log_filename=provenance_file_name,
+                )
+
     log_and_print(logger, "Finished adding raw ephys to the nwb.", level="info")
-    # Total number of samples in the FULL (untrimmed) probe recording. num_samples is the count after
-    # trimming samples_to_remove off the front, so the full recording length is num_samples + samples_to_remove.
-    # Spike sorting uses this to confirm its analyzer was computed on this same recording (matching length).
-    full_recording_num_samples = int(num_samples) + int(samples_to_remove)
+    # Each probe's own full (untrimmed) recording length. Spike sorting uses it to confirm each
+    # analyzer was computed on that probe's recording - the probes can differ by a few samples.
     return {
         "ephys_start": open_ephys_start,
         "port_visits": ephys_visit_times,
@@ -1717,5 +2713,11 @@ def add_raw_ephys(
         # its sample-indexed spike times to the same "bonsai start = time 0" clock used here
         "bonsai_start_time": bonsai_start_time,
         "sample_rate": probe_sample_rate,
-        "num_samples": full_recording_num_samples,
+        # One entry per probe, in the same order as metadata["ephys"]["probes"]. Spike sorting
+        # joins on that position: it cannot re-derive the label, because the metadata may name a
+        # probe in any of the forms a stream goes by.
+        "probe_results": [
+            {"label": config["label"], "num_samples": num_samples_by_probe[config["label"]]}
+            for config in probe_configs
+        ],
     }

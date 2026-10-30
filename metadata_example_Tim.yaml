@@ -18,17 +18,25 @@ subject:
 
 ephys:
   impedance_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/impedance.csv"
-  openephys_folder_path: "/Volumes/Tim/Ephys/IM-1478/07192022/2022-07-19_13-12-30"
-  electrodes_location: "Hippocampus CA1"
-  targeted_x: -2.2  # ML in mm (negative = left hemisphere, positive = right; Spyglass reads hemisphere from this)
-  targeted_y: 4.5   # AP in mm
-  targeted_z: -2.0  # DV in mm
 
+  # One recording. The 'session' label becomes this recording's NWB epoch tag.
+  openephys_folder_paths:
+    - path: "/Volumes/Tim/Ephys/IM-1478/07192022/2022-07-19_13-12-30"
+      session: "behavior"
+
+  # One probe, which carries its own type and implant location. 'stream' is not needed here
+  # because the recording holds only one probe.
+  probes:
+    - probe_type: "256-ch Silicon Probe, 3mm length, 66um pitch"
+      electrodes_location: "Hippocampus CA1"
+      targeted_x: -2.2  # ML in mm (negative = left hemisphere, positive = right; Spyglass reads hemisphere from this)
+      targeted_y: 4.5   # AP in mm
+      targeted_z: -2.0  # DV in mm
+
+  # Legacy MountainSort output. Unlike the per-probe Kilosort analyzer, this predates per-probe
+  # sorting and stays here at the ephys level.
   mountain_sort_output_file_path: "/Volumes/Tim/Ephys/IM-1478/07192022/mntsort_output/firings.mda"
   sampling_frequency: 30000
-
-  probe:
-    - "256-ch Silicon Probe, 3mm length, 66um pitch"
 
 photometry:
   # Recording was done using LabVIEW

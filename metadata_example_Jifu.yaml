@@ -1,0 +1,101 @@
+# Example metadata for Jifu's bilateral Neuropixels sessions (IM-1979).
+#
+# This converts BOTH probes and BOTH recordings into a single NWB file, with the preprocessed
+# traces from the optonpx pipeline. See metadata_fully_explained.yaml for what every field means.
+#
+# BEFORE RUNNING, fill in the fields marked "FILL IN". They are set to null, so the conversion
+# stops immediately and names them rather than silently converting with a wrong implant location.
+#
+# Paths below are the real 2026-09-04 locations. For a different session, change the date in
+# every path, both Open Ephys folder names, and the processed directory.
+
+institution: University of California, San Francisco
+lab: Berke Lab
+experimenter:
+  - Jifu Tong
+
+experiment_description: Hex maze task with bilateral Neuropixels and optotagging
+animal_name: IM-1979
+date: 09/04/2026
+subject:
+  subject_id: IM-1979
+  species: Rattus norvegicus
+  genotype: D1-Cre
+  sex: M
+  date_of_birth: 2025-04-28
+  description: Long Evans Rat
+
+ephys:
+  # The two recordings, in the order they were recorded. They are concatenated into one
+  # ElectricalSeries so they can be spike sorted together. The 'session' labels become the NWB
+  # epoch tags, and Spyglass turns each tag into an interval list of that name - so these are the
+  # names you later restrict a spike sort to.
+  openephys_folder_paths:
+    - path: 'D:\D1-1-6_IM-1979\ephys\2026-09-04_14-20-43'
+      session: "behavior"
+    - path: 'D:\D1-1-6_IM-1979\ephys\2026-09-04_16-39-38'
+      session: "optotagging"
+
+  # Write the preprocessed traces (laser artifacts and common-mode noise interpolated over, phase
+  # shift applied) instead of the raw ones, so a re-sort in Spyglass sees what Kilosort saw.
+  # The raw folders above are still required: they are the only source of the ADC (port visits),
+  # the channel map and geometry, the conversion factor, and the per-probe start times.
+  # Remove this line to write the raw traces instead.
+  processed_ephys_path: 'E:\D1-1-6_IM-1979\ephys\2026-09-04'
+
+  # One entry per probe. Listing a probe is what selects it for conversion.
+  # 'stream' is required here because the recording holds two probes.
+  probes:
+    - stream: "ProbeA"
+      probe_type: "Neuropixels 2.0 (4-shank)"
+      # FILL IN: ProbeA's implant location. The only coordinates on record are ProbeB's (below),
+      # from the 2026-09-04 conversion, so ProbeA's have to come from the surgery notes.
+      # targeted_x is ML: NEGATIVE is the left hemisphere, POSITIVE is the right. Spyglass reads
+      # the hemisphere from its sign, so getting it wrong puts the probe in the wrong half of the brain.
+      electrodes_location: null   # FILL IN, e.g. "Nucleus Accumbens"
+      targeted_x: null            # FILL IN: ML in mm
+      targeted_y: null            # FILL IN: AP in mm
+      targeted_z: null            # FILL IN: DV in mm
+      # ProbeA has no analyzer export yet (only kilosort4/ output), so no units are written for it.
+      # Once an export exists, add it here - and point it at the export covering BOTH recordings
+      # (nwb_export_concat), because this NWB holds both:
+      # sorting_analyzer_path: 'E:\D1-1-6_IM-1979\ephys\2026-09-04\probeA\nwb_export_concat\analyzer.zarr'
+
+    - stream: "ProbeB"
+      probe_type: "Neuropixels 2.0 (4-shank)"
+      electrodes_location: "Nucleus Accumbens"
+      targeted_x: 1.9   # ML in mm (positive = right hemisphere)
+      targeted_y: 1.7   # AP in mm
+      targeted_z: 7.3   # DV in mm
+      # The analyzer must match the recording this NWB holds. Since both recordings are
+      # concatenated here, that is the 'concat' export, NOT 'nwb_export_behavior' - the conversion
+      # fails if the lengths disagree, which is what catches the wrong one.
+      sorting_analyzer_path: 'E:\D1-1-6_IM-1979\ephys\2026-09-04\probeB\nwb_export_concat\analyzer.zarr'
+
+behavior:
+  arduino_text_file_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\arduinoraw0.txt'
+  arduino_timestamps_file_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\ArduinoStamps0.csv'
+  maze_configuration_file_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\barriers.txt'
+
+video:
+  video_file_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\Behav_Vid0.avi'
+  video_timestamps_file_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\testvidtimes0.csv'
+  dlc_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\Behav_Vid0DLC_Resnet50_jifu_hexmaze_v1Jul13shuffle2_snapshot_best-100_filtered.h5'
+  hex_centroids_file_path: 'E:\D1-1-6_IM-1979\behavior\2026-09-04\2026-06-19_hex_coordinates_snapped.csv'
+
+surgery:
+  Bilateral Neuropixels 2.0 implant. Add the details here.
+
+virus:
+  Add virus information here.
+
+notes:
+  Add any notes about this session here.
+
+keywords:
+  - ephys
+  - neuropixels
+  - optotagging
+  - behavior
+  - video
+  - hex maze

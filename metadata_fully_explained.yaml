@@ -41,15 +41,77 @@ subject:
 # If your experiment included electrophysiology, include field 'ephys' and the following subfields:
 ephys:
   # Fields used for ALL probes (Berke Lab custom probes AND Neuropixels):
-  openephys_folder_path: "path/to/folder/like/2022-07-25_15-30-00"
-  electrodes_location: "Hippocampus CA1"
+  # THE OPEN EPHYS RECORDING(S) TO CONVERT, in the order they should be concatenated.
+  # One recording is the common case. Two or more (e.g. a behavior session followed by an
+  # optotagging session) are concatenated into a SINGLE ElectricalSeries, which is what lets them
+  # be spike sorted together. The 'session' label names the nwb epoch for that recording, and
+  # Spyglass turns each epoch tag into an interval list of the same name - so these are the names
+  # you later restrict a spike sort to.
+  openephys_folder_paths:
+    - path: "path/to/folder/like/2022-07-25_15-30-00"
+      session: "behavior"
+  # Two recordings concatenated into one file look like this instead:
+  # openephys_folder_paths:
+  #   - path: "D:/D1-1-6_IM-1979/ephys/2026-09-04_14-20-43"
+  #     session: "behavior"
+  #   - path: "D:/D1-1-6_IM-1979/ephys/2026-09-04_16-39-38"
+  #     session: "optotagging"
+
+  # OPTIONAL: preprocessed traces to write INSTEAD of the raw ones.
+  # Point this at the preprocessed session directory (the one holding the probeA/probeB folders,
+  # session_boundaries.json, preprocessing.json and laser_events.csv). When it is given, the
+  # ElectricalSeries holds those traces - laser-artifact masked, common-mode-noise masked and
+  # phase-shifted - instead of the raw ones, so a re-sort sees what Kilosort saw.
+  # The raw folders above are STILL REQUIRED: they are the only source of the ADC (port visits),
+  # the channel map and geometry, the conversion factor, and the per-probe start times used to
+  # align the probes with each other.
+  # On every conversion, one second of the preprocessed traces is correlated against the raw ones
+  # to confirm the channels still correspond. A warning there means the preprocessed channels may
+  # be in a different order, which would map every electrode to the wrong trace - investigate it
+  # before using the file.
+  # Laser events are mapped onto the nwb clock as a 'laser_events' TimeIntervals table, and
+  # preprocessing.json, session_boundaries.json, laser_events.csv, noise_events.csv and the laser
+  # control protocol csv are all written into the nwb as associated files.
+  # processed_ephys_path: "E:/D1-1-6_IM-1979/ephys/2026-09-04"
+
+  # THE PROBES TO CONVERT, AND WHERE EACH ONE IS IMPLANTED.
+  # Listing a probe is what selects it: a probe that is not listed is not converted. Every probe
+  # carries its own location, because Spyglass derives the target hemisphere from the SIGN of
+  # targeted_x, so bilateral probes sharing one location would land in the same hemisphere.
+  #
   # NOTE the axis order: targeted_x is ML, targeted_y is AP (targeted_z is DV). ML goes in targeted_x
   # because Spyglass derives the target hemisphere from the SIGN of targeted_x (>=0 is Right, <0 is Left).
   # THIS WAS SWAPPED BEFORE 7/29/2026 (SORRY)! In jdb_to_nwb 2.3.1 and below, targeted_x held AP and
   # targeted_y held ML (backwards). NWBs generated with 2.3.1 or earlier may have the wrong hemisphere in Spyglass.
-  targeted_x: 2.2   # ML in mm. Negative ML is the left hemisphere and positive ML is the right hemisphere
-  targeted_y: 4.5   # AP in mm
-  targeted_z: -2.0  # DV in mm
+  #
+  # 'stream' names the Open Ephys probe stream (e.g. "ProbeA"). It is REQUIRED when the recording
+  # holds more than one probe, and may be left out when there is only one.
+  probes:
+    - probe_type: "256-ch Silicon Probe, 3mm length, 66um pitch"
+      electrodes_location: "Hippocampus CA1"
+      targeted_x: 2.2   # ML in mm. Negative is the left hemisphere, positive is the right
+      targeted_y: 4.5   # AP in mm
+      targeted_z: -2.0  # DV in mm
+  #
+  # Two probes (e.g. bilateral Neuropixels) look like this instead. They are combined into a
+  # SINGLE ElectricalSeries (Spyglass reads one acquisition object), with all of the first probe's
+  # channels followed by all of the second's. The probes are aligned in time first: they share a
+  # hardware clock but can start a few samples apart, so the streams are trimmed to a common start
+  # time and length (this is logged). Each probe gets its own Probe device, its own electrode
+  # groups ("ProbeA_0".."ProbeA_3"), and a 'probe' column in the electrode table.
+  # probes:
+  #   - stream: "ProbeA"
+  #     probe_type: "Neuropixels 2.0 (4-shank)"
+  #     electrodes_location: "Nucleus Accumbens"
+  #     targeted_x: -1.9  # left hemisphere
+  #     targeted_y: 1.7
+  #     targeted_z: 7.3
+  #   - stream: "ProbeB"
+  #     probe_type: "Neuropixels 2.0 (4-shank)"
+  #     electrodes_location: "Nucleus Accumbens"
+  #     targeted_x: 1.9   # right hemisphere
+  #     targeted_y: 1.7
+  #     targeted_z: 7.3
   # OPTIONAL: which Open Ephys experiment to convert if the output folder contains more than one
   # (experiment1, experiment2, ...), which can happen if you stopped and re-started the recording. 
   # Normally it will always be experiment1 (and will be auto-detected by default).
@@ -72,27 +134,41 @@ ephys:
   port_visits_adc_channel: 2 # ADC for port visits. Defaults to 2 (ADC0 is a 1Hz sync, ADC1 is reserved for optotagging)
   port_visits_threshold_volts: 4.0 # Volts above which the port visit channel is "high". Defaults to 4.0
 
-  # If you have spike sorting output, specify one of the two options below.
+  # SPIKE SORTING OUTPUT.
+  # Each probe is sorted on its own channels, so the analyzer path belongs to the probe, inside its
+  # entry in the 'probes' list above:
+  #   probes:
+  #     - stream: "ProbeA"
+  #       probe_type: "Neuropixels 2.0 (4-shank)"
+  #       electrodes_location: "Nucleus Accumbens"
+  #       targeted_x: -1.9
+  #       targeted_y: 1.7
+  #       targeted_z: 7.3
+  #       sorting_analyzer_path: "E:/.../ephys/2026-09-04/probeA/nwb_export_behavior/analyzer.zarr"
   #
-  # OPTION 1: Kilosort4 + BombCell output, saved as a SpikeInterface SortingAnalyzer (an
-  # analyzer.zarr directory). ALL units are written, with curation labels (BombCell bc_unitType, Kilosort
-  # ks_label, Phy phy_group), per-unit quality metrics, and a peak-channel waveform as Units table columns.
-  # This pipeline also looks for the output of manual curation (cluster_group.tsv) next to the analyzer.zarr
-  sorting_analyzer_path: "path/to/analyzer.zarr"
+  # sorting_analyzer_path points at a SpikeInterface SortingAnalyzer (an analyzer.zarr directory)
+  # from Kilosort4 + BombCell. ALL units are written, with curation labels (BombCell bc_unitType,
+  # Kilosort ks_label, Phy phy_group), per-unit quality metrics, and a peak-channel waveform.
+  # The pipeline also looks for manual curation (cluster_group.tsv) next to the analyzer.zarr.
+  # Units from every probe share one Units table, each row carrying a 'probe' column and a
+  # 'sorter_unit_id' column (its id in that probe's own sorting) - the nwb assigns the row ids,
+  # because both probes' Kilosort cluster ids start at 0 and would otherwise collide.
+  # The analyzer's recording length must match that probe's recording, or conversion fails: it
+  # means the sorting was run on different data and the spike times would be aligned to the wrong
+  # clock. With concatenated recordings, that means the analyzer covering ALL the concatenated
+  # sessions, not just one of them.
   #
-  # OPTION 2 (legacy): MountainSort output (a firings.mda file). Also requires sampling_frequency.
-  # Only spike times and unit ids are written (the .mda itself holds no metrics).
+  # LEGACY: MountainSort output (a firings.mda file), which predates per-probe sorting.
+  # Requires sampling_frequency. Only spike times and unit ids are written.
   # mountain_sort_output_file_path: "path/to/firings.mda"
   # sampling_frequency: 30000
 
-  # Berke Lab uses one of 4 custom silicon probes (or Neuropixels) for the hex maze task, specified below.
-  # Un-comment the single probe used for your experiment (currently only one probe is supported per session).
-  probe: # reference existing probes from resources/electrophysiology/ephys_devices.yaml
-    - "256-ch Silicon Probe, 3mm length, 66um pitch"
-    # - "256-ch Silicon Probe, 6mm length, 80um pitch"
-    # - "252-ch Silicon Probe, 4mm length, 80um pitch"
-    # - "252-ch Silicon Probe, 10mm length, 100um pitch"
-    # - "Neuropixels 2.0 (4-shank)"
+  # probe_type must match a probe name in resources/electrophysiology/ephys_devices.yaml:
+  #   "256-ch Silicon Probe, 3mm length, 66um pitch"
+  #   "256-ch Silicon Probe, 6mm length, 80um pitch"
+  #   "252-ch Silicon Probe, 4mm length, 80um pitch"
+  #   "252-ch Silicon Probe, 10mm length, 100um pitch"
+  #   "Neuropixels 2.0 (4-shank)"
 
 # If your experiment included photometry, include field 'photometry' and the following subfields:
 # BOTH "phot_file_path" and "box_file_path" for raw LabVIEW data,

@@ -10,13 +10,19 @@ import re
 from jdb_to_nwb import convert_raw_ephys
 from jdb_to_nwb.convert_raw_ephys import (
     add_raw_ephys,
-    get_raw_ephys_data,
+    get_combined_raw_ephys_data,
     add_probe_info,
 #    get_electrode_info, # TODO add test for this
     read_open_ephys_settings_xml,
     add_electrode_data_berke_probe,
     add_electrode_data_neuropixels,
     find_open_ephys_paths,
+    combine_probe_recordings,
+    resolve_probe_stream,
+    get_probe_configs,
+    probe_name_token,
+    get_session_time_offsets,
+    concatenate_session_recordings,
 )
 
 
@@ -27,7 +33,6 @@ def test_add_probe_info(dummy_logger):
     # Create a test metadata dictionary
     metadata = {}
     metadata["ephys"] = {}
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
 
     # Create a test NWBFile
     nwbfile = NWBFile(
@@ -37,7 +42,8 @@ def test_add_probe_info(dummy_logger):
     )
 
     # Add probe to the nwbfile
-    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    probe_type = "256-ch Silicon Probe, 3mm length, 66um pitch"
+    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, probe_type=probe_type, logger=dummy_logger)
 
     # Test that the nwbfile has the expected probe info under 'devices'
     assert "256-ch Silicon Probe, 3mm length, 66um pitch" in nwbfile.devices
@@ -83,11 +89,13 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     metadata = {}
     metadata["ephys"] = {}
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["targeted_x"] = 2.2   # ML in mm
-    metadata["ephys"]["targeted_y"] = 4.5   # AP in mm
-    metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
+    metadata["ephys"]["probes"] = [
+        {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Hippocampus CA1",
+         "targeted_x": 2.2,    # ML in mm
+         "targeted_y": 4.5,    # AP in mm
+         "targeted_z": -2.0},  # DV in mm
+    ]
     metadata["ephys"]["plug_order"] = "chip_first"
 
     # Create a test NWBFile
@@ -118,10 +126,13 @@ def test_add_electrode_data_berke_probe(dummy_logger):
     expected_port_labels = ["Port B" if n < 128 else "Port C" for n in expected_intan_channel_numbers]
 
     # First add the probe to the nwbfile
-    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    probe_metadata, probe_obj = add_probe_info(
+        nwbfile=nwbfile, probe_type=metadata["ephys"]["probes"][0]["probe_type"],
+        logger=dummy_logger)
 
     # Add electrode data to the NWBFile
     add_electrode_data_berke_probe(
+        probe_location=metadata["ephys"]["probes"][0],
         nwbfile=nwbfile,
         filtering_info=filtering_info,
         metadata=metadata,
@@ -226,12 +237,14 @@ def test_add_electrode_data_neuropixels(dummy_logger):
 
     nwbfile = NWBFile(session_description="Mock session", session_start_time=datetime.now(tz.tzlocal()),
                       identifier="mock_session")
-    metadata = {"ephys": {"probe": ["Neuropixels 2.0 (4-shank)"], "electrodes_location": "Hippocampus CA1",
-                          "targeted_x": 2.9, "targeted_y": -3.6, "targeted_z": -1.8}}  # x=ML, y=AP, z=DV
-    _, probe_obj = add_probe_info(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    probe_location = {"electrodes_location": "Hippocampus CA1",
+                      "targeted_x": 2.9, "targeted_y": -3.6, "targeted_z": -1.8}  # x=ML, y=AP, z=DV
+    _, probe_obj = add_probe_info(nwbfile=nwbfile, probe_type="Neuropixels 2.0 (4-shank)",
+                                  logger=dummy_logger)
 
     add_electrode_data_neuropixels(nwbfile=nwbfile, channel_info=channel_info, filtering_info="hw filtering",
-                                   metadata=metadata, probe_obj=probe_obj, logger=dummy_logger)
+                                   probe_location=probe_location, probe_obj=probe_obj,
+                                   probe_label="ProbeA", logger=dummy_logger)
 
     # The Probe device exists under 'devices' with the expected Neuropixels metadata (from ephys_devices.yaml)
     assert "Neuropixels 2.0 (4-shank)" in nwbfile.devices
@@ -297,16 +310,23 @@ def test_add_electrode_data_neuropixels(dummy_logger):
     assert list(electrodes["ref_elect_id"]) == [-1] * 384
 
 
-def test_get_raw_ephys_data(dummy_logger):
+def test_get_combined_raw_ephys_data_single_probe(dummy_logger):
     """
-    Test the get_raw_ephys_data function.
+    Test reading raw ephys for a single probe, which goes through the same path as multi-probe.
 
     File `tests/test_data/raw_ephys/2022-07-25_15-30-00` must be created first by running
     `python tests/test_data/create_raw_ephys_test_data.py`.
     """
     folder_path = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
-    traces_as_iterator, channel_conversion_factor, original_timestamps = get_raw_ephys_data(folder_path, dummy_logger)
-    assert traces_as_iterator.maxshape == (3_000, 256)
+    (combined_recording, channel_conversion_factor, original_timestamps,
+     num_samples_by_probe) = get_combined_raw_ephys_data(
+        folder_path=folder_path,
+        probe_streams_by_label={"probe": "Rhythm_FPGA-100.0"},
+        logger=dummy_logger,
+    )
+    # Each probe reports its own full length, for the spike sorting guard
+    assert num_samples_by_probe == {"probe": 3_000}
+    assert (combined_recording.get_num_samples(), combined_recording.get_num_channels()) == (3_000, 256)
     np.testing.assert_allclose(channel_conversion_factor, [0.19499999284744263] * 256)
     assert len(original_timestamps) == 3_000
 
@@ -396,13 +416,16 @@ def test_add_raw_ephys(dummy_logger):
 
     metadata = {}
     metadata["ephys"] = {}
-    metadata["ephys"]["openephys_folder_path"] = "tests/test_data/raw_ephys/2022-07-25_15-30-00"
+    metadata["ephys"]["openephys_folder_paths"] = [
+        {"path": "tests/test_data/raw_ephys/2022-07-25_15-30-00", "session": "behavior"}]
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["targeted_x"] = 2.2   # ML in mm
-    metadata["ephys"]["targeted_y"] = 4.5   # AP in mm
-    metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
+    metadata["ephys"]["probes"] = [
+        {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Hippocampus CA1",
+         "targeted_x": 2.2,    # ML in mm
+         "targeted_y": 4.5,    # AP in mm
+         "targeted_z": -2.0},  # DV in mm
+    ]
     
     # Mapping from probe electrode to channel number for 256-ch silicon probe
     intan_channel_numbers = np.array([
@@ -442,7 +465,7 @@ def test_add_raw_ephys(dummy_logger):
         "Raw settings.xml file from OpenEphys"
     )
 
-    settings_file_path = Path(metadata["ephys"]["openephys_folder_path"]) / "settings.xml"
+    settings_file_path = Path(metadata["ephys"]["openephys_folder_paths"][0]["path"]) / "settings.xml"
     with open(settings_file_path, "r") as settings_file:
         expected_raw_settings_xml = settings_file.read()
     assert nwbfile.processing["associated_files"]["open_ephys_settings_xml"].content == expected_raw_settings_xml
@@ -522,13 +545,16 @@ def test_add_raw_ephys_complete_data():
 
     metadata = {}
     metadata["ephys"] = {}
-    metadata["ephys"]["openephys_folder_path"] = openephys_folder_path
+    metadata["ephys"]["openephys_folder_paths"] = [
+        {"path": openephys_folder_path, "session": "behavior"}]
     metadata["ephys"]["impedance_file_path"] = "tests/test_data/processed_ephys/impedance.csv"
-    metadata["ephys"]["electrodes_location"] = "Hippocampus CA1"
-    metadata["ephys"]["targeted_x"] = 2.2   # ML in mm
-    metadata["ephys"]["targeted_y"] = 4.5   # AP in mm
-    metadata["ephys"]["targeted_z"] = -2.0  # DV in mm
-    metadata["ephys"]["probe"] = ["256-ch Silicon Probe, 3mm length, 66um pitch"]
+    metadata["ephys"]["probes"] = [
+        {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Hippocampus CA1",
+         "targeted_x": 2.2,    # ML in mm
+         "targeted_y": 4.5,    # AP in mm
+         "targeted_z": -2.0},  # DV in mm
+    ]
     
     # Mapping from probe electrode to channel number for 256-ch silicon probe
     intan_channel_numbers = np.array([
@@ -568,7 +594,7 @@ def test_add_raw_ephys_complete_data():
         "Raw settings.xml file from OpenEphys"
     )
 
-    settings_file_path = Path(metadata["ephys"]["openephys_folder_path"]) / "settings.xml"
+    settings_file_path = Path(metadata["ephys"]["openephys_folder_paths"][0]["path"]) / "settings.xml"
     with open(settings_file_path, "r") as settings_file:
         expected_raw_settings_xml = settings_file.read()
     assert nwbfile.processing["associated_files"]["open_ephys_settings_xml"].content == expected_raw_settings_xml
@@ -576,3 +602,449 @@ def test_add_raw_ephys_complete_data():
     expected_ephys_start = datetime.strptime("2022-07-25_15-30-00", "%Y-%m-%d_%H-%M-%S")
     expected_ephys_start = expected_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     assert ephys_data_dict.get("ephys_start") == expected_ephys_start
+
+
+def _make_test_probe_recording(num_channels=4, duration=2.0, sampling_frequency=30000.0, seed=0):
+    """
+    Make a small SpikeInterface recording that looks like one Neuropixels probe stream:
+    channels named CH0..CHn, and the same channel locations every probe has.
+    """
+    import spikeinterface.core as si_core
+
+    recording = si_core.generate_recording(
+        num_channels=num_channels, durations=[duration], sampling_frequency=sampling_frequency, seed=seed
+    )
+    return recording.rename_channels([f"CH{i}" for i in range(num_channels)])
+
+
+def test_combine_probe_recordings_combines_channels(dummy_logger):
+    """
+    Combining multiple probes must produce one recording holding every probe's channels, in probe
+    order, with stream-prefixed channel ids (every Neuropixels probe reuses CH0..CH383, so the
+    unprefixed ids would collide). Two probes also share identical channel locations, which
+    SpikeInterface refuses to aggregate unless we offset them, so this covers that too.
+    """
+    probe_a = _make_test_probe_recording(seed=1)
+    probe_b = _make_test_probe_recording(seed=2)
+
+    combined, timestamps = combine_probe_recordings({"ProbeA": probe_a, "ProbeB": probe_b}, dummy_logger)
+
+    assert len(timestamps) == combined.get_num_samples()
+    assert [str(channel_id) for channel_id in combined.channel_ids] == [
+        "ProbeA_CH0", "ProbeA_CH1", "ProbeA_CH2", "ProbeA_CH3",
+        "ProbeB_CH0", "ProbeB_CH1", "ProbeB_CH2", "ProbeB_CH3",
+    ]
+
+    # Each probe's traces must land in its own block of channels, in order and unmodified
+    combined_traces = combined.get_traces(end_frame=100)
+    np.testing.assert_allclose(combined_traces[:, :4], probe_a.get_traces(end_frame=100))
+    np.testing.assert_allclose(combined_traces[:, 4:], probe_b.get_traces(end_frame=100))
+
+
+def test_combine_probe_recordings_rejects_mismatched_sampling_rates(dummy_logger):
+    """
+    Combining probes sampled at different rates into one ElectricalSeries would be meaningless,
+    so it must fail loudly rather than silently producing a bogus series.
+    """
+    probe_a = _make_test_probe_recording(sampling_frequency=30000.0, seed=1)
+    probe_b = _make_test_probe_recording(sampling_frequency=20000.0, seed=2)
+
+    with pytest.raises(ValueError, match="do not share a sampling rate"):
+        combine_probe_recordings({"ProbeA": probe_a, "ProbeB": probe_b}, dummy_logger)
+
+
+def test_combine_probe_recordings_aligns_probe_start_times(dummy_logger):
+    """
+    Probes share a hardware clock but can start a few samples apart (measured at ~45 samples /
+    1.5 ms on IM-1979 2026-09-11). Combining must align them in TIME, not just truncate the tail -
+    otherwise one ElectricalSeries row would hold samples recorded at different moments.
+    """
+    probe_a = _make_test_probe_recording(seed=1)
+    probe_b = _make_test_probe_recording(seed=2)
+    # Make probeB start 45 samples later than probeA, like the real recording
+    probe_a.set_times(np.arange(probe_a.get_num_samples()) / 30000.0)
+    probe_b.set_times(np.arange(probe_b.get_num_samples()) / 30000.0 + 45 / 30000.0)
+
+    combined, timestamps = combine_probe_recordings({"ProbeA": probe_a, "ProbeB": probe_b}, dummy_logger)
+
+    # probeA must have its first 45 samples dropped so both probes start at the same time
+    combined_traces = combined.get_traces(end_frame=50)
+    np.testing.assert_allclose(combined_traces[:, :4], probe_a.get_traces(start_frame=45, end_frame=95))
+    np.testing.assert_allclose(combined_traces[:, 4:], probe_b.get_traces(end_frame=50))
+    # The returned timestamps start at the common (later) start time
+    np.testing.assert_allclose(timestamps[0], 45 / 30000.0)
+
+
+def test_resolve_probe_stream_matches_every_naming_form(dummy_logger, monkeypatch):
+    """
+    The same probe is named three different ways: metadata says "ProbeA", the continuous folder is
+    "OneBox-100.ProbeA", and SpikeInterface reports "Record Node 101#OneBox-100.ProbeA". All three
+    must resolve to the same stream, and the ADC stream must never be selected as a probe.
+    """
+    streams = [
+        "Record Node 101#OneBox-100.ProbeA",
+        "Record Node 101#OneBox-100.ProbeB",
+        "Record Node 101#OneBox-100.OneBox-ADC",
+    ]
+
+    class FakeExtractor:
+        @staticmethod
+        def get_streams(folder_path=None):
+            return streams, None
+
+    monkeypatch.setattr(convert_raw_ephys, "OpenEphysBinaryRecordingExtractor", FakeExtractor)
+
+    for requested in ("ProbeA", "OneBox-100.ProbeA", "Record Node 101#OneBox-100.ProbeA"):
+        assert resolve_probe_stream("folder", dummy_logger, stream_name=requested) == streams[0]
+    assert resolve_probe_stream("folder", dummy_logger, stream_name="ProbeB") == streams[1]
+
+    # Two probe streams and no requested stream is ambiguous, so it must fail rather than guess
+    with pytest.raises(ValueError, match="no stream was requested"):
+        resolve_probe_stream("folder", dummy_logger, stream_name=None)
+
+
+def test_get_probe_configs_resolves_each_probe_location(dummy_logger):
+    """
+    Bilateral probes sit in opposite hemispheres, and Spyglass reads the target hemisphere from the
+    SIGN of targeted_x, so each probe must carry its own location.
+    """
+    metadata = {"ephys": {"probes": [
+        {"stream": "ProbeA", "probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "Left NAc",
+         "targeted_x": -1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+        {"stream": "ProbeB", "probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "Right NAc",
+         "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+
+    configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+    assert [c["label"] for c in configs] == ["ProbeA", "ProbeB"]
+    assert [c["stream"] for c in configs] == ["OneBox-100.ProbeA", "OneBox-100.ProbeB"]
+    assert configs[0]["electrodes_location"] == "Left NAc"
+    # Opposite signs, so Spyglass places them in opposite hemispheres
+    assert configs[0]["targeted_x"] < 0 < configs[1]["targeted_x"]
+
+
+def test_get_probe_configs_selects_only_listed_probes(dummy_logger):
+    """Listing a probe is what selects it, so an unlisted probe is simply not converted."""
+    metadata = {"ephys": {"probes": [
+        {"stream": "ProbeB", "probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "Right NAc",
+         "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+
+    configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+    assert len(configs) == 1 and configs[0]["label"] == "ProbeB"
+
+
+def test_get_probe_configs_stream_optional_for_a_single_probe(dummy_logger):
+    """With only one probe stream in the recording, naming it would be redundant."""
+    metadata = {"ephys": {"probes": [
+        {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Hippocampus CA1",
+         "targeted_x": 2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+    ]}}
+
+    configs = get_probe_configs(metadata, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+
+    assert len(configs) == 1
+    assert configs[0]["stream"] == "Rhythm_FPGA-100.0"
+    assert configs[0]["targeted_x"] == 2.2
+
+
+def test_get_probe_configs_requires_stream_when_several_probes_exist(dummy_logger):
+    """Omitting 'stream' is only unambiguous with one probe stream; otherwise it must be named."""
+    metadata = {"ephys": {"probes": [
+        {"probe_type": "NPX", "electrodes_location": "NAc",
+         "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+
+    with pytest.raises(ValueError, match="must name its 'stream'"):
+        get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+
+def test_get_probe_configs_requires_stream_on_every_probe(dummy_logger):
+    """Several probes listed means each must say which one it is."""
+    metadata = {"ephys": {"probes": [
+        {"stream": "ProbeA", "probe_type": "NPX", "electrodes_location": "L",
+         "targeted_x": -1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+        {"probe_type": "NPX", "electrodes_location": "R",
+         "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+
+    with pytest.raises(ValueError, match="must name its 'stream'"):
+        get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+
+def test_get_probe_configs_rejects_outdated_flat_location(dummy_logger):
+    """
+    Location used to live directly under 'ephys'. An un-migrated file must fail loudly rather than
+    convert with no location at all.
+    """
+    metadata = {"ephys": {
+        "electrodes_location": "Hippocampus CA1", "targeted_x": 2.2,
+        "targeted_y": 4.5, "targeted_z": -2.0,
+    }}
+
+    with pytest.raises(ValueError, match="moved into the 'probes' list"):
+        get_probe_configs(metadata, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+
+
+def test_get_probe_configs_requires_a_location_per_probe(dummy_logger):
+    """A listed probe with no location would silently lose its hemisphere, so it must fail."""
+    metadata = {"ephys": {"probes": [{"stream": "ProbeA", "electrodes_location": "NAc"}]}}
+
+    with pytest.raises(ValueError, match="is missing"):
+        get_probe_configs(metadata, {"OneBox-100.ProbeA": "a.dat"}, dummy_logger)
+
+
+def test_get_probe_configs_requires_probes(dummy_logger):
+    """There is no default: without a probes list there is nothing to convert."""
+    with pytest.raises(ValueError, match="No 'probes' in the ephys metadata"):
+        get_probe_configs({"ephys": {}}, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+def test_probe_name_token_unifies_every_naming_form(dummy_logger):
+    """
+    The same probe is written four different ways depending on the source. One definition of probe
+    identity keeps the matchers from drifting apart, which they previously had.
+    """
+    same_probe = [
+        "ProbeA",                              # metadata
+        "OneBox-100.ProbeA",                   # Open Ephys continuous folder
+        "Record Node 101#OneBox-100.ProbeA",   # SpikeInterface stream name
+        "probeA",                              # preprocessing pipeline folder
+    ]
+    tokens = {probe_name_token(name) for name in same_probe}
+    assert tokens == {"probea"}, f"all four forms must identify the same probe, got {tokens}"
+
+    assert probe_name_token("ProbeB") != probe_name_token("ProbeA")
+
+
+def test_get_probe_configs_matches_a_fully_qualified_stream_name(dummy_logger):
+    """
+    A probe named in the SpikeInterface form (with the Record Node prefix) must still resolve.
+    This did not match before the matchers were unified.
+    """
+    metadata = {"ephys": {"probes": [
+        {"stream": "Record Node 101#OneBox-100.ProbeB", "probe_type": "Neuropixels 2.0 (4-shank)",
+         "electrodes_location": "NAc", "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+
+    configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+    assert configs[0]["stream"] == "OneBox-100.ProbeB"
+    # The label is what the user wrote (minus the Record Node prefix), not a guess at which part
+    # of it names the probe - so it is predictable from the metadata
+    assert configs[0]["label"] == "OneBox-100.ProbeB"
+
+
+def test_get_session_time_offsets_places_recordings_by_folder_name(dummy_logger):
+    """
+    Separate Open Ephys recordings share no sample numbering, so the only link between them is the
+    wall-clock time in the folder name. These are the real IM-1979 2026-09-04 folders.
+    """
+    session_folders = [
+        {"path": "D:/D1-1-6_IM-1979/ephys/2026-09-04_14-20-43", "session": "behavior"},
+        {"path": "D:/D1-1-6_IM-1979/ephys/2026-09-04_16-39-38", "session": "optotagging"},
+    ]
+
+    offsets = get_session_time_offsets(session_folders, dummy_logger)
+
+    # 16:39:38 - 14:20:43 = 2h18m55s = 8335s
+    assert offsets == [0.0, 8335.0]
+
+
+def test_get_session_time_offsets_rejects_out_of_order_recordings(dummy_logger):
+    """Listing the recordings out of order would silently build a file with overlapping epochs."""
+    session_folders = [
+        {"path": "x/2026-09-04_16-39-38", "session": "optotagging"},
+        {"path": "x/2026-09-04_14-20-43", "session": "behavior"},
+    ]
+
+    with pytest.raises(ValueError, match="not in chronological order"):
+        get_session_time_offsets(session_folders, dummy_logger)
+
+
+def test_concatenate_session_recordings_keeps_the_real_gap(dummy_logger):
+    """
+    The traces are contiguous but the time between recordings is not. The gap has to survive into
+    the timestamps, because that is what makes Spyglass derive one valid interval per session
+    rather than treating the whole file as continuous.
+    """
+    import spikeinterface.core as si_core
+
+    fs = 30000.0
+    behavior = si_core.generate_recording(num_channels=4, durations=[2.0], sampling_frequency=fs)
+    optotagging = si_core.generate_recording(num_channels=4, durations=[1.0], sampling_frequency=fs)
+    behavior_timestamps = np.arange(behavior.get_num_samples()) / fs
+    optotagging_timestamps = np.arange(optotagging.get_num_samples()) / fs
+
+    recording, timestamps, epochs = concatenate_session_recordings(
+        session_recordings=[behavior, optotagging],
+        session_timestamps=[behavior_timestamps, optotagging_timestamps],
+        session_offsets=[0.0, 452.0],   # a real 452s gap, as on 2026-09-04
+        session_labels=["behavior", "optotagging"],
+        logger=dummy_logger,
+    )
+
+    assert recording.get_num_samples() == len(timestamps) == 90_000
+    assert [epoch["session"] for epoch in epochs] == ["behavior", "optotagging"]
+    assert epochs[1]["start_time"] == 452.0
+    # Time only ever moves forward, and the jump between sessions is the real dead time
+    assert np.all(np.diff(timestamps) > 0)
+    assert np.isclose(np.max(np.diff(timestamps)), 452.0 - 2.0 + 1 / fs)
+    # Spyglass splits on any step larger than 1.75 sample intervals, so it sees two intervals
+    assert np.max(np.diff(timestamps)) > 1.75 / fs
+
+
+def test_concatenate_session_recordings_rejects_overlapping_recordings(dummy_logger):
+    """Overlapping recordings mean the folder names or the order are wrong, so this must not pass."""
+    import spikeinterface.core as si_core
+
+    fs = 30000.0
+    first = si_core.generate_recording(num_channels=4, durations=[2.0], sampling_frequency=fs)
+    second = si_core.generate_recording(num_channels=4, durations=[1.0], sampling_frequency=fs)
+    timestamps = [np.arange(first.get_num_samples()) / fs, np.arange(second.get_num_samples()) / fs]
+
+    with pytest.raises(ValueError, match="starts before"):
+        concatenate_session_recordings(
+            session_recordings=[first, second],
+            session_timestamps=timestamps,
+            session_offsets=[0.0, 1.0],   # starts before the first recording ends
+            session_labels=["behavior", "optotagging"],
+            logger=dummy_logger,
+        )
+
+
+def test_add_raw_ephys_concatenates_two_recordings(dummy_logger, tmp_path):
+    """
+    Two Open Ephys recordings must become ONE ElectricalSeries, with the real dead time between
+    them kept in the timestamps and one nwb epoch per recording. This is the shape needed to spike
+    sort a behavior session and an optotagging session together in Spyglass.
+
+    Built from the real single-probe fixture, copied to a second folder 30 minutes later.
+    """
+    import shutil
+
+    fixture = Path("tests/test_data/raw_ephys/2022-07-25_15-30-00")
+    first_folder = tmp_path / "2022-07-25_15-30-00"
+    second_folder = tmp_path / "2022-07-25_16-00-00"   # 1800s after the first
+    shutil.copytree(fixture, first_folder)
+    shutil.copytree(fixture, second_folder)
+
+    metadata = {"ephys": {
+        "openephys_folder_paths": [
+            {"path": str(first_folder), "session": "behavior"},
+            {"path": str(second_folder), "session": "optotagging"},
+        ],
+        "impedance_file_path": "tests/test_data/processed_ephys/impedance.csv",
+        "probes": [
+            {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+             "electrodes_location": "Hippocampus CA1",
+             "targeted_x": 2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+        ],
+    }}
+    nwbfile = NWBFile(session_description="Mock session", identifier="mock_session",
+                      session_start_time=datetime.now(tz.tzlocal()))
+
+    add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    eseries = nwbfile.acquisition["ElectricalSeries"]
+    samples_per_recording = eseries.data.maxshape[0] // 2
+
+    # One series holding both recordings, end to end
+    assert eseries.data.maxshape[1] == 256
+    assert len(eseries.timestamps) == eseries.data.maxshape[0]
+
+    # One epoch per recording, tagged with its name
+    epochs = nwbfile.epochs.to_dataframe()
+    assert len(epochs) == 2
+    assert [list(tags) for tags in epochs["tags"]] == [["behavior"], ["optotagging"]]
+
+    # The second recording starts 1800s after the first, so the gap is real dead time
+    assert np.isclose(epochs["start_time"][1], 1800.0)
+    assert epochs["start_time"][1] > epochs["stop_time"][0]
+
+    # Time only moves forward, and the jump between recordings is far larger than one sample,
+    # which is what makes Spyglass derive two valid intervals instead of one
+    timestamps = np.asarray(eseries.timestamps)
+    assert np.all(np.diff(timestamps) > 0)
+    assert np.max(np.diff(timestamps)) > 1.75 / 30000.0
+
+    # Each probe's reported length covers every recording it was sorted across
+    assert samples_per_recording > 0
+def test_add_raw_ephys_hands_spike_sorting_one_label_per_probe(dummy_logger, tmp_path):
+    """
+    The raw ephys conversion and the spike sorting must agree on what each probe is called, or the
+    units are labelled with one name while the sample-count guard looks up another and silently
+    finds nothing. They agree by position in the metadata 'probes' list, not by re-deriving the
+    name - the metadata may name a probe in any of the forms its Open Ephys stream goes by.
+    """
+    import shutil
+
+    fixture = Path("tests/test_data/raw_ephys/2022-07-25_15-30-00")
+    raw_folder = tmp_path / "2022-07-25_15-30-00"
+    shutil.copytree(fixture, raw_folder)
+
+    metadata = {"ephys": {
+        "openephys_folder_paths": [{"path": str(raw_folder), "session": "behavior"}],
+        "impedance_file_path": "tests/test_data/processed_ephys/impedance.csv",
+        "probes": [
+            {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+             "electrodes_location": "Hippocampus CA1",
+             "targeted_x": 2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+        ],
+    }}
+    nwbfile = NWBFile(session_description="Mock session", identifier="mock_session",
+                      session_start_time=datetime.now(tz.tzlocal()))
+
+    ephys_data_dict = add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # One result per probe, in the same order as the metadata's probes list
+    probe_results = ephys_data_dict["probe_results"]
+    assert len(probe_results) == len(metadata["ephys"]["probes"])
+    # With no 'stream' in the metadata the label is the recording's own stream name. It is not a
+    # parsed fragment of it, which for this probe would be the useless "0".
+    assert probe_results[0]["label"] == "Rhythm_FPGA-100.0"
+    assert probe_results[0]["num_samples"] == 3_000    # the probe's own full length
+def test_add_raw_ephys_rejects_recordings_that_disagree(dummy_logger, tmp_path):
+    """
+    One ElectricalSeries has one channel count, one sample rate and one conversion factor. If two
+    recordings disagree, part of the series would be silently misdescribed, so it must fail before
+    anything is written.
+    """
+    import json
+    import shutil
+
+    fixture = Path("tests/test_data/raw_ephys/2022-07-25_15-30-00")
+    first_folder = tmp_path / "2022-07-25_15-30-00"
+    second_folder = tmp_path / "2022-07-25_16-00-00"
+    shutil.copytree(fixture, first_folder)
+    shutil.copytree(fixture, second_folder)
+
+    # Give the second recording a different sample rate than the first
+    oebin_path = second_folder / "experiment1/recording1/structure.oebin"
+    oebin = json.loads(oebin_path.read_text())
+    oebin["continuous"][0]["sample_rate"] = 25000.0
+    oebin_path.write_text(json.dumps(oebin))
+
+    metadata = {"ephys": {
+        "openephys_folder_paths": [
+            {"path": str(first_folder), "session": "behavior"},
+            {"path": str(second_folder), "session": "optotagging"},
+        ],
+        "impedance_file_path": "tests/test_data/processed_ephys/impedance.csv",
+        "probes": [
+            {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+             "electrodes_location": "Hippocampus CA1",
+             "targeted_x": 2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+        ],
+    }}
+    nwbfile = NWBFile(session_description="Mock session", identifier="mock_session",
+                      session_start_time=datetime.now(tz.tzlocal()))
+
+    with pytest.raises(ValueError, match="differs between recordings"):
+        add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
