@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -20,6 +21,8 @@ from jdb_to_nwb.convert_raw_ephys import (
     combine_probe_recordings,
     resolve_probe_stream,
     get_probe_configs,
+    get_session_folders,
+    migrate_legacy_ephys_metadata,
     probe_name_token,
     get_session_time_offsets,
     concatenate_session_recordings,
@@ -779,18 +782,26 @@ def test_get_probe_configs_requires_stream_on_every_probe(dummy_logger):
         get_probe_configs(metadata, probe_file_paths, dummy_logger)
 
 
-def test_get_probe_configs_rejects_outdated_flat_location(dummy_logger):
+def test_get_probe_configs_converts_outdated_flat_location(dummy_logger):
     """
-    Location used to live directly under 'ephys'. An un-migrated file must fail loudly rather than
-    convert with no location at all.
+    Location used to live directly under 'ephys'. A file written that way still converts, as one
+    probe at that location, once the metadata has been through migrate_legacy_ephys_metadata
+    (which create_nwbs and add_raw_ephys do before get_probe_configs is reached).
     """
     metadata = {"ephys": {
+        "probe": ["256-ch Silicon Probe, 3mm length, 66um pitch"],
         "electrodes_location": "Hippocampus CA1", "targeted_x": 2.2,
         "targeted_y": 4.5, "targeted_z": -2.0,
     }}
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
 
-    with pytest.raises(ValueError, match="moved into the 'probes' list"):
-        get_probe_configs(metadata, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+    configs = get_probe_configs(metadata, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+
+    assert len(configs) == 1
+    assert configs[0]["probe_type"] == "256-ch Silicon Probe, 3mm length, 66um pitch"
+    assert configs[0]["electrodes_location"] == "Hippocampus CA1"
+    assert configs[0]["targeted_x"] == 2.2
+    assert configs[0]["stream"] == "Rhythm_FPGA-100.0"
 
 
 def test_get_probe_configs_requires_a_location_per_probe(dummy_logger):
@@ -962,7 +973,9 @@ def test_add_raw_ephys_concatenates_two_recordings(dummy_logger, tmp_path):
     # One epoch per recording, tagged with its name
     epochs = nwbfile.epochs.to_dataframe()
     assert len(epochs) == 2
-    assert [list(tags) for tags in epochs["tags"]] == [["behavior"], ["optotagging"]]
+    # Each recording's epoch is tagged "ephys_" + its session label. The "00_r1" run epoch that
+    # add_behavior writes for the task is separate, and is not added here.
+    assert [list(tags) for tags in epochs["tags"]] == [["ephys_behavior"], ["ephys_optotagging"]]
 
     # The second recording starts 1800s after the first, so the gap is real dead time
     assert np.isclose(epochs["start_time"][1], 1800.0)
@@ -1048,3 +1061,204 @@ def test_add_raw_ephys_rejects_recordings_that_disagree(dummy_logger, tmp_path):
 
     with pytest.raises(ValueError, match="differs between recordings"):
         add_raw_ephys(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+
+### Tests for metadata written before multiple probes and multiple recordings were supported
+
+
+def test_migrate_legacy_ephys_metadata_rewrites_every_moved_field(dummy_logger):
+    """A metadata file in the old shape is rewritten into the current one, field for field."""
+    metadata = {"ephys": {
+        "openephys_folder_path": "/data/IM-1478/2022-07-19_13-12-30",
+        "impedance_file_path": "/data/IM-1478/impedance.csv",
+        "probe": ["256-ch Silicon Probe, 3mm length, 66um pitch"],
+        "electrodes_location": "Hippocampus CA1",
+        "targeted_x": -2.2, "targeted_y": 4.5, "targeted_z": -2.0,
+        "sorting_analyzer_path": "/data/IM-1478/analyzer.zarr",
+    }}
+
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+    assert metadata["ephys"]["openephys_folder_paths"] == [
+        {"path": "/data/IM-1478/2022-07-19_13-12-30", "session": "behavior"}
+    ]
+    assert metadata["ephys"]["probes"] == [{
+        "probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+        "electrodes_location": "Hippocampus CA1",
+        "targeted_x": -2.2, "targeted_y": 4.5, "targeted_z": -2.0,
+        "sorting_analyzer_path": "/data/IM-1478/analyzer.zarr",
+    }]
+    # The moved fields are gone, and the fields that did not move are untouched
+    for moved_field in ("openephys_folder_path", "probe", "electrodes_location",
+                        "targeted_x", "targeted_y", "targeted_z", "sorting_analyzer_path"):
+        assert moved_field not in metadata["ephys"]
+    assert metadata["ephys"]["impedance_file_path"] == "/data/IM-1478/impedance.csv"
+
+
+def test_migrate_legacy_ephys_metadata_leaves_current_metadata_alone(dummy_logger):
+    """Migration runs on every conversion, so it must be a no-op on the current shape."""
+    metadata = {"ephys": {
+        "openephys_folder_paths": [
+            {"path": "/data/2026-09-04_14-20-43", "session": "behavior"},
+            {"path": "/data/2026-09-04_16-39-38", "session": "optotagging"},
+        ],
+        "probes": [
+            {"stream": "ProbeA", "probe_type": "NPX", "electrodes_location": "NAc",
+             "targeted_x": -1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+            {"stream": "ProbeB", "probe_type": "NPX", "electrodes_location": "NAc",
+             "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+        ],
+    }}
+    unchanged = copy.deepcopy(metadata)
+
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+    assert metadata == unchanged
+
+
+def test_migrate_legacy_ephys_metadata_is_idempotent(dummy_logger):
+    """It is called from several entry points, so running it twice must change nothing."""
+    metadata = {"ephys": {
+        "openephys_folder_path": "/data/2022-07-19_13-12-30",
+        "probe": ["256-ch Silicon Probe, 3mm length, 66um pitch"],
+        "electrodes_location": "Hippocampus CA1",
+        "targeted_x": -2.2, "targeted_y": 4.5, "targeted_z": -2.0,
+    }}
+
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+    migrated_once = copy.deepcopy(metadata)
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+    assert metadata == migrated_once
+
+
+def test_migrate_legacy_ephys_metadata_accepts_a_bare_probe_string(dummy_logger):
+    """'probe' was documented as a list, but a bare string is the obvious thing to write."""
+    metadata = {"ephys": {"probe": "252-ch Silicon Probe, 4mm length, 80um pitch"}}
+
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+    assert metadata["ephys"]["probes"] == [
+        {"probe_type": "252-ch Silicon Probe, 4mm length, 80um pitch"}
+    ]
+
+
+def test_migrate_legacy_ephys_metadata_keeps_a_missing_location_missing(dummy_logger):
+    """
+    A location field that was never filled in must stay absent, so it is reported as a missing
+    field rather than converted as a probe implanted at None.
+    """
+    metadata = {"ephys": {
+        "probe": ["256-ch Silicon Probe, 3mm length, 66um pitch"],
+        "electrodes_location": "Hippocampus CA1",
+    }}
+
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+    assert metadata["ephys"]["probes"] == [{
+        "probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+        "electrodes_location": "Hippocampus CA1",
+    }]
+    with pytest.raises(ValueError, match="is missing"):
+        get_probe_configs(metadata, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+
+
+def test_migrate_legacy_ephys_metadata_rejects_both_folder_forms(dummy_logger):
+    """The old and new folder fields can name different recordings, so one must go."""
+    metadata = {"ephys": {
+        "openephys_folder_path": "/data/2022-07-19_13-12-30",
+        "openephys_folder_paths": [{"path": "/data/2026-09-04_14-20-43", "session": "behavior"}],
+    }}
+
+    with pytest.raises(ValueError, match="remove the old one"):
+        migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+
+def test_migrate_legacy_ephys_metadata_rejects_both_probe_forms(dummy_logger):
+    """The old flat location and a 'probes' list can disagree, so one must go."""
+    metadata = {"ephys": {
+        "electrodes_location": "Hippocampus CA1", "targeted_x": -2.2,
+        "probes": [{"stream": "ProbeA", "probe_type": "NPX", "electrodes_location": "NAc",
+                    "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3}],
+    }}
+
+    with pytest.raises(ValueError, match="can give different implant locations"):
+        migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+
+def test_migrate_legacy_ephys_metadata_rejects_a_shared_analyzer_across_probes(dummy_logger):
+    """
+    With more than one probe there is no way to tell which one an ephys-level analyzer was sorted
+    from, and guessing would align its spike times to the wrong probe.
+    """
+    metadata = {"ephys": {
+        "sorting_analyzer_path": "/data/analyzer.zarr",
+        "probes": [
+            {"stream": "ProbeA", "probe_type": "NPX", "electrodes_location": "NAc",
+             "targeted_x": -1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+            {"stream": "ProbeB", "probe_type": "NPX", "electrodes_location": "NAc",
+             "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+        ],
+    }}
+
+    with pytest.raises(ValueError, match="which probe it was sorted from"):
+        migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+
+def test_migrate_legacy_ephys_metadata_rejects_several_legacy_probes(dummy_logger):
+    """
+    'probe' was a list you un-commented one line of. More than one line un-commented was never
+    converted, so it must not be silently taken as the first probe.
+    """
+    metadata = {"ephys": {"probe": ["256-ch Silicon Probe, 3mm length, 66um pitch",
+                                    "252-ch Silicon Probe, 4mm length, 80um pitch"]}}
+
+    with pytest.raises(ValueError, match="names 2 probes"):
+        migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+
+def test_get_session_folders_defaults_the_first_label(dummy_logger):
+    """
+    The first recording's epoch is tagged "00_r1", not with its label, so the label is only a name
+    for the logs and can be left out.
+    """
+    metadata = {"ephys": {"openephys_folder_paths": [{"path": "/data/2026-09-04_14-20-43"}]}}
+
+    session_folders = get_session_folders(metadata, dummy_logger)
+
+    assert session_folders == [{"path": "/data/2026-09-04_14-20-43", "session": "behavior"}]
+
+
+def test_get_session_folders_requires_a_label_after_the_first(dummy_logger):
+    """A later recording's label IS its epoch tag, so there is nothing to fall back to."""
+    metadata = {"ephys": {"openephys_folder_paths": [
+        {"path": "/data/2026-09-04_14-20-43"},
+        {"path": "/data/2026-09-04_16-39-38"},
+    ]}}
+
+    with pytest.raises(ValueError, match="Recording 2 of 2 has no 'session' label"):
+        get_session_folders(metadata, dummy_logger)
+
+
+def test_get_session_folders_requires_a_path(dummy_logger):
+    """Without a path there is nothing to convert."""
+    metadata = {"ephys": {"openephys_folder_paths": [{"session": "behavior"}]}}
+
+    with pytest.raises(ValueError, match="has no 'path'"):
+        get_session_folders(metadata, dummy_logger)
+
+
+def test_get_session_folders_converts_an_outdated_single_folder(dummy_logger):
+    """
+    The old single-folder field still converts, as one recording with the default label, once the
+    metadata has been through migrate_legacy_ephys_metadata (which create_nwbs and add_raw_ephys
+    do before get_session_folders is reached).
+    """
+    metadata = {"ephys": {"openephys_folder_path": "/data/IM-1478/2022-07-19_13-12-30"}}
+    migrate_legacy_ephys_metadata(metadata, dummy_logger)
+
+    session_folders = get_session_folders(metadata, dummy_logger)
+
+    assert session_folders == [
+        {"path": "/data/IM-1478/2022-07-19_13-12-30", "session": "behavior"}
+    ]
