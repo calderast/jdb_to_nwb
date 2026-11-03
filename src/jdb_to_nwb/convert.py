@@ -12,7 +12,7 @@ from . import __version__
 from .utils import to_datetime, setup_logger, log_and_print, add_associated_file
 from .convert_video import add_video
 from .convert_position import add_position
-from .convert_raw_ephys import add_raw_ephys
+from .convert_raw_ephys import add_raw_ephys, migrate_legacy_ephys_metadata
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
@@ -119,6 +119,10 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
 
     # Set default lab, institution, and experiment_description if unspecified
     set_default_metadata(metadata, logger)
+
+    # Rewrite ephys metadata written before multiple probes and multiple recordings were supported
+    # into the current shape, so every converter below reads one shape
+    migrate_legacy_ephys_metadata(metadata=metadata, logger=logger)
 
     # Parse subject metadata
     subject = Subject(**metadata["subject"])

@@ -31,7 +31,9 @@
 #      acquisition object - which is why every probe and every recording share one
 #      ElectricalSeries rather than getting one each.
 #  12. Spyglass turns each nwb epoch's FIRST tag into an interval list of that name, so the
-#      'session' labels become the names a spike sort is restricted to.
+#      'session' labels (prefixed "ephys_") become the names a spike sort is restricted to.
+#      These are RECORDING spans, separate from the "00_r1" run epoch add_behavior writes for
+#      the task itself.
 #  13. Spyglass casts Shank and ShanksElectrode names to int, so those stay numeric. Electrode
 #      GROUP names are varchar, so they can carry the probe prefix.
 #  14. Spyglass keys Probe on probe_type, so two physical probes of the same model resolve to one
@@ -88,6 +90,20 @@ NPX_PORT_VISITS_THRESHOLD_VOLTS = 4.0
 # probe's SpikeInterface geometry apart by this much (um) to keep the locations distinct. This never
 # reaches the nwb: the rel_x/rel_y we write come from our own electrode coordinates table.
 PROBE_LOCATION_OFFSET_UM = 10_000
+
+# Each Open Ephys recording gets an nwb epoch tagged with this plus its 'session' label, e.g.
+# "ephys_behavior" and "ephys_optotagging". The prefix keeps these distinct from the task epoch
+# that add_behavior writes ("00_r1", the run epoch, which spans the task rather than the
+# recording). Spyglass names each interval list after its epoch's first tag, so these are the
+# names a spike sort is later restricted to.
+EPHYS_EPOCH_TAG_PREFIX = "ephys_"
+
+# The first recording's 'session' label may be left out, so a single-recording file needs nothing
+# but its path. It is then named this, and its epoch tagged "ephys_behavior".
+# It still names the recording in the logs, and when the traces come from the preprocessed files it
+# has to match that session's id in session_boundaries.json - so set it when the preprocessing
+# called the behavior session something other than this.
+DEFAULT_SESSION_LABEL = "behavior"
 
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
@@ -510,15 +526,162 @@ def probe_label_for_stream(requested_stream: str, resolved_stream: str) -> str:
     return str(resolved_stream).split("#")[-1]
 
 
+def _reject_conflicting_forms(logger, old_form: str, new_form: str, why: str) -> None:
+    """
+    Raise because the metadata gives both the old and the new form of one field.
+
+    Used by migrate_legacy_ephys_metadata for each of the three fields that moved. There is no way
+    to tell which form was meant, and quietly preferring one could convert the wrong recording or
+    put a probe in the wrong hemisphere.
+    """
+    message = (f"Found both {old_form} (the old form) and {new_form} in the ephys metadata. "
+               f"{why}, so remove the old one.")
+    logger.error(message)
+    raise ValueError(message)
+
+
+def migrate_legacy_ephys_metadata(metadata: dict, logger) -> None:
+    """
+    Rewrite pre-multi-probe ephys metadata into the current shape, in place.
+
+    Three fields moved when support for multiple probes and multiple recordings was added:
+
+        'openephys_folder_path'        -> 'openephys_folder_paths', a list of recordings to
+                                          concatenate, each with a 'path' and a 'session' label
+        'probe' + 'electrodes_location'
+            + 'targeted_x/y/z'         -> 'probes', a list with one entry per probe, each carrying
+                                          its own 'probe_type' and its own implant location
+        'sorting_analyzer_path'        -> that probe's own entry in 'probes'
+
+    Metadata files written before the move still convert: the old fields are read and rewritten
+    into the new shape here, with a warning naming what to change. The result is identical to
+    writing the new shape by hand: an old file has no 'session' label, so its one recording is
+    named DEFAULT_SESSION_LABEL and its nwb epoch tagged "ephys_behavior".
+
+    Giving both the old and the new form of the same field raises. The two can disagree (different
+    folders, a different implant location), and there is no way to tell which was meant.
+
+    Called once on the whole metadata dict in create_nwbs, before any converter runs, and again
+    in add_raw_ephys because that is also called directly. Idempotent: metadata already in the
+    current shape is left untouched.
+
+    Parameters:
+        metadata (dict):
+            Full metadata dictionary (from user-specified yaml). Modified in place.
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    ephys_metadata = metadata.get("ephys")
+    if not ephys_metadata:
+        return
+
+    # The one recording an old file names becomes a one-entry list of recordings
+    if "openephys_folder_path" in ephys_metadata:
+        if ephys_metadata.get("openephys_folder_paths"):
+            _reject_conflicting_forms(
+                logger, "'openephys_folder_path' (one folder)",
+                "'openephys_folder_paths' (the current list of recordings)",
+                "They can name different recordings",
+            )
+        folder_path = ephys_metadata.pop("openephys_folder_path")
+        ephys_metadata["openephys_folder_paths"] = [
+            {"path": folder_path, "session": DEFAULT_SESSION_LABEL}
+        ]
+        log_and_print(
+            logger,
+            "'openephys_folder_path' is the old single-recording form. Converting it as one "
+            f"recording named '{DEFAULT_SESSION_LABEL}', whose nwb epoch is tagged "
+            f"'{EPHYS_EPOCH_TAG_PREFIX}{DEFAULT_SESSION_LABEL}'. To concatenate more than one "
+            "recording, use 'openephys_folder_paths' - a list of entries, each with a 'path', and "
+            "a 'session' label on every recording after the first.",
+            level="warning",
+        )
+
+    # The one implant an old file describes becomes a one-entry list of probes.
+    # 'probe' was a list you un-commented one line of, so it holds at most one probe name.
+    legacy_probe_fields = [
+        field for field in ("probe", "electrodes_location", "targeted_x", "targeted_y", "targeted_z")
+        if field in ephys_metadata
+    ]
+    if legacy_probe_fields:
+        if ephys_metadata.get("probes"):
+            _reject_conflicting_forms(
+                logger, f"{legacy_probe_fields} directly under 'ephys'", "a 'probes' list",
+                "They can give different implant locations",
+            )
+        legacy_probe = ephys_metadata.pop("probe", None)
+        # 'probe' was documented as a list, but accept a bare string too
+        probe_names = legacy_probe if isinstance(legacy_probe, list) else [legacy_probe]
+        probe_names = [name for name in probe_names if name]
+        if len(probe_names) > 1:
+            logger.error(f"'probe' names {len(probe_names)} probes: {probe_names}")
+            raise ValueError(f"'probe' names {len(probe_names)} probes ({probe_names}), but the old "
+                             "single-probe form only ever converted one. Use the 'probes' list, where "
+                             "each probe carries its own type, stream and implant location.")
+
+        # Only carry over the fields that are actually there, so a missing one is reported by
+        # get_probe_configs as a missing field rather than as a probe located at None
+        probe_entry = {}
+        if probe_names:
+            probe_entry["probe_type"] = probe_names[0]
+        for field in ("electrodes_location", "targeted_x", "targeted_y", "targeted_z"):
+            if field in ephys_metadata:
+                probe_entry[field] = ephys_metadata.pop(field)
+        ephys_metadata["probes"] = [probe_entry]
+        log_and_print(
+            logger,
+            f"{legacy_probe_fields} directly under 'ephys' is the old single-probe form. Converting "
+            "them as one probe. Each probe now carries its own type and implant location in the "
+            "'probes' list, because Spyglass reads the target hemisphere from the sign of "
+            "targeted_x - bilateral probes sharing one location would land in the same hemisphere.",
+            level="warning",
+        )
+
+    # The one sorting an old file names belongs to the one probe it was sorted from
+    if "sorting_analyzer_path" in ephys_metadata:
+        probe_entries = ephys_metadata.get("probes")
+        if not probe_entries:
+            # No probes at all: the real complaint is the missing probe, which get_probe_configs
+            # reports field by field. Keep the analyzer by hanging it on an empty probe entry.
+            probe_entries = [{}]
+            ephys_metadata["probes"] = probe_entries
+        if len(probe_entries) > 1:
+            logger.error(f"'sorting_analyzer_path' is directly under 'ephys' with "
+                         f"{len(probe_entries)} probes listed.")
+            raise ValueError(f"'sorting_analyzer_path' is directly under 'ephys', but "
+                             f"{len(probe_entries)} probes are listed, so there is no way to tell "
+                             "which probe it was sorted from. Each probe is sorted on its own "
+                             "channels, so move it into that probe's entry in the 'probes' list.")
+        if probe_entries[0].get("sorting_analyzer_path"):
+            _reject_conflicting_forms(
+                logger, "'sorting_analyzer_path' directly under 'ephys'",
+                "one on the probe's own entry", "They can name different sortings",
+            )
+        probe_entries[0]["sorting_analyzer_path"] = ephys_metadata.pop("sorting_analyzer_path")
+        log_and_print(
+            logger,
+            "'sorting_analyzer_path' directly under 'ephys' is the old single-probe form. Moving it "
+            "onto the probe. Each probe is sorted on its own channels, so the analyzer now lives in "
+            "that probe's entry in the 'probes' list.",
+            level="warning",
+        )
+
+
 def get_session_folders(metadata: dict, logger) -> list:
     """
     Resolve the raw Open Ephys folder(s) to convert, in the order they should be concatenated.
 
     One recording is the common case. Two or more (e.g. a behavior session followed by an
     optotagging session) are concatenated into one ElectricalSeries, which is what lets them be
-    spike sorted together. Each folder is labelled, and the labels become the nwb epoch tags -
-    Spyglass turns each epoch tag into an interval list of that name, so these are the names you
-    later restrict a sort to.
+    spike sorted together.
+
+    Each recording's 'session' label becomes its nwb epoch tag, prefixed: "ephys_behavior",
+    "ephys_optotagging" (see EPHYS_EPOCH_TAG_PREFIX). Spyglass makes one interval list per epoch,
+    named after its first tag, so those are the names you later restrict a sort to.
+
+    Only the recordings AFTER the first need a label. The first defaults to DEFAULT_SESSION_LABEL,
+    so a single-recording session needs nothing but its path. On the preprocessed path every
+    label, the first included, has to match that session's id in session_boundaries.json.
 
     Parameters:
         metadata (dict):
@@ -531,26 +694,35 @@ def get_session_folders(metadata: dict, logger) -> list:
     """
     ephys_metadata = metadata["ephys"]
 
-    if "openephys_folder_path" in ephys_metadata:
-        logger.error("Found 'openephys_folder_path' in the ephys metadata.")
-        raise ValueError("Found 'openephys_folder_path' in the ephys metadata. This became "
-                         "'openephys_folder_paths', a list of recordings to concatenate, each with "
-                         "a 'path' and a 'session' label.")
-
     session_folders = ephys_metadata.get("openephys_folder_paths")
     if not session_folders:
         logger.error("No 'openephys_folder_paths' in the ephys metadata.")
         raise ValueError("No 'openephys_folder_paths' in the ephys metadata. List each Open Ephys "
-                         "recording to convert, with its 'path' and 'session' label.")
+                         "recording to convert, each with a 'path'.")
 
     resolved_folders = []
-    for session_folder in session_folders:
-        missing = [field for field in ("path", "session") if not session_folder.get(field)]
-        if missing:
-            logger.error(f"Open Ephys recording entry is missing {missing}: {session_folder}")
-            raise ValueError(f"Open Ephys recording entry is missing {missing}. Every recording "
-                             "needs a 'path' and a 'session' label.")
-        resolved_folders.append({"path": session_folder["path"], "session": session_folder["session"]})
+    for recording_index, session_folder in enumerate(session_folders):
+        if not session_folder.get("path"):
+            logger.error(f"Open Ephys recording entry has no 'path': {session_folder}")
+            raise ValueError(f"Open Ephys recording entry has no 'path': {session_folder}. Every "
+                             "recording needs the path to its Open Ephys output folder.")
+
+        # The label becomes this recording's epoch tag, so there is nothing to fall back to for a
+        # later recording. Only the first gets a default, so that the common single-recording case
+        # needs nothing but a path.
+        session_label = session_folder.get("session")
+        if not session_label and recording_index > 0:
+            logger.error(f"Recording {recording_index + 1} has no 'session' label: {session_folder}")
+            raise ValueError(f"Recording {recording_index + 1} of {len(session_folders)} has no "
+                             "'session' label. Every recording after the first needs one, because "
+                             "it becomes that recording's nwb epoch tag (e.g. 'optotagging' -> "
+                             "'ephys_optotagging') - the name you later restrict a spike sort to.")
+        if not session_label:
+            session_label = DEFAULT_SESSION_LABEL
+            logger.info(f"The first recording has no 'session' label, so it is named "
+                        f"'{session_label}' and its nwb epoch tagged "
+                        f"'{EPHYS_EPOCH_TAG_PREFIX}{session_label}'.")
+        resolved_folders.append({"path": session_folder["path"], "session": session_label})
 
     session_labels = [folder["session"] for folder in resolved_folders]
     if len(set(session_labels)) != len(session_labels):
@@ -590,19 +762,6 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
         "electrodes_location", "targeted_x", "targeted_y", "targeted_z"
     """
     ephys_metadata = metadata["ephys"]
-
-    # The location used to live directly under "ephys". Fail loudly on an un-migrated file rather
-    # than converting it with no location at all.
-    outdated_fields = [
-        field for field in ("electrodes_location", "targeted_x", "targeted_y", "targeted_z", "probe")
-        if field in ephys_metadata
-    ]
-    if outdated_fields:
-        logger.error(f"Found {outdated_fields} directly under 'ephys'. These moved into the "
-                     "'probes' list, where each probe carries its own location.")
-        raise ValueError(f"Found {outdated_fields} directly under 'ephys' in the metadata. These "
-                         "moved into the 'probes' list - give each probe its own entry with "
-                         "electrodes_location and targeted_x/y/z.")
 
     probe_entries = ephys_metadata.get("probes")
     if not probe_entries:
@@ -2172,6 +2331,11 @@ def add_raw_ephys(
         log_and_print(logger, "No ephys metadata found for this session. Skipping ephys conversion.", level="info")
         return {}
 
+    # create_nwbs already normalized the metadata, but add_raw_ephys is also called directly
+    # (tests, notebooks), and this has to happen before the required-key check below or an old
+    # file would be skipped rather than converted.
+    migrate_legacy_ephys_metadata(metadata=metadata, logger=logger)
+
     # If we do have "ephys" in metadata, check for the required keys.
     # (impedance_file_path is required for Berke Lab probes but not Neuropixels, so it is checked
     # in the Berke branch below rather than here.)
@@ -2629,10 +2793,15 @@ def add_raw_ephys(
     # interval list of that name, so these tags are what a spike sort is later restricted to -
     # one session, or both. The epoch times come from the timestamps, so they already account for
     # the bonsai trim and the gaps between recordings.
+    # One epoch per recording, tagged "ephys_" + its session label, so a behavior + optotagging
+    # file reads "ephys_behavior" then "ephys_optotagging". These are RECORDING spans, which is
+    # what a spike sort is restricted to; they are deliberately separate from the "00_r1" run
+    # epoch that add_behavior writes, which spans the task rather than the recording.
     for epoch in session_epochs:
+        epoch_tag = f"{EPHYS_EPOCH_TAG_PREFIX}{epoch['session']}"
         nwbfile.add_epoch(start_time=epoch["start_time"], stop_time=epoch["stop_time"],
-                          tags=[epoch["session"]])
-        logger.info(f"Added epoch '{epoch['session']}': {epoch['start_time']:.3f}s to "
+                          tags=[epoch_tag])
+        logger.info(f"Added epoch '{epoch_tag}': {epoch['start_time']:.3f}s to "
                     f"{epoch['stop_time']:.3f}s")
 
     # Laser pulses, placed on the same clock as the ElectricalSeries. The conversion from a

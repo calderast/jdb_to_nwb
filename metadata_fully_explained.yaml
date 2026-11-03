@@ -41,21 +41,42 @@ subject:
 # If your experiment included electrophysiology, include field 'ephys' and the following subfields:
 ephys:
   # Fields used for ALL probes (Berke Lab custom probes AND Neuropixels):
+  # NOTE ON OLDER METADATA FILES: three ephys fields moved when support for multiple probes and
+  # multiple recordings was added - 'openephys_folder_path' became 'openephys_folder_paths',
+  # 'probe' plus the flat electrodes_location/targeted_x/y/z became the 'probes' list, and
+  # 'sorting_analyzer_path' moved into the probe's own entry. Files written the old way still
+  # convert: the old fields are read and rewritten into the new shape, with a warning saying what
+  # to change, and the resulting nwb is the same (including the "00_r1" epoch). Writing both the
+  # old and the new form of the same field is an error, because the two can disagree.
+  #
   # THE OPEN EPHYS RECORDING(S) TO CONVERT, in the order they should be concatenated.
-  # One recording is the common case. Two or more (e.g. a behavior session followed by an
-  # optotagging session) are concatenated into a SINGLE ElectricalSeries, which is what lets them
-  # be spike sorted together. The 'session' label names the nwb epoch for that recording, and
-  # Spyglass turns each epoch tag into an interval list of the same name - so these are the names
-  # you later restrict a spike sort to.
+  # One recording is the common case, and needs nothing but its path. Two or more (e.g. a behavior
+  # session followed by an optotagging session) are concatenated into a SINGLE ElectricalSeries,
+  # which is what lets them be spike sorted together.
   openephys_folder_paths:
     - path: "path/to/folder/like/2022-07-25_15-30-00"
-      session: "behavior"
-  # Two recordings concatenated into one file look like this instead:
+  #
+  # ABOUT NWB EPOCHS AND THE 'session' LABEL.
+  # Each recording gets one nwb epoch, tagged "ephys_" + its 'session' label - so a behavior +
+  # optotagging file has epochs "ephys_behavior" and "ephys_optotagging". Spyglass makes one
+  # interval list per epoch named after its tag, so those are the names you later restrict a
+  # spike sort to. These are RECORDING spans.
+  # They are SEPARATE from the "00_r1" epoch (epoch 0, run session 1), which the behavior
+  # conversion writes for the run itself - that one spans the task, from the first block to the
+  # last, not the whole Open Ephys recording. A session with behavior and ephys has both.
+  # The first recording's 'session' label is optional and defaults to "behavior", so a
+  # single-recording file needs nothing but its path. Every later recording must name its own,
+  # because that is its epoch tag.
+  # NOTE: when processed_ephys_path is set, every label (the first included) must match that
+  # session's session_id in session_boundaries.json, since that is how each recording is matched
+  # to its segment of the preprocessed file.
+  #
+  # Two recordings concatenated into one file look like this:
   # openephys_folder_paths:
   #   - path: "D:/D1-1-6_IM-1979/ephys/2026-09-04_14-20-43"
-  #     session: "behavior"
+  #     session: "behavior"      # optional, unless processed_ephys_path is set
   #   - path: "D:/D1-1-6_IM-1979/ephys/2026-09-04_16-39-38"
-  #     session: "optotagging"
+  #     session: "optotagging"   # required: the epoch becomes "ephys_optotagging"
 
   # OPTIONAL: preprocessed traces to write INSTEAD of the raw ones.
   # Point this at the preprocessed session directory (the one holding the probeA/probeB folders,

@@ -23,12 +23,9 @@ def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
     if "ephys" not in metadata:
         return
 
+    # The ephys metadata is in its current shape by now: create_nwbs normalizes an older file
+    # (where 'sorting_analyzer_path' sat directly under 'ephys') before any converter runs.
     ephys = metadata["ephys"]
-
-    if "sorting_analyzer_path" in ephys:
-        logger.error("Found 'sorting_analyzer_path' directly under 'ephys'.")
-        raise ValueError("Found 'sorting_analyzer_path' directly under 'ephys'. Each probe is sorted "
-                         "separately, so this moved into the probe's own entry in the 'probes' list.")
 
     # Each probe is sorted on its own channels, so each has its own analyzer
     probe_entries = ephys.get("probes") or []
