@@ -120,9 +120,15 @@ def load_electrode_info(metadata):
             Series RC equivalent R (Ohms), Series RC equivalent C (Farads), bad_channel.
     """
     # Lazy import to avoid circular dependency (convert_raw_ephys imports from this module)
-    from ..convert_raw_ephys import BERKE_LAB_PROBES, MIN_IMPEDANCE_OHMS, MAX_IMPEDANCE_OHMS
+    from ..convert_raw_ephys import (BERKE_LAB_PROBES, MIN_IMPEDANCE_OHMS, MAX_IMPEDANCE_OHMS,
+                                     migrate_legacy_ephys_metadata)
+    from ..utils import setup_stdout_logger
 
-    probe_name = metadata["ephys"]["probe"][0]
+    # The probe type and its implant location moved into the 'probes' list when multiple probes
+    # were supported. These helpers are called from notebooks with a freshly loaded metadata file,
+    # so migrate it here rather than requiring the caller to have done it.
+    migrate_legacy_ephys_metadata(metadata, setup_stdout_logger("load_electrode_info"))
+    probe_name = metadata["ephys"]["probes"][0]["probe_type"]
     if probe_name not in BERKE_LAB_PROBES:
         raise ValueError(f"Unknown probe '{probe_name}'. Valid probes: {list(BERKE_LAB_PROBES)}")
 
@@ -187,7 +193,9 @@ def plot_raw_ephys_traces_from_metadata(metadata, start_time=100.0, duration=1.5
     electrode_info = load_electrode_info(metadata)
 
     # Locate the continuous.dat file
-    openephys_folder_path = metadata["ephys"]["openephys_folder_path"]
+    # load_electrode_info above has already migrated the metadata into its current shape, where
+    # the recordings are a list. These helpers plot the first (behavior) recording.
+    openephys_folder_path = metadata["ephys"]["openephys_folder_paths"][0]["path"]
     open_ephys_paths = find_open_ephys_paths(openephys_folder_path)
     recording_files = open_ephys_paths["recording_files"]
     if len(recording_files) != 1:
