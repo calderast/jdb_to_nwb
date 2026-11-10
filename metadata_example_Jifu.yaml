@@ -17,6 +17,8 @@ experimenter:
 experiment_description: Hex maze task with bilateral Neuropixels and optotagging
 animal_name: IM-1979
 date: 09/04/2026
+# Which maze: "old_maze" or "new_maze". Used to measure pixels_per_cm from the hex centroids based on known maze size
+maze: new_maze
 subject:
   subject_id: IM-1979
   species: Rattus norvegicus
