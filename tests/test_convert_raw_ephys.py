@@ -248,7 +248,14 @@ def test_add_electrode_data_neuropixels(dummy_logger):
 
     add_electrode_data_neuropixels(nwbfile=nwbfile, channel_info=channel_info, filtering_info="hw filtering",
                                    probe_location=probe_location, probe_obj=probe_obj,
-                                   probe_label="ProbeA", logger=dummy_logger)
+                                   probe_label="ProbeA", logger=dummy_logger,
+                                   bad_channels={117, 188})
+
+    # Neuropixels has no impedance file, so bad channels come from the preprocessing pipeline's
+    # Kilosort parameters. These are the real IM-1994 ProbeA ones.
+    electrodes = nwbfile.electrodes.to_dataframe()
+    assert set(electrodes[electrodes["bad_channel"]]["intan_channel_number"]) == {117, 188}
+    assert not electrodes[~electrodes["bad_channel"]]["intan_channel_number"].isin([117, 188]).any()
 
     # The Probe device exists under 'devices' with the expected Neuropixels metadata (from ephys_devices.yaml)
     assert "Neuropixels 2.0 (4-shank)" in nwbfile.devices

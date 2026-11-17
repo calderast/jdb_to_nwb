@@ -15,6 +15,7 @@ from pynwb import NWBFile
 from jdb_to_nwb.convert_raw_ephys import add_raw_ephys
 from jdb_to_nwb.convert_processed_ephys import (
     open_processed_probe_sessions,
+    read_kilosort_bad_channels,
     read_session_boundaries,
     verify_processed_matches_raw,
 )
@@ -249,3 +250,25 @@ def test_verify_processed_matches_raw_rejects_a_different_number_of_samples(dumm
     with pytest.raises(ValueError, match="samples but the raw recording it came from has"):
         verify_processed_matches_raw(processed_recording=shorter, raw_recording=raw,
                                      logger=dummy_logger, label="'probeA' recording 'behavior'")
+
+
+def test_read_kilosort_bad_channels_reads_each_probes_own_channels(dummy_logger, tmp_path):
+    """
+    Channel numbers restart at 0 on every probe, so a bad channel belongs to one probe only.
+    These are the real IM-1994 bad channels.
+    """
+    import json
+
+    (tmp_path / "preprocessing.json").write_text(json.dumps({"probes": {
+        "probeA": {"kilosort_params": {"bad_channels": [117, 188]}},
+        "probeB": {"kilosort_params": {"bad_channels": [2, 10, 54, 131]}},
+    }}))
+
+    bad_channels = read_kilosort_bad_channels(tmp_path, ["ProbeA", "ProbeB"], dummy_logger)
+
+    assert bad_channels == {"ProbeA": {117, 188}, "ProbeB": {2, 10, 54, 131}}
+
+
+def test_read_kilosort_bad_channels_marks_nothing_bad_without_preprocessing(dummy_logger, tmp_path):
+    """A raw conversion has no preprocessing.json, and Neuropixels has no impedance file."""
+    assert read_kilosort_bad_channels(tmp_path, ["ProbeA"], dummy_logger) == {"ProbeA": set()}

@@ -2110,14 +2110,16 @@ def add_electrode_data_neuropixels(
     probe_location: dict,
     probe_label: str,
     logger,
+    bad_channels: set = None,
     prefix_names: bool = False,
 ) -> None:
     """
     Add electrode groups and the electrode table for a Neuropixels probe.
 
-    Analogous to add_electrode_data_berke_probe, but simpler: Neuropixels has no per-session impedance
-    file, so we don't mark bad channels here (all channels are treated as good). We create one
-    ElectrodeGroup per shank that has recording sites, and add one electrode per recording channel.
+    Analogous to add_electrode_data_berke_probe, but Neuropixels has no per-session impedance file:
+    bad channels come from the preprocessing pipeline's Kilosort parameters instead, and are all
+    good when there is no preprocessing. We create one ElectrodeGroup per shank that has recording
+    sites, and add one electrode per recording channel.
 
     We register the FULL probe geometry (all 5120 sites) on the Probe's Shank/ShanksElectrode objects,
     even though only 384 are recorded this session. Spyglass builds Probe.Electrode from these under a
@@ -2280,7 +2282,8 @@ def add_electrode_data_neuropixels(
             probe=probe_label,
             intan_channel_number=int(row["channel_num"]),
             electrode_index=electrode_index,
-            bad_channel=False,  # no impedance file for Neuropixels, so no channels are marked bad
+            # Channel numbers restart at 0 on every probe, and bad_channels is this probe's own
+            bad_channel=int(row["channel_num"]) in (bad_channels or set()),
             rel_x=float(row["x_um"]),
             rel_y=float(row["y_um"]),
             group=electrode_groups_by_shank[shank_index],
@@ -2545,6 +2548,15 @@ def add_raw_ephys(
             raise ValueError(f"No channel map for probe stream(s) {missing_channel_maps}. "
                              f"settings.xml gave channel maps for {list(channel_map)}.")
 
+        # Which channels Kilosort ignored, so Spyglass leaves them out of its sort groups.
+        # Imported here because convert_processed_ephys imports from this module.
+        from .convert_processed_ephys import read_kilosort_bad_channels
+        bad_channels_by_probe = (
+            read_kilosort_bad_channels(metadata["ephys"]["processed_ephys_path"], probe_labels, logger)
+            if metadata["ephys"].get("processed_ephys_path")
+            else {probe_label: set() for probe_label in probe_labels}
+        )
+
         # Add electrodes probe by probe, in the SAME order the probes are combined into the
         # ElectricalSeries below, so that electrode table row i is channel i of the series.
         for probe_label in probe_labels:
@@ -2556,6 +2568,7 @@ def add_raw_ephys(
                 probe_location=probe_locations_by_label[probe_label],
                 probe_label=probe_label,
                 logger=logger,
+                bad_channels=bad_channels_by_probe[probe_label],
                 # Keep single-probe files naming their groups "0".."3" as they always have
                 prefix_names=multiple_probes,
             )

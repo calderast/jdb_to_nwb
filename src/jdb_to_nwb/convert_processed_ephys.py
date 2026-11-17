@@ -71,6 +71,41 @@ def read_preprocessing_json(processed_ephys_path: Path, logger) -> dict | None:
     return json.loads(preprocessing_path.read_text())
 
 
+def read_kilosort_bad_channels(processed_ephys_path: Path, probe_labels: list, logger) -> dict:
+    """
+    The channels Kilosort was told to ignore, per probe.
+
+    Each probe numbers its own channels from 0, so these are channel numbers within a probe, not
+    rows of the electrodes table. Spyglass drops bad channels from its sort groups, so marking
+    them here is what carries the preprocessing pipeline's decision into a re-sort.
+
+    Returns probe label -> set of channel numbers, empty for a probe that lists none.
+
+    Parameters:
+        processed_ephys_path (Path):
+            The preprocessed session directory, holding preprocessing.json
+        probe_labels (list):
+            The probes being converted
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    preprocessing = read_preprocessing_json(processed_ephys_path, logger)
+    if preprocessing is None:
+        logger.info("No preprocessing.json, so no channels are marked bad.")
+        return {probe_label: set() for probe_label in probe_labels}
+
+    probes = preprocessing.get("probes") or {}
+    bad_channels_by_probe = {}
+    for probe_label in probe_labels:
+        probe_key = match_probe_key(probes, probe_label)
+        kilosort_params = probes[probe_key].get("kilosort_params") or {}
+        bad_channels = kilosort_params.get("bad_channels") or []
+        bad_channels_by_probe[probe_label] = {int(channel) for channel in bad_channels}
+    logger.info("Bad channels from preprocessing.json (Kilosort ignored these): "
+                + ", ".join(f"'{label}': {sorted(channels) if channels else 'none'}"
+                            for label, channels in bad_channels_by_probe.items()))
+    return bad_channels_by_probe
+
 
 def read_session_boundaries(processed_ephys_path: Path, logger) -> dict:
     """
