@@ -328,7 +328,8 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger, fig_d
 
         logger.info(f"Aligning video to ground truth ({ground_truth_time_source})")
         ground_truth_visit_times = metadata.get("ground_truth_visit_times")
-        true_video_timestamps = align_via_interpolation(unaligned_timestamps=video_timestamps_seconds,
+        true_video_timestamps = align_via_interpolation(label="video",
+                                                       unaligned_timestamps=video_timestamps_seconds,
                                                    unaligned_visit_times=arduino_visit_times,
                                                    ground_truth_visit_times=ground_truth_visit_times,
                                                    logger=logger)

@@ -146,7 +146,8 @@ def trim_sync_pulses(ground_truth_visits, unaligned_visits, logger, expected_bes
     return (trimmed_list, short_list) if len(visits_1) > len(visits_2) else (short_list, trimmed_list)
 
 
-def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_truth_visit_times, logger):
+def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_truth_visit_times, logger,
+                            label=None):
     """
     Align timestamps to ground truth timestamps via interpolation using port visit times as sync pulses.
     Timestamps that fall before the first port visit or after the last port visit will be aligned via extrapolation.
@@ -160,10 +161,13 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
     unaligned_visit_times (list or np.array): List of port visit times (in the same time base as unaligned timestamps) 
     ground_truth_visit_times (list or np.array): List of ground truth port visit times (to be aligned to)
     logger: Logger to record timestamp alignment
+    label (str): Optional. What is being aligned (e.g. "video"), so the log says which datastream
+                 each message is about. This runs once per datastream.
 
     Returns:
     aligned_timestamps (list or np.array): Timestamps aligned to the ground_truth_visit_times
     """
+    what = f"{label} " if label else ""
 
     # Check that we have the same number of ground truth visit times and unaligned visit times
     # If we don't, warn the user and fix it so we can proceed with alignment
@@ -175,9 +179,9 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
                                                                            unaligned_visit_times, logger)
     else:
         logger.debug(f"There are {len(unaligned_visit_times)} visit times from both datastreams "
-                     "to be used for alignment.")
+                     f"to be used for {what}alignment.")
 
-    logger.info("Aligning timestamps to ground truth port visit times via linear interpolation")
+    logger.info(f"Aligning {what}timestamps to ground truth port visit times via linear interpolation")
     logger.debug(f"Ground truth visit times: {ground_truth_visit_times}")
     logger.debug(f"Unaligned visit times: {unaligned_visit_times}")
     logger.debug("Difference between ground truth and unaligned visit times: "
@@ -188,9 +192,9 @@ def align_via_interpolation(unaligned_timestamps, unaligned_visit_times, ground_
     interp_func = interp1d(unaligned_visit_times, ground_truth_visit_times, kind='linear', fill_value='extrapolate')
     aligned_timestamps = interp_func(unaligned_timestamps)
 
-    logger.debug(f"Unaligned (original) timestamps: {unaligned_timestamps}")
-    logger.debug(f"Aligned (new) timestamps: {aligned_timestamps}")
-    logger.debug("Difference between aligned and unaligned timestamps (the amount the timestamps were shifted by): "
-                 f"{np.array(aligned_timestamps) - np.array(unaligned_timestamps)}")
+    logger.debug(f"Unaligned (original) {what}timestamps: {unaligned_timestamps}")
+    logger.debug(f"Aligned (new) {what}timestamps: {aligned_timestamps}")
+    logger.debug(f"Difference between aligned and unaligned {what}timestamps (the amount they were "
+                 f"shifted by): {np.array(aligned_timestamps) - np.array(unaligned_timestamps)}")
 
     return aligned_timestamps

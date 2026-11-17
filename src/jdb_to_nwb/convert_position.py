@@ -269,7 +269,8 @@ def add_position(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
 
             logger.info(f"Aligning position (video) timestamps to ground truth ({ground_truth_time_source})")
             ground_truth_visit_times = metadata.get("ground_truth_visit_times")
-            true_video_timestamps = align_via_interpolation(unaligned_timestamps=video_timestamps_seconds,
+            true_video_timestamps = align_via_interpolation(label="position video",
+                                                           unaligned_timestamps=video_timestamps_seconds,
                                                     unaligned_visit_times=arduino_visit_times,
                                                     ground_truth_visit_times=ground_truth_visit_times,
                                                     logger=logger)

@@ -67,6 +67,10 @@ EPHYS_EPOCH_TAG_PREFIX = "ephys_"
 # called the behavior session something other than this.
 DEFAULT_SESSION_LABEL = "behavior"
 
+# Open Ephys names a recording's folder after the wall clock, e.g. "2026-11-03_14-21-59". That
+# name is what places the recording in time and what tells two recordings apart in the logs.
+OPEN_EPHYS_FOLDER_DATETIME = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}"
+
 # Get the location of the resources directory when the package is installed from pypi
 __location_of_this_file = Path(files(__name__))
 RESOURCES_DIR = __location_of_this_file / "resources" / "electrophysiology"
@@ -180,7 +184,8 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=None, logger
             )
         experiment_number = experiment_numbers.pop()
         if logger is not None:
-            logger.info(f"Auto-detected Open Ephys experiment number {experiment_number}")
+            logger.info(f"Auto-detected Open Ephys experiment number {experiment_number} in "
+                        f"{Path(open_ephys_folder_path).name}")
 
     # Determine the suffix for settings.xml (empty for experiment1, "_2" for experiment2, etc.)
     suffix = "" if experiment_number == 1 else f"_{experiment_number}"
@@ -219,6 +224,18 @@ def find_open_ephys_paths(open_ephys_folder_path, experiment_number=None, logger
         continuous_dat_files[probe_name] = dat_files[0]
 
     return {"settings_file": settings_xml_file, "recording_files": continuous_dat_files}
+
+
+def open_ephys_recording_folder(path: Path) -> str:
+    """
+    Which recording a path inside Open Ephys's output belongs to, by its wall-clock folder name,
+    or "" if no folder on the way up is named that way.
+
+    The folders between that one and the data vary - "Record Node 101" is there on the OneBox but
+    not on every rig - so the folder is found by its name rather than by counting levels up.
+    """
+    return next((parent.name for parent in Path(path).parents
+                 if re.search(OPEN_EPHYS_FOLDER_DATETIME, parent.name)), "")
 
 
 def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
@@ -288,10 +305,13 @@ def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
         "channel_names": [ch["channel_name"] for ch in stream["channels"]],
         "oebin_path": oebin_path,  # so we can save structure.oebin as an AssociatedFile
     }
-    logger.info(f"Read oebin params for stream '{stream_folder_name}': "
+    recording_folder = open_ephys_recording_folder(oebin_path)
+    in_recording = f" in {recording_folder}" if recording_folder else ""
+    logger.info(f"Read oebin params for stream '{stream_folder_name}'{in_recording}: "
                 f"{params['channel_count']} channels at {params['sample_rate']} Hz, bit_volts={bit_volts}")
     # List every channel name found in this stream
-    logger.debug(f"structure.oebin channel names for '{stream_folder_name}': {params['channel_names']}")
+    logger.debug(f"structure.oebin channel names for '{stream_folder_name}'{in_recording}: "
+                 f"{params['channel_names']}")
     return params
 
 
@@ -842,7 +862,7 @@ def resolve_probe_stream(folder_path: Path, logger, stream_name: str = None) -> 
     return matches[0]
 
 
-def combine_probe_recordings(recordings_by_stream: dict, logger):
+def combine_probe_recordings(recordings_by_stream: dict, logger, session_label: str = None):
     """
     Combine one recording per probe into a single recording holding every probe's channels, so that
     multi-probe (e.g. bilateral Neuropixels) data can be written as a single ElectricalSeries.
@@ -865,6 +885,9 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
             and trimmed to the conversion start time
         logger (Logger):
             Logger to track conversion progress
+        session_label (str):
+            Optional. Which recording this is, so the log says which one each message is about
+            when there is more than one
 
     Returns:
         combined_recording:
@@ -880,6 +903,8 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
         logger.debug(f"Only one probe stream ('{stream_names[0]}'), no combining needed")
         single_recording = recordings_by_stream[stream_names[0]]
         return single_recording, single_recording.get_times()
+
+    session_note = f" for '{session_label}'" if session_label else ""
 
     # All probes must share a sampling rate for a combined ElectricalSeries to be meaningful
     sampling_rates = {name: rec.get_sampling_frequency() for name, rec in recordings_by_stream.items()}
@@ -898,8 +923,9 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
     if max(start_times.values()) != min(start_times.values()):
         log_and_print(
             logger,
-            f"Probe streams do not start at the same time: {start_times}. Trimming the front of the "
-            "earlier stream(s) so all probes begin at the same time in the combined ElectricalSeries.",
+            f"Probe streams{session_note} do not start at the same time: {start_times}. Trimming "
+            "the front of the earlier stream(s) so all probes begin at the same time in the "
+            "combined ElectricalSeries.",
             level="warning",
         )
     common_start_time = max(start_times.values())
@@ -907,7 +933,8 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
     for name, recording in recordings_by_stream.items():
         samples_to_align = int(round((common_start_time - start_times[name]) * sampling_rate))
         if samples_to_align > 0:
-            logger.info(f"Trimming {samples_to_align} sample(s) from the start of '{name}' to align probes")
+            logger.info(f"Trimming {samples_to_align} sample(s) from the start of "
+                        f"'{name}'{session_note} to align probes")
             recording = recording.frame_slice(start_frame=samples_to_align, end_frame=None)
         time_aligned_recordings[name] = recording
     recordings_by_stream = time_aligned_recordings
@@ -916,14 +943,15 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
     # few samples apart, so this drops a handful of samples off the end of the longer stream(s).
     sample_counts = {name: rec.get_num_samples() for name, rec in recordings_by_stream.items()}
     common_num_samples = min(sample_counts.values())
-    logger.info(f"Combining {len(stream_names)} probe streams: samples per stream {sample_counts}")
+    logger.info(f"Combining {len(stream_names)} probe streams{session_note}: samples per stream "
+                f"{sample_counts}")
     if len(set(sample_counts.values())) != 1:
         log_and_print(
             logger,
-            f"Probe streams have different numbers of samples {sample_counts}. Trimming all probes to the "
-            f"shortest ({common_num_samples} samples) so they can share one ElectricalSeries. "
-            f"At most {max(sample_counts.values()) - common_num_samples} samples are dropped from the end "
-            "of the longer stream(s).",
+            f"Probe streams{session_note} have different numbers of samples {sample_counts}. "
+            f"Trimming all probes to the shortest ({common_num_samples} samples) so they can share "
+            f"one ElectricalSeries. At most {max(sample_counts.values()) - common_num_samples} "
+            "samples are dropped from the end of the longer stream(s).",
             level="warning",
         )
 
@@ -947,8 +975,9 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
                 if moved_recording is not None:
                     recording = moved_recording
             except Exception as error:
-                logger.debug(f"Could not offset probe geometry for '{stream}' ({type(error).__name__}: "
-                             f"{error}). Continuing - this only matters if locations collide.")
+                logger.debug(f"Could not offset probe geometry for '{stream}'{session_note} "
+                             f"({type(error).__name__}: {error}). Continuing - this only matters "
+                             "if locations collide.")
 
         aligned_recordings.append(recording)
         combined_channel_ids.extend(f"{stream}_{channel_id}" for channel_id in recording.channel_ids)
@@ -967,8 +996,8 @@ def combine_probe_recordings(recordings_by_stream: dict, logger):
         recording.reset_times()
 
     combined_recording = aggregate_channels(aligned_recordings, renamed_channel_ids=combined_channel_ids)
-    logger.info(f"Combined recording is {combined_recording.get_num_samples()} samples x "
-                f"{combined_recording.get_num_channels()} channels across probes {stream_names}")
+    logger.info(f"Combined recording{session_note} is {combined_recording.get_num_samples()} "
+                f"samples x {combined_recording.get_num_channels()} channels across probes {stream_names}")
     return combined_recording, timestamps
 
 
@@ -1061,6 +1090,7 @@ def get_raw_session_recordings(
                                         logger=logger,
                                         exclude_channels=exclude_channel_names,
                                         samples_to_remove=session_samples_to_remove,
+                                        session_label=session_folder["session"],
                                         )
         # An ElectricalSeries has ONE conversion factor, so every recording must share it.
         # Overwriting it per recording would silently scale part of the data differently.
@@ -1111,7 +1141,7 @@ def get_session_start_deltas(session_folders: list, logger) -> list:
     session_start_times = []
     for session_folder in session_folders:
         folder_name = str(session_folder["path"]).replace("\\", "/").rstrip("/").split("/")[-1]
-        match = re.search(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}", folder_name)
+        match = re.search(OPEN_EPHYS_FOLDER_DATETIME, folder_name)
         if not match:
             logger.error(f"No date and time in the Open Ephys folder name '{folder_name}'")
             raise ValueError(f"No date and time in the Open Ephys folder name '{folder_name}'. "
@@ -1258,6 +1288,7 @@ def get_combined_raw_ephys_data(
     logger,
     exclude_channels: list = (),
     samples_to_remove: int = 0,
+    session_label: str = None,
 ) -> tuple[SpikeInterfaceRecordingDataChunkIterator, float, np.ndarray]:
     """
     Get the raw ephys data for one or more probes as a SINGLE recording, so that multi-probe
@@ -1279,6 +1310,9 @@ def get_combined_raw_ephys_data(
             Channel names to exclude, if any
         samples_to_remove (int):
             Number of samples to trim off the start of each probe (to drop data before bonsai start)
+        session_label (str):
+            Optional. Which recording this is, so the log says which one each message is about
+            when there is more than one
 
     Returns:
         combined_recording:
@@ -1316,7 +1350,8 @@ def get_combined_raw_ephys_data(
                          "They cannot share a single ElectricalSeries.")
     channel_conversion_factor_uv = next(iter(conversion_factors.values()))
 
-    combined_recording, original_timestamps = combine_probe_recordings(recordings_by_stream, logger)
+    combined_recording, original_timestamps = combine_probe_recordings(
+        recordings_by_stream, logger, session_label=session_label)
     return (
         combined_recording,
         channel_conversion_factor_uv,
@@ -1398,10 +1433,12 @@ def open_probe_stream_recording(
     fs = recording_sliced.get_sampling_frequency()
     logger.debug(f"Open Ephys sampling frequency: {fs}")
 
-    # Remove ephys samples before bonsai start time
+    # Remove ephys samples before bonsai start time. Only the first recording has any to remove,
+    # so stay quiet about the ones that do not.
     recording_sliced = recording_sliced.frame_slice(start_frame=samples_to_remove, end_frame=None)
-    logger.debug(f"Trimmed {samples_to_remove} samples ({float(samples_to_remove/fs)}s) from the start of "
-                 "ephys data to exclude data before bonsai start.")
+    if samples_to_remove:
+        logger.debug(f"Trimmed {samples_to_remove} samples ({float(samples_to_remove / fs)}s) from "
+                     "the start of ephys data to exclude data before bonsai start.")
 
     return recording_sliced, channel_conversion_factor_uv
 
@@ -1441,9 +1478,9 @@ def add_probe_info(nwbfile: NWBFile, probe_type: str, logger, probe_label: str =
         logger.error(f"Probe '{probe_name}' not found in resources/ephys_devices.yaml")
         raise ValueError(f"Probe '{probe_name}' not found in resources/ephys_devices.yaml")
 
-    logger.debug("Probe metadata:")
+    logger.debug(f"Probe metadata for '{probe_name}' from resources/ephys_devices.yaml:")
     for key in probe_metadata:
-        logger.debug(f"{key}: {probe_metadata[key]}")
+        logger.debug(f"  {key}: {probe_metadata[key]}")
 
     required_probe_keys = {
         "name",
@@ -2761,7 +2798,8 @@ def add_raw_ephys(
     if ground_truth_time_source is not None:
         logger.info(f"Aligning ephys visit times to ground truth ({ground_truth_time_source})")
         ground_truth_visit_times = metadata.get("ground_truth_visit_times")
-        ephys_timestamps = align_via_interpolation(unaligned_timestamps=original_timestamps,
+        ephys_timestamps = align_via_interpolation(label="ephys",
+                                                   unaligned_timestamps=original_timestamps,
                                                    unaligned_visit_times=ephys_visit_times,
                                                    ground_truth_visit_times=ground_truth_visit_times,
                                                    logger=logger)
@@ -2877,8 +2915,11 @@ def add_raw_ephys(
         provenance_files = ["preprocessing.json", "session_boundaries.json",
                             "laser_events.csv", "noise_events.csv"]
         # The laser protocol file is named after the rig, so find it rather than assuming the name
-        provenance_files += [path.name for path in
-                             sorted(Path(processed_ephys_path).glob("laser_control_protocol*.csv"))]
+        laser_protocol_files = sorted(Path(processed_ephys_path).glob("laser_control_protocol*.csv"))
+        if not laser_protocol_files:
+            logger.info(f"No laser_control_protocol*.csv in {processed_ephys_path}; not recording "
+                        "the laser protocol. (Expected if this session had no optotagging.)")
+        provenance_files += [path.name for path in laser_protocol_files]
         for provenance_file_name in provenance_files:
             provenance_name = Path(provenance_file_name).stem
             provenance_path = Path(processed_ephys_path) / provenance_file_name

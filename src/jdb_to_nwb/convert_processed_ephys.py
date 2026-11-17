@@ -332,7 +332,8 @@ def get_processed_session_recordings(
             logger.info(f"Trimmed {samples_to_remove} samples from the start of '{session_label}' "
                         "to drop data before bonsai start")
 
-        combined_recording, timestamps = combine_probe_recordings(recordings_this_session, logger)
+        combined_recording, timestamps = combine_probe_recordings(
+            recordings_this_session, logger, session_label=session_label)
         session_recordings.append(combined_recording)
         session_timestamps.append(timestamps)
 

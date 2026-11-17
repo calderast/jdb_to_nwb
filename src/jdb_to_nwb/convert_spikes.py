@@ -95,6 +95,7 @@ def align_spike_times(spike_times_s: np.ndarray, metadata: dict, logger) -> np.n
             unaligned_visit_times=ephys_visit_times,
             ground_truth_visit_times=ground_truth_visit_times,
             logger=logger,
+            label="spike",
         ))
 
     # Ground truth is ephys (no photometry): spikes are already on the ground truth clock
