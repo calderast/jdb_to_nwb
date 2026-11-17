@@ -16,9 +16,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
-from pynwb import NWBFile
-from pynwb.epoch import TimeIntervals
 
 from .utils import log_and_print
 from .convert_raw_ephys import combine_probe_recordings, probe_name_token
@@ -52,6 +49,28 @@ def match_probe_key(available_keys, probe_label: str) -> str:
         raise ValueError(f"Expected exactly one entry for probe '{probe_label}', found {matches} "
                          f"among {list(available_keys)}")
     return matches[0]
+
+
+def read_preprocessing_json(processed_ephys_path: Path, logger) -> dict | None:
+    """
+    The preprocessing pipeline's record of how it made the traces, or None if it is not there.
+
+    Holds the masking parameters, the optotagging conditions, the laser lags and the Kilosort
+    parameters, per probe.
+
+    Parameters:
+        processed_ephys_path (Path):
+            The preprocessed session directory
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    preprocessing_path = Path(processed_ephys_path) / "preprocessing.json"
+    if not preprocessing_path.exists():
+        logger.info(f"No preprocessing.json at {preprocessing_path}.")
+        return None
+    return json.loads(preprocessing_path.read_text())
+
+
 
 def read_session_boundaries(processed_ephys_path: Path, logger) -> dict:
     """
@@ -504,138 +523,3 @@ def concat_samples_to_nwb_times(
         session_labels[in_session] = session_label
 
     return nwb_times, session_labels
-
-
-def add_laser_events(
-    nwbfile: NWBFile,
-    processed_ephys_path: Path,
-    session_boundaries: dict,
-    probe_start_times: dict,
-    session_hardware_starts: dict,
-    session_nwb_starts: dict,
-    logger,
-) -> None:
-    """
-    Write the optotagging laser pulses to the nwb as a TimeIntervals table, on the nwb clock.
-
-    laser_events.csv records every pulse as sample indices on each probe's own concatenated axis,
-    already corrected for the ADC-to-probe lag. Converting those to nwb times is exact arithmetic:
-    the sample index gives the time on the recording's hardware clock, and each session's hardware
-    start and nwb start (both recorded by the conversion) place it on the nwb clock. Nothing is
-    estimated, so this is unaffected by the ~1s uncertainty in the gap BETWEEN recordings - the
-    pulses stay fixed to the samples they were detected on.
-
-    The same physical pulse appears once per probe, at different sample indices (that difference is
-    how the probes' start offset was originally measured). After mapping they must agree, so the
-    worst disagreement is logged as a check on the probe alignment, independent of the raw
-    timestamps the alignment itself came from. One row per physical pulse is written, using the
-    first probe's mapped times.
-
-    Parameters:
-        nwbfile (NWBFile):
-            The NWB file being assembled
-        processed_ephys_path (Path):
-            The preprocessed session directory, holding laser_events.csv
-        session_boundaries (dict):
-            The parsed session_boundaries.json (gives each probe's session ranges and sample rate)
-        probe_start_times (dict):
-            probe label -> {session label: start time on the hardware clock}
-        session_hardware_starts (dict):
-            session label -> the hardware-clock time of that session's first converted sample
-        session_nwb_starts (dict):
-            session label -> the nwb-clock time of that session's first converted sample
-        logger (Logger):
-            Logger to track conversion progress
-    """
-    laser_events_path = Path(processed_ephys_path) / "laser_events.csv"
-    if not laser_events_path.exists():
-        logger.info(f"No laser_events.csv at {laser_events_path}; no laser events to add.")
-        return
-
-    laser_events = pd.read_csv(laser_events_path)
-    required_columns = {"probe", "session", "color", "on_sample_concat", "off_sample_concat"}
-    missing_columns = required_columns - set(laser_events.columns)
-    if missing_columns:
-        logger.error(f"laser_events.csv is missing columns {sorted(missing_columns)}")
-        raise ValueError(f"laser_events.csv is missing columns {sorted(missing_columns)}; "
-                         f"it has {list(laser_events.columns)}.")
-    logger.info(f"Read {len(laser_events)} laser event(s) from {laser_events_path}")
-
-    streams = session_boundaries["streams"]
-
-    def to_nwb_time(probe_label, session_label, concat_sample):
-        """One pulse's sample index on a probe's concatenated axis -> its time on the nwb clock."""
-        return concat_sample_nwb_time(
-            probe_label=probe_label, session_label=session_label, concat_sample=concat_sample,
-            session_boundaries=session_boundaries, probe_start_times=probe_start_times,
-            session_hardware_starts=session_hardware_starts, session_nwb_starts=session_nwb_starts,
-        )
-
-    # Map every row, keeping only the probes and sessions this conversion actually wrote
-    mapped_by_probe = {}
-    skipped_sessions = set()
-    for _row_index, row in laser_events.iterrows():
-        probe_label = next((label for label in probe_start_times
-                            if probe_name_token(label) == probe_name_token(row["probe"])), None)
-        if probe_label is None:
-            continue
-        if row["session"] not in session_nwb_starts:
-            skipped_sessions.add(row["session"])
-            continue
-        on_time = to_nwb_time(probe_label, row["session"], int(row["on_sample_concat"]))
-        off_time = to_nwb_time(probe_label, row["session"], int(row["off_sample_concat"]))
-        if on_time is None or off_time is None:
-            skipped_sessions.add(row["session"])
-            continue
-        mapped_by_probe.setdefault(probe_label, []).append(
-            {"session": row["session"], "color": row["color"], "start_time": on_time, "stop_time": off_time}
-        )
-
-    if skipped_sessions:
-        logger.warning(f"Skipped laser events from session(s) {sorted(skipped_sessions)}, which this "
-                       "conversion did not write.")
-    if not mapped_by_probe:
-        logger.warning("No laser events matched the probes and sessions being converted.")
-        return
-
-    # The same pulse seen by each probe must land at the same nwb time. This checks the probe
-    # alignment against a signal both probes recorded, independently of the raw timestamps.
-    probe_labels = list(mapped_by_probe)
-    reference_label = probe_labels[0]
-    reference_events = sorted(mapped_by_probe[reference_label], key=lambda event: event["start_time"])
-    for other_label in probe_labels[1:]:
-        other_events = sorted(mapped_by_probe[other_label], key=lambda event: event["start_time"])
-        if len(other_events) != len(reference_events):
-            logger.warning(f"'{reference_label}' detected {len(reference_events)} laser pulses but "
-                           f"'{other_label}' detected {len(other_events)}; not comparing their times.")
-            continue
-        differences = [abs(a["start_time"] - b["start_time"])
-                       for a, b in zip(reference_events, other_events)]
-        sampling_rate = float(streams[match_probe_key(streams, reference_label)]["fs"])
-        worst_samples = max(differences) * sampling_rate
-        log_and_print(
-            logger,
-            f"Laser pulses agree between '{reference_label}' and '{other_label}' to within "
-            f"{max(differences) * 1000:.3f} ms ({worst_samples:.1f} samples). This independently "
-            "checks the probe time alignment.",
-            level="info" if worst_samples <= 2 else "warning",
-        )
-
-    # One row per physical pulse, from the first probe
-    laser_events_table = TimeIntervals(
-        name="laser_events",
-        description=("Optotagging laser pulses, on the same clock as the ElectricalSeries. Mapped "
-                     "from laser_events.csv, which records each pulse as a sample index on a "
-                     "probe's concatenated axis (already corrected for the ADC-to-probe lag)."),
-    )
-    laser_events_table.add_column(name="color", description="Which laser produced the pulse")
-    laser_events_table.add_column(name="session", description="The recording the pulse occurred in")
-    for event in reference_events:
-        laser_events_table.add_row(start_time=float(event["start_time"]),
-                                   stop_time=float(event["stop_time"]),
-                                   color=str(event["color"]), session=str(event["session"]))
-
-    nwbfile.add_time_intervals(laser_events_table)
-    pulses_by_color = pd.Series([event["color"] for event in reference_events]).value_counts().to_dict()
-    log_and_print(logger, f"Added {len(reference_events)} laser events to the nwb "
-                          f"(from '{reference_label}'): {pulses_by_color}", level="info")

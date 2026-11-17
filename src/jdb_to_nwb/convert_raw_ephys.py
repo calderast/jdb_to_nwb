@@ -2822,7 +2822,7 @@ def add_raw_ephys(
             "session_epochs": session_epochs,
         }
 
-        from .convert_processed_ephys import add_laser_events
+        from .convert_optogenetics import add_laser_events
 
         add_laser_events(
             nwbfile=nwbfile,
