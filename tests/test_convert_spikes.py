@@ -67,7 +67,7 @@ def test_add_kilosort_bombcell_spikes(dummy_logger):
     assert len(units) == 888
 
     # Curation labels, SpikeInterface quality metrics, and BombCell/cluster_info metrics should all be columns
-    for column in ("bc_unitType", "ks_label", "phy_group", "original_cluster_id", "peak_channel_id",
+    for column in ("bc_unitType", "ks_label", "phy_group", "original_cluster_id", "peak_electrode",
                    "waveform_mean",
                    "snr", "firing_rate", "isi_violations_ratio",  # SpikeInterface quality_metrics
                    "nPeaks", "signalToNoiseRatio", "waveformDuration_peakTrough"):  # BombCell/cluster_info metrics

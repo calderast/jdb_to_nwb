@@ -372,6 +372,56 @@ def verify_analyzer_phy_correspondence(sorting, analyzer_path: Path, phy_group_b
                        "so phy_group labels may be wrong. Check that the analyzer was built from this Phy output.")
 
 
+def electrode_rows_by_channel(nwbfile, probe_label: str, logger) -> dict:
+    """
+    This probe's channel number -> the row it sits on in the nwb electrodes table.
+
+    Every Neuropixels probe numbers its channels CH0..CH383, so a channel number alone does not
+    identify an electrode in a file with two probes. The electrodes table carries the probe each
+    row belongs to, so the row is looked up by probe AND channel.
+
+    Parameters:
+        nwbfile (NWBFile):
+            The NWB file being assembled, with its electrodes table already written
+        probe_label (str):
+            The probe whose channels to look up (the Open Ephys stream name, e.g. "ProbeA")
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    if nwbfile.electrodes is None:
+        logger.error("No electrodes table to look up peak electrodes in.")
+        raise ValueError("No electrodes table in the nwb, so a unit's peak electrode cannot be "
+                         "located. Raw ephys must be converted before spike sorting.")
+
+    electrodes = nwbfile.electrodes.to_dataframe()
+    # A single-probe file (Berke lab) has no 'probe' column, and every row is that one probe
+    if "probe" in electrodes.columns:
+        on_this_probe = electrodes["probe"] == probe_label
+    else:
+        on_this_probe = pd.Series(True, index=electrodes.index)
+
+    # A row is identified by its POSITION in the table, which is what a reference into electrodes
+    # uses. to_dataframe() indexes by the electrode id, so enumerate instead of using the index.
+    rows_by_channel = {
+        int(channel): position
+        for position, (channel, is_this_probe)
+        in enumerate(zip(electrodes["intan_channel_number"], on_this_probe))
+        if is_this_probe
+    }
+
+    if not rows_by_channel:
+        found = (sorted(set(electrodes["probe"])) if "probe" in electrodes.columns
+                 else "no probe column")
+        logger.error(f"No electrodes table rows for probe '{probe_label}'; the table has {found}")
+        raise ValueError(f"No electrodes in this nwb belong to probe '{probe_label}', so its units "
+                         "have no electrode to point at. Check that the probe labels in the "
+                         "metadata match the ones the raw ephys conversion wrote.")
+    logger.debug(f"'{probe_label}' has {len(rows_by_channel)} electrodes table rows "
+                 f"(channels {min(rows_by_channel)}..{max(rows_by_channel)} -> rows "
+                 f"{min(rows_by_channel.values())}..{max(rows_by_channel.values())})")
+    return rows_by_channel
+
+
 def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
                                  probe_index: int, logger):
     """
@@ -385,7 +435,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
           properties - 'bc_unitType' (BombCell class), 'KSLabel' (Kilosort auto label), 'original_cluster_id'
           (the source Phy/Kilosort cluster id), plus the numeric cluster_info metrics BombCell computed.
         - the 'quality_metrics' extension (SpikeInterface per-unit metrics).
-        - the 'templates' extension (per-unit average waveform) -> peak-channel waveform + peak_channel_id.
+        - the 'templates' extension (per-unit average waveform) -> peak-channel waveform + peak_electrode.
       Phy's MANUAL curation labels are NOT stored in the analyzer. They live in a 'cluster_group.tsv'
       file sitting next to analyzer.zarr, mapped to units by original_cluster_id -> 'phy_group'.
 
@@ -561,26 +611,48 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
                          f"(shape {prop_values.shape}).")
             cluster_info_skipped.append(prop)
             continue
-        values = pd.to_numeric(pd.Series(prop_values), errors="coerce").to_numpy(dtype="float64")
-        unit_columns[prop] = (f"BombCell/Kilosort per-unit metric (from cluster_info): {prop}", values)
+        # Some cluster_info properties are text, not numbers ('quality' holds "good" / "mua").
+        # Coercing those to a number makes the whole column NaN and loses the labels, so a
+        # property whose every value is non-numeric is written as text instead.
+        prop_series = pd.Series(prop_values)
+        numeric = pd.to_numeric(prop_series, errors="coerce")
+        not_a_number = int((numeric.isna() & prop_series.notna()).sum())
+        if not_a_number == len(prop_series) and len(prop_series):
+            values = prop_series.astype(str).to_numpy()
+            unit_columns[prop] = (f"BombCell/Kilosort per-unit label (from cluster_info): {prop}", values)
+        else:
+            if not_a_number:
+                logger.warning(f"{not_a_number} of {len(prop_series)} values of '{prop}' are not "
+                               "numbers; they are NaN in that column.")
+            values = numeric.to_numpy(dtype="float64")
+            unit_columns[prop] = (f"BombCell/Kilosort per-unit metric (from cluster_info): {prop}", values)
         cluster_info_added.append(prop)
     logger.debug(f"Added {len(cluster_info_added)} BombCell/Kilosort metric columns: {cluster_info_added}")
     if cluster_info_skipped:
         logger.debug(f"Skipped {len(cluster_info_skipped)} non-scalar properties: {cluster_info_skipped}")
 
-    # Peak-channel waveform + channel id (optional 'templates' extension)
+    # Peak-channel waveform + the electrode it was on (optional 'templates' extension)
     if analyzer.has_extension("templates"):
         templates = analyzer.get_extension("templates").get_data()  # (num_units, num_samples, num_channels)
         peak_channel_index = get_template_extremum_channel(analyzer, outputs="index")  # unit_id -> channel index
         channel_ids = analyzer.channel_ids
-        unit_columns["peak_channel_id"] = ("Recording channel id with the largest-amplitude template for this unit",
-                                           [str(channel_ids[peak_channel_index[uid]]) for uid in unit_ids])
-        peak_idxs = [int(peak_channel_index[uid]) for uid in unit_ids]
+        electrode_rows = electrode_rows_by_channel(nwbfile, probe_label, logger)
+        # channel_ids[index] is the channel NUMBER; the index is its position in the analyzer,
+        # which is not the same thing because Kilosort drops bad channels from the sorting.
+        peak_channels = [int(channel_ids[peak_channel_index[uid]]) for uid in unit_ids]
+        unit_columns["peak_electrode"] = (
+            "Row in this nwb's electrodes table for the electrode with the largest-amplitude "
+            "template for this unit. Found by this unit's probe and peak channel number, so it "
+            "points at that probe's own electrodes.",
+            [electrode_rows[channel] for channel in peak_channels],
+        )
         logger.debug(f"Templates extension shape {templates.shape} (units, samples, channels); peak channel "
-                     f"index range {min(peak_idxs)}..{max(peak_idxs)} across {len(set(peak_idxs))} distinct channels")
+                     f"numbers {min(peak_channels)}..{max(peak_channels)} across "
+                     f"{len(set(peak_channels))} distinct channels -> electrode rows "
+                     f"{min(unit_columns['peak_electrode'][1])}..{max(unit_columns['peak_electrode'][1])}")
     else:
         templates = None
-        logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_channel_id'. "
+        logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_electrode'. "
                        "(Was compute('templates') run on this analyzer?)")
 
     # Which probe each unit came from, and its id in that probe's own sorting. The nwb assigns the
