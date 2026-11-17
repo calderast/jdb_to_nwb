@@ -7,6 +7,13 @@ from pynwb import NWBFile
 from ndx_franklab_novela import AssociatedFiles
 
 
+# The two mazes we run, spelled as hexmaze.get_pixels_per_cm names them. They are physically
+# different sizes, which is why a session has to say which one it used: the pixels-per-cm scale is
+# measured against the real-world size of that maze. It also selects the photometry hardware, since
+# the two maze rooms have different LEDs and photodetectors.
+VALID_MAZES = ("old_maze", "new_maze")
+
+
 def to_datetime(date_str):
     """
     Return a datetime object from a date string in MMDDYYYY or YYYYMMDD format.

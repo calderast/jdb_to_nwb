@@ -29,6 +29,16 @@ animal_name: IM-1478
 # Specify dates in eiher MMDDYYYY or YYYYMMDD format. 
 # Slashes and dashes are ok (e.g 07-25-2022, 07/25/2022, 2022-07-25, 2022/07/25, 07252022, 20220725 are all fine).
 date: 07/25/2022
+# Which maze this session was run on: "old_maze" or "new_maze".
+# The two mazes are slightly different sizes, so this is what tells us the size to scale against when 
+# calculating pixels_per_cm from this session's hex centroids (see the 'video' section below). 
+# Selecting the maze also selects the photometry hardware for that room, so the excitation sources
+# and photodetector no longer have to be listed in the photometry section (NEW as of November 2026).
+# This field is technically optional for back-compatability but strongly recommended. 
+# Without it, pixels_per_cm falls back to a guess based on the date of the session, which 
+# is incorrect for the new maze and slightly inaccurate for the old maze because it doesn't 
+# account for potential maze/camera movement between sessions.
+maze: old_maze
 subject:
   subject_id: IM-1478 # Used to set animal_name and name the nwbfile if animal_name is not provided.
   species: Rattus norvegicus
@@ -244,19 +254,18 @@ photometry:
   # see Star Methods > Fiber Photometry section in https://pmc.ncbi.nlm.nih.gov/articles/PMC10841332/#S11
   # NOTE our current setup assumes that only one fiber was recorded in the session
 
-  # Must reference existing excitation sources from resources/photometry/photometry_devices.yaml
-  # Un-comment the excitation sources used for your experiment.
-  # We currently use the Thorlabs LEDs in the old maze room and the Doric LEDs in the new maze room.
-  excitation_sources:
-    - Thorlabs Purple LED   # Used in the old maze room
-    - Thorlabs Blue LED     # Used in the old maze room
-    # - Doric Purple LED    # Used in the new maze room
-    # - Doric Blue LED      # Used in the new maze room
-    # - Doric Green LED     # Used in the new maze room
-
-  # Must reference existing photodetector from resources/photometry_devices.yaml
-  photodetector: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)     # Used in old maze room
-  # photodetector: Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)  # Used in new maze room
+  # The excitation sources and the photodetector are NOT listed here. Each maze room has fixed
+  # photometry hardware (Thorlabs LEDs in the old room, Doric in the new one, with a different mini
+  # cube in each), so the 'maze' field at the top of this file is enough to know which were used.
+  # The mapping is maze_defaults in resources/photometry/photometry_devices.yaml.
+  #
+  # OPTIONAL OVERRIDE - only if a session used something other than its room's standard hardware.
+  # Whatever you write here wins over the maze default, field by field. Names must match
+  # resources/photometry/photometry_devices.yaml exactly.
+  # excitation_sources:
+  #   - Thorlabs Purple LED
+  #   - Thorlabs Blue LED
+  # photodetector: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)
 
   # For bilateral implants, specify two separate entries with the same optic_fiber and change the ml_in_mm
   # By our convention, a negative ML coordinate is the left hemisphere and a positive ML coordinate is right hemisphere
@@ -321,6 +330,7 @@ video:
   # The user must create a hex centroids file for each session (or may reuse the same file for multiple
   # sessions of the maze does not move in between sessions)
   # See resources/Get_Hex_centroids.ipynb for a tutorial on how to generate this file from the behavior video
+  # The centroids are also what pixels_per_cm is measured from, as described under 'maze' above.
   hex_centroids_file_path: "path/to/file/like/hex_coordinates_IM-1478_07252022.csv"
 
 # The following fields are optional, but a useful way to transmit information to future lab members who may be

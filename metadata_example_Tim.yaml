@@ -8,6 +8,10 @@ experimenter:
   - Tim Krausz
 experiment_description: Hex maze task
 date: 07/19/2022
+# NEW FIELD 'maze' AS OF NOVEMBER 2026
+# The maze (old_maze or new_maze) sets the size that pixels_per_cm is calculated based on,
+# and selects the LEDs and photodetector for that room, so they no longer need to be listed under 'photometry'
+maze: old_maze
 subject:
   subject_id: IM-1478
   species: Rattus norvegicus
@@ -35,13 +39,8 @@ photometry:
   phot_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/IM-1478_2022-07-19_13-07-06____Tim_Conditioning.phot"
   box_file_path: "/Volumes/Tim/Photometry/IM-1478/07192022/IM-1478_2022-07-19_13-07-06____Tim_Conditioning.box"
 
-  # Excitation sources for the old maze room
-  excitation_sources:
-    - Thorlabs Purple LED
-    - Thorlabs Blue LED
-
-  # Photodetector for the old maze room
-  photodetector: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)
+  # NEW AS OF NOVEMBER 2026
+  # The excitation sources and photodetector come from 'maze: old_maze' above, so we no longer need to list them here.
 
   # Bilateral optic fibers in NAcc
   optic_fiber_implant_sites: 

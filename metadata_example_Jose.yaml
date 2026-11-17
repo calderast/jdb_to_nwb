@@ -9,6 +9,10 @@ experimenter:
 experiment_description: Hex maze task
 animal_name: IM-1891_jimmy
 date: "20250723"
+# NEW FIELD 'maze' AS OF NOVEMBER 2026
+# The maze (old_maze or new_maze) sets the size that pixels_per_cm is calculated based on, 
+# and selects the LEDs and photodetector for that room, so they no longer need to be listed under 'photometry'
+maze: new_maze
 subject:
   subject_id: IM-1891
   species: Rattus norvegicus
@@ -21,14 +25,8 @@ photometry:
   # Recording was done using pyPhotometry
   ppd_file_path: "C:/Users/j2fig/OneDrive - UCSF/ACh Rats/IM-1891_jimmy/20250723/RecordingDay17_ProbSwitch_Lhem_CKTL-2025-07-23-123503.ppd"
 
-  # Excitation sources for the new maze room
-  excitation_sources:
-    - Doric Purple LED
-    - Doric Blue LED
-    - Doric Green LED
-
-  # Photodetector for the new maze room
-  photodetector: Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)
+  # NEW AS OF NOVEMBER 2026
+  # The excitation sources and photodetector come from 'maze: new_maze' above, so we no longer need to list them here.
 
   # Bilateral optic fibers in NAcc
   optic_fiber_implant_sites:
