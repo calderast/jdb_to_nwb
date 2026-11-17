@@ -453,12 +453,6 @@ def verify_processed_matches_raw(processed_recording, raw_recording, logger, lab
         log_and_print(logger, message + ". Every channel matches its own raw channel best.",
                       level="info")
 
-def _session_entry(probe_stream: dict, session_label: str) -> dict | None:
-    """That session's entry in a probe's stream, or None if the probe has no such session."""
-    return next((session for session in probe_stream["sessions"]
-                 if session["session_id"] == session_label), None)
-
-
 def concat_sample_nwb_time(
     probe_label: str,
     session_label: str,
@@ -497,7 +491,8 @@ def concat_sample_nwb_time(
     """
     streams = session_boundaries["streams"]
     probe_stream = streams[match_probe_key(streams, probe_label)]
-    session_entry = _session_entry(probe_stream, session_label)
+    session_entry = next((session for session in probe_stream["sessions"]
+                          if session["session_id"] == session_label), None)
     if session_entry is None:
         return None
     sampling_rate = float(probe_stream["fs"])

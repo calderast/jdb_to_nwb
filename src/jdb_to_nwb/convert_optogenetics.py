@@ -166,15 +166,15 @@ def add_laser_events(
     laser_events.csv records every pulse as sample indices on each probe's own concatenated axis,
     already corrected for the ADC-to-probe lag. Converting those to nwb times is exact arithmetic:
     the sample index gives the time on the recording's hardware clock, and each session's hardware
-    start and nwb start (both recorded by the conversion) place it on the nwb clock. Nothing is
-    estimated, so this is unaffected by the ~1s uncertainty in the gap BETWEEN recordings - the
-    pulses stay fixed to the samples they were detected on.
+    start and nwb start (both recorded by the conversion) place it on the nwb clock. A pulse stays
+    fixed to the sample it was detected on, so the ~1s uncertainty in the gap BETWEEN recordings
+    does not move it.
 
-    The same physical pulse appears once per probe, at different sample indices (that difference is
-    how the probes' start offset was originally measured). After mapping they must agree, so the
-    worst disagreement is logged as a check on the probe alignment, independent of the raw
-    timestamps the alignment itself came from. One row per physical pulse is written, using the
-    first probe's mapped times.
+    The same physical pulse appears once per probe, at different sample indices - that difference
+    is how the probes' start offset was measured in the first place. After mapping they must agree,
+    so the worst disagreement is logged: a check on the probe alignment that does not come from the
+    raw timestamps the alignment itself came from. One row per physical pulse is written, from the
+    first probe.
 
     Parameters:
         nwbfile (NWBFile):

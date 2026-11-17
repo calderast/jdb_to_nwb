@@ -8,8 +8,8 @@ import shutil
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
 
-from . import __version__
-from .utils import to_datetime, setup_logger, log_and_print, add_associated_file
+from .utils import (to_datetime, setup_logger, log_and_print, add_associated_file,
+                    source_script_version)
 from .convert_video import add_video
 from .convert_position import add_position
 from .convert_raw_ephys import add_raw_ephys, migrate_legacy_ephys_metadata
@@ -108,7 +108,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
 
     log_and_print(logger, f"Starting conversion for session_id {session_id}", level="info")
-    log_and_print(logger, f"Using source script jdb_to_nwb {__version__}", level="info")
+    source_script = f"jdb_to_nwb {source_script_version(logger)}"
+    log_and_print(logger, f"Using source script {source_script}", level="info")
 
     # Save a copy of the metadata file to the logging directory
     metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"
@@ -142,7 +143,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         virus=metadata.get("virus"),
         notes=metadata.get("notes"),
         keywords=metadata.get("keywords"),
-        source_script="jdb_to_nwb " + __version__,
+        source_script=source_script,
         source_script_file_name="convert.py",
     )
 

@@ -238,6 +238,29 @@ def open_ephys_recording_folder(path: Path) -> str:
                  if re.search(OPEN_EPHYS_FOLDER_DATETIME, parent.name)), "")
 
 
+def open_ephys_folder_start_time(folder_path, logger) -> datetime:
+    """
+    When a recording started, from the wall clock in its folder name ("2026-09-04_14-20-43").
+
+    Metadata paths are written on Windows ("D:\\IM-1994\\ephys\\2026-11-03_14-21-59"), so take the
+    last component on either separator rather than through Path, which keeps a backslash path
+    whole when the conversion runs on posix.
+
+    Parameters:
+        folder_path (str or Path):
+            One recording's Open Ephys folder
+        logger (Logger):
+            Logger to track conversion progress
+    """
+    folder_name = str(folder_path).replace("\\", "/").rstrip("/").split("/")[-1]
+    match = re.search(OPEN_EPHYS_FOLDER_DATETIME, folder_name)
+    if not match:
+        logger.error(f"No date and time in the Open Ephys folder name '{folder_name}'")
+        raise ValueError(f"No date and time in the Open Ephys folder name '{folder_name}'. "
+                         "The recordings are placed in time by their folder names.")
+    return datetime.strptime(match.group(0), "%Y-%m-%d_%H-%M-%S")
+
+
 def read_oebin_params(continuous_dat_file_path: Path, logger) -> dict:
     """
     Read per-stream recording parameters from the structure.oebin file.
@@ -487,25 +510,23 @@ def probe_name_token(name: str) -> str:
     """
     return str(name).split("#")[-1].split(".")[-1].lower()
 
-def probe_label_for_stream(requested_stream: str, resolved_stream: str) -> str:
+
+def probe_label_for_stream(stream: str) -> str:
     """
     The name a probe is called by in the nwb: its electrode groups, its 'probe' electrode column,
     and the 'probe' column on its units.
 
-    This is what the user called it in the metadata, when they named one. Otherwise it is the
-    recording's own stream name, with the Record Node prefix removed. It is never a parsed
-    fragment of the stream name, which would label a Berke probe "0".
+    It is the stream name with Open Ephys's Record Node prefix removed, so
+    "Record Node 101#OneBox-100.ProbeA" becomes "OneBox-100.ProbeA". Never a fragment of it,
+    which would label a Berke probe "0".
 
     Parameters:
-        requested_stream (str): the 'stream' from the probe's metadata entry, or None
-        resolved_stream (str): the full Open Ephys stream name it resolved to
+        stream (str): what the metadata called the probe's stream, or the one it resolved to
 
     Returns:
         str: the label for this probe
     """
-    if requested_stream:
-        return str(requested_stream).split("#")[-1]
-    return str(resolved_stream).split("#")[-1]
+    return str(stream).split("#")[-1]
 
 
 def _reject_conflicting_forms(logger, old_form: str, new_form: str, why: str) -> None:
@@ -637,7 +658,7 @@ def migrate_legacy_ephys_metadata(metadata: dict, logger) -> None:
         if probe_entries[0].get("sorting_analyzer_path"):
             _reject_conflicting_forms(
                 logger, "'sorting_analyzer_path' directly under 'ephys'",
-                "one on the probe's own entry", "They can name different sortings",
+                "one on the probe's own entry", "They can name different sorting analyzers",
             )
         probe_entries[0]["sorting_analyzer_path"] = ephys_metadata.pop("sorting_analyzer_path")
         log_and_print(
@@ -790,7 +811,8 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
 
         probe_configs.append({
             "stream": stream,
-            "label": probe_label_for_stream(requested_stream=requested_stream, resolved_stream=stream),
+            # What the metadata called it, or the recording's own stream name
+            "label": probe_label_for_stream(requested_stream or stream),
             "probe_type": probe_entry["probe_type"],
             "electrodes_location": probe_entry["electrodes_location"],
             "targeted_x": probe_entry["targeted_x"],
@@ -982,16 +1004,14 @@ def combine_probe_recordings(recordings_by_stream: dict, logger, session_label: 
         aligned_recordings.append(recording)
         combined_channel_ids.extend(f"{stream}_{channel_id}" for channel_id in recording.channel_ids)
 
-    # Capture the real timestamps from the (now aligned and length-matched) first probe BEFORE
-    # clearing the per-recording time bookkeeping below. These are the timestamps written to the
-    # ElectricalSeries, and all probes are aligned to this same clock. We take a probe's own
-    # timestamps as the clock within a recording and use them as recorded.
+    # The timestamps written to the ElectricalSeries, from the first probe now that every probe is
+    # aligned to it. Read them BEFORE reset_times() below clears the time bookkeeping.
     timestamps = aligned_recordings[0].get_times()
 
     # SpikeInterface refuses to aggregate recordings whose time bookkeeping disagrees ("All segments
     # should have the same t_start"), and slicing the front of one probe leaves them inconsistent.
-    # Clear it on every recording so they agree: we already captured the timestamps we need, and the
-    # combined recording is only used to read traces.
+    # Clearing it is safe: the timestamps are captured above, and the combined recording is only
+    # used to read traces.
     for recording in aligned_recordings:
         recording.reset_times()
 
@@ -1108,6 +1128,8 @@ def get_raw_session_recordings(
             num_samples_by_probe[probe_label] = num_samples_by_probe.get(probe_label, 0) + probe_num_samples
 
     return session_recordings, session_timestamps, num_samples_by_probe, channel_conversion_factor_uv
+
+
 def get_session_start_deltas(session_folders: list, logger) -> list:
     """
     Work out when each recording started, relative to the first one.
@@ -1123,6 +1145,10 @@ def get_session_start_deltas(session_folders: list, logger) -> list:
     sorting (the gap just has to exist) but is not a sync, and anything needing sample-accurate
     cross-session timing needs a real sync signal instead.
 
+    These are deltas between RECORDING starts, not times on the nwb clock. nwb zero is the first
+    recording's first converted sample, which is later than its start by the bonsai trim, so
+    session_starts_on_nwb_clock turns these into the offsets the conversion uses.
+
     Parameters:
         session_folders (list):
             The recordings, in concatenation order, each with "path" and "session" (from
@@ -1130,23 +1156,12 @@ def get_session_start_deltas(session_folders: list, logger) -> list:
         logger (Logger):
             Logger to track conversion progress
 
-    These are deltas between RECORDING starts, not times on the nwb clock. nwb zero is the first
-    recording's first converted sample, which is later than its start by the bonsai trim, so
-    session_starts_on_nwb_clock turns these into the offsets the conversion uses.
-
     Returns:
         list[float]: seconds from the first recording's start to each recording's start
         (the first is always 0.0)
     """
-    session_start_times = []
-    for session_folder in session_folders:
-        folder_name = str(session_folder["path"]).replace("\\", "/").rstrip("/").split("/")[-1]
-        match = re.search(OPEN_EPHYS_FOLDER_DATETIME, folder_name)
-        if not match:
-            logger.error(f"No date and time in the Open Ephys folder name '{folder_name}'")
-            raise ValueError(f"No date and time in the Open Ephys folder name '{folder_name}'. "
-                             "The recordings are placed in time by their folder names.")
-        session_start_times.append(datetime.strptime(match.group(0), "%Y-%m-%d_%H-%M-%S"))
+    session_start_times = [open_ephys_folder_start_time(session_folder["path"], logger)
+                           for session_folder in session_folders]
 
     first_start = session_start_times[0]
     offsets = [(start - first_start).total_seconds() for start in session_start_times]
@@ -1782,7 +1797,7 @@ def add_electrode_data_berke_probe(
         nwbfile,
         name="electrode_info",
         description="Electrode channel map and impedance information (CSV)",
-        content=electrode_info.to_csv(index=False),
+        content=electrode_info.to_csv(index=False, lineterminator="\n"),
         logger=logger,
         log_filename="electrode_info.csv",
     )
@@ -2138,6 +2153,8 @@ def get_channel_map_neuropixels(settings_file_path, logger, fig_dir=None, probe_
                          fig_dir=fig_dir)
 
     return neuropixels_channel_data
+
+
 def add_electrode_data_neuropixels(
     *,
     nwbfile: NWBFile,
@@ -2186,7 +2203,7 @@ def add_electrode_data_neuropixels(
         description=(f"Neuropixels channel map for probe {probe_label} "
                      "(recording channel -> electrode geometry) (CSV)" if prefix_names else
                      "Neuropixels channel map (recording channel -> electrode geometry) (CSV)"),
-        content=channel_info.to_csv(index=False),
+        content=channel_info.to_csv(index=False, lineterminator="\n"),
         logger=logger,
         log_filename=f"{electrode_info_name}.csv",
     )
@@ -2393,15 +2410,7 @@ def add_raw_ephys(
     # gives the port visits, and its bonsai start is time zero
     openephys_folder_path = session_folders[0]["path"]
 
-    # Get Open Ephys start time as datetime object based on the time specified in the folder name
-    openephys_folder_name = openephys_folder_path.split('/')[-1]
-    match = re.search(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}", openephys_folder_name)
-    if match:
-        datetime_str = match.group(0)
-        open_ephys_start = datetime.strptime(datetime_str, "%Y-%m-%d_%H-%M-%S")
-    else:
-        raise ValueError(f"No valid datetime string found in path: {openephys_folder_path}")
-
+    open_ephys_start = open_ephys_folder_start_time(openephys_folder_path, logger)
     open_ephys_start = open_ephys_start.replace(tzinfo=ZoneInfo("America/Los_Angeles"))
     logger.info(f"Open Ephys start time: {open_ephys_start}")
 
@@ -2417,8 +2426,9 @@ def add_raw_ephys(
                               experiment_number=experiment_number, logger=logger)
         for session_folder in session_folders
     ]
-    open_ephys_paths_dict = find_open_ephys_paths(open_ephys_folder_path=openephys_folder_path,
-                                                  experiment_number=experiment_number, logger=logger)
+    # The first recording's paths, already found above: its settings.xml gives the channel map
+    # and its ADC gives the port visits
+    open_ephys_paths_dict = session_paths[0]
     settings_file_path = open_ephys_paths_dict["settings_file"]
     recording_file_paths_dict = open_ephys_paths_dict["recording_files"]
 
@@ -2439,11 +2449,6 @@ def add_raw_ephys(
     probe_labels = [config["label"] for config in probe_configs]
     probe_locations_by_label = {config["label"]: config for config in probe_configs}
     multiple_probes = len(probe_configs) > 1
-
-    # Labels for EVERY probe in the recording, not just the ones being converted. settings.xml
-    # describes all of them, so the NP_PROBE -> stream mapping is only correct if we hand over the
-    # full set. Converting a subset (e.g. just ProbeB of a bilateral recording) selects from it.
-    all_probe_labels = sorted(name.split(".")[-1] for name in probe_file_paths)
 
     for stream_name, continuous_dat_file_path in probe_streams_to_convert.items():
         logger.info(f"Found probe continuous.dat for '{stream_name}' at {continuous_dat_file_path}")
@@ -2511,6 +2516,15 @@ def add_raw_ephys(
     if probe_metadata["name"] in BERKE_LAB_PROBES:
         log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Berke Lab custom probe.", level="info")
 
+        # A Berke Lab recording holds one probe: its 256 CH and 8 ADC channels are the whole
+        # continuous.dat, and the electrode table below is built for that one probe. Listing two
+        # would combine both probes' channels into the ElectricalSeries but describe only this one.
+        if multiple_probes:
+            logger.error(f"{len(probe_configs)} probes listed for a Berke Lab probe recording")
+            raise ValueError(f"{len(probe_configs)} probes are listed, but a Berke Lab recording "
+                             "holds one probe. Only Neuropixels recordings hold more than one.")
+        berke_probe_label = probe_labels[0]
+
         # Berke Lab probes require a per-session impedance file (used to mark bad channels)
         if "impedance_file_path" not in metadata["ephys"]:
             raise ValueError("Berke Lab probes require 'impedance_file_path' in the ephys metadata.")
@@ -2536,8 +2550,8 @@ def add_raw_ephys(
                                     filtering_info=filtering_info,
                                     metadata=metadata,
                                     probe_metadata=probe_metadata,
-                                    probe_obj=next(iter(probe_objs_by_label.values())),
-                                    probe_location=probe_configs[0],
+                                    probe_obj=probe_objs_by_label[berke_probe_label],
+                                    probe_location=probe_locations_by_label[berke_probe_label],
                                     logger=logger,
                                     fig_dir=fig_dir,
                                 )
@@ -2575,9 +2589,13 @@ def add_raw_ephys(
         filtering_info = "Neuropixels 2.0 hardware filtering (see IMEC Neuropixels documentation)"
 
         # Build the channel map for each probe, then create electrode groups and add electrode data.
+        # settings.xml describes EVERY probe in the recording, so the NP_PROBE -> stream mapping is
+        # only correct if it gets the full set; converting a subset selects from it. A OneBox
+        # stream ends in the probe's own name ("OneBox-100.ProbeA"), which is what NP_PROBE uses.
+        np_probe_names = sorted(name.split(".")[-1] for name in probe_file_paths)
         channel_map = get_channel_map_neuropixels(settings_file_path=settings_file_path,
                                                   logger=logger, fig_dir=fig_dir,
-                                                  probe_stream_names=all_probe_labels)
+                                                  probe_stream_names=np_probe_names)
         missing_channel_maps = [label for label in probe_labels if label not in channel_map]
         if missing_channel_maps:
             logger.error(f"No channel map for probe stream(s) {missing_channel_maps}. "

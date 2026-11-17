@@ -1,10 +1,14 @@
 import os
 import sys
 import logging
+import subprocess
+from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pynwb import NWBFile
 from ndx_franklab_novela import AssociatedFiles
+
+from . import __version__
 
 
 # The two mazes we run, spelled as hexmaze.get_pixels_per_cm names them. They are physically
@@ -206,6 +210,42 @@ def add_associated_file(nwbfile: NWBFile, name: str, description: str, content: 
             logger.debug(f"No log directory available; not saving a copy of '{log_filename}' alongside logs")
             return
         save_path = os.path.join(log_dir, log_filename)
-        with open(save_path, "w") as f:
+        # newline="" so content that already ends its lines with \n is written as-is. The default
+        # would translate them to the platform's ending, which on Windows turns a CSV's "\r\n"
+        # into "\r\r\n" (which is fine but ugly)
+        with open(save_path, "w", newline="") as f:
             f.write(content)
         logger.info(f"Saved a copy of '{log_filename}' to the log directory: {save_path}")
+
+
+def source_script_version(logger=None) -> str:
+    """
+    What to record in the nwb as the version of the code that did the conversion.
+
+    The installed version comes from the package metadata, which is written when the package is
+    installed. An editable install does not rewrite it, so on a working copy that has moved on
+    since `pip install -e .` it names an old commit. `git describe` in the package directory says
+    what the code actually is right now, so it wins when this is a git checkout.
+
+    Parameters:
+        logger (Logger):
+            Optional. Logger to track conversion progress
+    """
+    package_dir = Path(__file__).resolve().parent
+    try:
+        described = subprocess.run(
+            ["git", "describe", "--tags", "--dirty", "--always"],
+            cwd=package_dir, capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+    except (subprocess.SubprocessError, OSError) as error:
+        if logger:
+            logger.debug(f"Not a git checkout, or git is unavailable ({error}); using the "
+                         f"installed version {__version__}.")
+        return __version__
+
+    # The installed version embeds the describe output when it was built from a checkout, so only
+    # say something when the two have actually drifted apart
+    if logger and described not in __version__:
+        logger.debug(f"Installed version is {__version__}, but the code in {package_dir} is at "
+                     f"{described}; recording the latter.")
+    return described

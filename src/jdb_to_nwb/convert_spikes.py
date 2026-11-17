@@ -8,6 +8,7 @@ from .mdasortinginterface import MdaSortingInterface
 from .utils import log_and_print
 from .timestamps_alignment import align_via_interpolation
 from .convert_processed_ephys import concat_samples_to_nwb_times, match_probe_key
+from .convert_raw_ephys import probe_label_for_stream
 
 
 def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
@@ -201,9 +202,8 @@ def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: d
     if sample_mapping and probe_label:
         # The traces came from the preprocessed files, so a spike's sample index is on this probe's
         # OWN concatenated axis: one axis spanning every recording, trimmed differently per probe.
-        # Each spike is mapped through its own session's recorded start times, which carries the
-        # gap between recordings and this probe's trims. This is the mapping the laser pulses go
-        # through, so spikes and pulses stay in sync. See concat_samples_to_nwb_times.
+        # Mapping each spike through its own session's recorded start times carries the gap between
+        # recordings and this probe's trims. See concat_samples_to_nwb_times.
         logger.info(f"Mapping '{probe_label}' spike sample indices onto the nwb clock per session "
                     "(preprocessed traces), the same way the laser pulses are mapped.")
         all_spike_times_s, spike_sessions = concat_samples_to_nwb_times(
@@ -461,7 +461,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
         probe_label = probe_results[probe_index]["label"]
         recording_num_samples = probe_results[probe_index]["num_samples"]
     elif probe.get("stream"):
-        probe_label = str(probe["stream"]).split("#")[-1].split(".")[-1]
+        probe_label = probe_label_for_stream(probe["stream"])
         recording_num_samples = None
     else:
         logger.error("Cannot tell which probe these units belong to.")
