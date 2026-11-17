@@ -47,13 +47,16 @@ def test_add_probe_info(dummy_logger):
 
     # Add probe to the nwbfile
     probe_type = "256-ch Silicon Probe, 3mm length, 66um pitch"
-    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, probe_type=probe_type, logger=dummy_logger)
+    probe_metadata, probe_obj = add_probe_info(nwbfile=nwbfile, probe_type=probe_type, logger=dummy_logger,
+                                               description="This probe, implanted in Hippocampus CA1")
 
     # Test that the nwbfile has the expected probe info under 'devices'
     assert "256-ch Silicon Probe, 3mm length, 66um pitch" in nwbfile.devices
     probe = nwbfile.devices["256-ch Silicon Probe, 3mm length, 66um pitch"]
     assert probe is not None
     assert probe.probe_description.startswith("32 shanks, 8 electrodes per shank. Each shank is 3mm long.")
+    # probe_description describes the MODEL; the core Device description says which probe this is
+    assert probe.description == "This probe, implanted in Hippocampus CA1"
     assert probe.manufacturer == "Daniel Egert, Berke Lab"
     assert probe.contact_side_numbering
     assert probe.contact_size == 15
@@ -824,6 +827,27 @@ def test_get_probe_configs_requires_probes(dummy_logger):
     """There is no default: without a probes list there is nothing to convert."""
     with pytest.raises(ValueError, match="No 'probes' in the ephys metadata"):
         get_probe_configs({"ephys": {}}, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+
+
+def test_get_probe_configs_rejects_two_berke_lab_probes(dummy_logger):
+    """
+    A Berke Lab recording holds one probe: its 256 CH + 8 ADC channels are the whole
+    continuous.dat, and the electrode table is built for that one probe. Converting two would put
+    both probes' channels in the ElectricalSeries while describing only the first, so it must fail
+    rather than write an nwb whose electrodes don't match its data.
+    """
+    metadata = {"ephys": {"probes": [
+        {"stream": "A", "probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Left CA1", "targeted_x": -2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+        {"stream": "B", "probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Right CA1", "targeted_x": 2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+    ]}}
+    probe_file_paths = {"Rhythm_FPGA-100.A": "a.dat", "Rhythm_FPGA-100.B": "b.dat"}
+
+    with pytest.raises(ValueError, match="a Berke Lab recording holds one probe"):
+        get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+
 def test_probe_name_token_unifies_every_naming_form(dummy_logger):
     """
     The same probe is written four different ways depending on the source, and every matcher in

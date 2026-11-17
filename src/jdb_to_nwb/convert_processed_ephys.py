@@ -36,13 +36,6 @@ def match_probe_key(available_keys, probe_label: str) -> str:
 
     The pipeline writes "probeA"/"probeB" (folders and session_boundaries.json keys) while Open
     Ephys calls the same probe "ProbeA"/"ProbeB", so names are compared as probe tokens.
-
-    Parameters:
-        available_keys: the keys/folder names to search
-        probe_label (str): the Open Ephys probe label, e.g. "ProbeA"
-
-    Returns:
-        str: the matching key, as written by the preprocessing pipeline
     """
     matches = [key for key in available_keys if probe_name_token(key) == probe_name_token(probe_label)]
     if len(matches) != 1:
@@ -57,12 +50,6 @@ def read_preprocessing_json(processed_ephys_path: Path, logger) -> dict | None:
 
     Holds the masking parameters, the optotagging conditions, the laser lags and the Kilosort
     parameters, per probe.
-
-    Parameters:
-        processed_ephys_path (Path):
-            The preprocessed session directory
-        logger (Logger):
-            Logger to track conversion progress
     """
     preprocessing_path = Path(processed_ephys_path) / "preprocessing.json"
     if not preprocessing_path.exists():
@@ -80,14 +67,6 @@ def read_kilosort_bad_channels(processed_ephys_path: Path, probe_labels: list, l
     them here is what carries the preprocessing pipeline's decision into a re-sort.
 
     Returns probe label -> set of channel numbers, empty for a probe that lists none.
-
-    Parameters:
-        processed_ephys_path (Path):
-            The preprocessed session directory, holding preprocessing.json
-        probe_labels (list):
-            The probes being converted
-        logger (Logger):
-            Logger to track conversion progress
     """
     preprocessing = read_preprocessing_json(processed_ephys_path, logger)
     if preprocessing is None:
@@ -116,14 +95,7 @@ def read_session_boundaries(processed_ephys_path: Path, logger) -> dict:
     where one source session ends and the next begins, and the boundary sits at a DIFFERENT sample
     index for each probe (the probes do not record exactly the same number of samples).
 
-    Parameters:
-        processed_ephys_path (Path):
-            The preprocessed session directory (holding session_boundaries.json and the probe folders)
-        logger (Logger):
-            Logger to track conversion progress
-
-    Returns:
-        dict: the parsed session_boundaries.json ("streams" maps each probe to its sessions)
+    Returns the parsed json, whose "streams" maps each probe to its sessions.
     """
     boundaries_path = Path(processed_ephys_path) / "session_boundaries.json"
     if not boundaries_path.exists():
@@ -140,6 +112,7 @@ def read_session_boundaries(processed_ephys_path: Path, logger) -> dict:
         logger.debug(f"  {probe_key}: {stream['n_samples_total']} samples total at "
                      f"{stream['fs']} Hz, {stream['n_chan']} channels, sessions {session_summary}")
     return boundaries
+
 
 def open_processed_probe_sessions(
     processed_ephys_path: Path,
@@ -474,20 +447,16 @@ def concat_sample_nwb_time(
     Returns None if the probe has no such session in session_boundaries.
 
     Parameters:
-        probe_label (str):
-            Which probe's axis the sample index is on
-        session_label (str):
-            Which recording the sample is in (the caller already knows, e.g. from a csv column)
-        concat_sample (int):
-            The sample index on that probe's concatenated axis
+        probe_label, session_label, concat_sample:
+            Which probe's axis, which recording, and the sample index on that axis
         session_boundaries (dict):
-            The parsed session_boundaries.json (gives each probe's session ranges and sample rate)
+            The parsed session_boundaries.json (each probe's session ranges and sample rate)
         probe_start_times (dict):
             probe label -> {session label: start time on the hardware clock}
         session_hardware_starts (dict):
-            session label -> the hardware-clock time of that session's first converted sample
+            session label -> hardware-clock time of that session's first converted sample
         session_nwb_starts (dict):
-            session label -> the nwb-clock time of that session's first converted sample
+            session label -> nwb-clock time of that session's first converted sample
     """
     streams = session_boundaries["streams"]
     probe_stream = streams[match_probe_key(streams, probe_label)]
@@ -521,13 +490,7 @@ def concat_samples_to_nwb_times(
     Returns (nwb_times, session_labels), both arrays as long as concat_samples. A sample in a
     session this conversion did not write gets NaN and "".
 
-    Parameters:
-        probe_label (str):
-            Which probe's axis the sample indices are on
-        concat_samples (array-like):
-            Sample indices on that probe's concatenated axis
-        session_boundaries, probe_start_times, session_hardware_starts, session_nwb_starts:
-            As in concat_sample_nwb_time
+    Parameters: as in concat_sample_nwb_time, with concat_samples in place of one sample index.
     """
     samples = np.asarray(concat_samples, dtype=np.int64)
     nwb_times = np.full(samples.shape, np.nan, dtype=float)

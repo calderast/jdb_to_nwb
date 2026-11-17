@@ -243,6 +243,8 @@ def add_camera(nwbfile: NWBFile, metadata: dict):
             model="Brio webcam",
             lens="lens",
             camera_name=f"berke_maze_cam_{mpp_rounded}m_per_pixel",
+            description=("Overhead camera filming the hex maze, used for position tracking "
+                         f"({mpp_rounded} m per pixel)"),
         )
     )
 

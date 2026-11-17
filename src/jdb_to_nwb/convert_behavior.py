@@ -890,7 +890,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     )
     task = DynamicTable(
         name="task_0",
-        description="",
+        description="Hex maze task",
         columns=[
             task_name,
             task_description,

@@ -176,21 +176,9 @@ def add_laser_events(
     raw timestamps the alignment itself came from. One row per physical pulse is written, from the
     first probe.
 
-    Parameters:
-        nwbfile (NWBFile):
-            The NWB file being assembled
-        processed_ephys_path (Path):
-            The preprocessed session directory, holding laser_events.csv
-        session_boundaries (dict):
-            The parsed session_boundaries.json (gives each probe's session ranges and sample rate)
-        probe_start_times (dict):
-            probe label -> {session label: start time on the hardware clock}
-        session_hardware_starts (dict):
-            session label -> the hardware-clock time of that session's first converted sample
-        session_nwb_starts (dict):
-            session label -> the nwb-clock time of that session's first converted sample
-        logger (Logger):
-            Logger to track conversion progress
+    processed_ephys_path is the preprocessed session directory, holding laser_events.csv. The
+    session_boundaries, probe_start_times, session_hardware_starts and session_nwb_starts are the
+    same ones concat_sample_nwb_time takes, and are documented there.
     """
     laser_events_path = Path(processed_ephys_path) / "laser_events.csv"
     if not laser_events_path.exists():
