@@ -160,9 +160,7 @@ def test_add_raw_ephys_writes_preprocessed_traces(dummy_logger, tmp_path):
 
     # Build the preprocessed layout: one folder per probe holding the concatenated continuous.dat.
     # The preprocessed file holds only the NEURAL channels - the real Neuropixels one is 384
-    # channels with no ADC - so the ADC channels are dropped here, as the pipeline drops them.
-    # (If they were left in, the channel count would not match the electrode table and the
-    # conversion fails loudly, which is the behavior we want.)
+    # channels with no ADC - so the ADC channels are dropped here, as the pipeline drops them
     raw_dat = raw_folder / "experiment1/recording1/continuous/Rhythm_FPGA-100.0/continuous.dat"
     num_channels, num_samples = 256, 3_000
     raw_traces = np.memmap(raw_dat, dtype="int16", mode="r").reshape(num_samples, 264)
@@ -281,7 +279,7 @@ def test_add_laser_events_skips_sessions_not_converted(dummy_logger, tmp_path):
 
 def test_add_laser_events_detects_a_probe_alignment_error(dummy_logger, tmp_path, caplog):
     """
-    The cross-probe agreement check has to actually catch a misalignment, or it is worthless. Here
+    Make sure the cross-probe agreement check actually catches a misalignment. Here
     probeB's start time is wrong by 45 samples, so the same pulse maps to two different nwb times
     and the check must say so.
     """
@@ -318,7 +316,7 @@ def test_add_laser_events_detects_a_probe_alignment_error(dummy_logger, tmp_path
 
 def test_verify_processed_matches_raw_accepts_a_phase_shift(dummy_logger, caplog):
     """
-    Preprocessing legitimately changes the samples: the NP2.0 phase shift moves each channel by a
+    Preprocessing is supposed to change the samples: the NP2.0 phase shift moves each channel by a
     FRACTION of a sample. Real ephys is band-limited, so a fractional shift barely changes a
     channel's correlation with its raw counterpart - and the check must not flag it.
 
@@ -346,26 +344,49 @@ def test_verify_processed_matches_raw_accepts_a_phase_shift(dummy_logger, caplog
 
     with caplog.at_level(logging.WARNING):
         verify_processed_matches_raw(processed_recording=processed, raw_recording=raw,
-                                     logger=dummy_logger, num_samples=num_samples)
+                                     logger=dummy_logger, label="'probeA' recording 'behavior'",
+                                     num_samples=num_samples)
 
-    assert not [record for record in caplog.records if "different order" in record.message]
+    assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
 
 def test_verify_processed_matches_raw_catches_reordered_channels(dummy_logger, caplog):
     """
-    A reordering is the failure that nothing else would notice: every electrode would be mapped to
-    the wrong trace and the conversion would otherwise succeed. The check must catch it.
+    A reordering is the failure nothing else would notice: every electrode would be mapped to the
+    wrong trace and the conversion would otherwise succeed.
+
+    Two channels swapped is the easiest kind to miss - 6 of 8 still match perfectly, so a median
+    correlation does not move. Each channel is compared against EVERY raw channel, so the two that
+    moved are caught on their own, and if every channel is out of order they all get flagged.
     """
     import logging
     import spikeinterface.core as si_core
 
     raw = si_core.generate_recording(num_channels=8, durations=[1.0], sampling_frequency=30000.0, seed=4)
-    # Same data, channels in a different order - exactly what must not go unnoticed
-    reordered = raw.select_channels(channel_ids=list(raw.channel_ids)[::-1])
-    reordered = reordered.rename_channels(list(raw.channel_ids))
+    swapped_order = [0, 1, 3, 2, 4, 5, 6, 7]
+    swapped = raw.select_channels(channel_ids=[list(raw.channel_ids)[i] for i in swapped_order])
+    swapped = swapped.rename_channels(list(raw.channel_ids))
 
     with caplog.at_level(logging.WARNING):
-        verify_processed_matches_raw(processed_recording=reordered, raw_recording=raw,
-                                     logger=dummy_logger, num_samples=10_000)
+        verify_processed_matches_raw(processed_recording=swapped, raw_recording=raw,
+                                     logger=dummy_logger, label="'probeA' recording 'behavior'",
+                                     num_samples=10_000)
 
-    warnings = [record for record in caplog.records if "different order" in record.message]
-    assert warnings, "a channel reordering must be reported"
+    warnings = [record for record in caplog.records if "DIFFERENT raw channel" in record.message]
+    assert warnings, "a swap of two channels must be reported"
+    assert "2 channel(s)" in warnings[0].message
+
+
+def test_verify_processed_matches_raw_rejects_a_different_number_of_samples(dummy_logger):
+    """
+    A spike's sample index is an index into the preprocessed recording, so if preprocessing wrote
+    a different number of samples than it was given, every spike after that point lands on the
+    wrong sample. Nothing else in the conversion compares the two lengths.
+    """
+    import spikeinterface.core as si_core
+
+    raw = si_core.generate_recording(num_channels=4, durations=[1.0], sampling_frequency=30000.0, seed=4)
+    shorter = raw.frame_slice(start_frame=0, end_frame=raw.get_num_samples() - 1)
+
+    with pytest.raises(ValueError, match="samples but the raw recording it came from has"):
+        verify_processed_matches_raw(processed_recording=shorter, raw_recording=raw,
+                                     logger=dummy_logger, label="'probeA' recording 'behavior'")

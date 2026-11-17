@@ -11,26 +11,6 @@
 # structure.oebin (conversion factor, sample rate, channel count), and the per-stream timestamps
 # (each probe's start time, which is what the probes are aligned by). Only the traces themselves,
 # and the laser events, come from the preprocessed directory.
-#
-# ============================================================================================
-# ASSUMPTIONS specific to preprocessed traces
-# (see convert_raw_ephys.py for the assumptions about the recordings, the nwb and Spyglass)
-#
-#   1. Preprocessing preserved sample indices and channel ORDER from the raw recording, and did
-#      not rescale: bit_volts from the raw structure.oebin is applied to them.
-#      Checked: verify_processed_matches_raw correlates one second of the first probe's
-#      preprocessed traces against the raw ones and warns if the channels do not correspond
-#      (a reordering would otherwise map every electrode to the wrong trace, unnoticed). It
-#      compares by correlation because the phase shift and the masking legitimately change the
-#      samples. A warning there must be investigated before the file is used.
-#   2. The preprocessed file holds exactly the neural channels (no ADC), and
-#      session_boundaries.json describes it exactly. Checked: a length mismatch raises, and the
-#      channel count must match the electrode table.
-#   3. The 'session' labels in the metadata are the ones the preprocessing used. Checked: raises.
-#   4. laser_events.csv sample indices are on each probe's own concatenated axis and are already
-#      corrected for the ADC-to-probe lag (the pipeline does this). Checked indirectly: the same
-#      pulse mapped from each probe must land at the same nwb time, logged every conversion.
-# ============================================================================================
 
 import json
 from pathlib import Path
@@ -155,6 +135,8 @@ def open_processed_probe_sessions(
         logger.error(f"No preprocessed continuous.dat for probe '{probe_label}' at {dat_path}")
         raise FileNotFoundError(f"No preprocessed continuous.dat for probe '{probe_label}' at {dat_path}")
 
+    # The preprocessed file holds exactly the neural channels and no ADC, so n_chan is the row
+    # length of the binary and must also match the electrode table built from the raw channel map
     num_channels = int(probe_boundaries["n_chan"])
     sampling_frequency = float(probe_boundaries["fs"])
     bytes_per_sample = num_channels * np.dtype("int16").itemsize
@@ -302,83 +284,227 @@ def get_processed_session_recordings(
 
     return session_recordings, session_timestamps, num_samples_by_probe, sessions_by_probe
 
-def verify_processed_matches_raw(processed_recording, raw_recording, logger,
+def verify_processed_matches_raw(processed_recording, raw_recording, logger, label: str,
                                  num_samples: int = 30_000, min_correlation: float = 0.9) -> None:
     """
-    Check that the preprocessed traces line up channel-for-channel with the raw ones.
+    Check that one probe's preprocessed recording still corresponds to the raw one it came from.
 
-    This is the assumption with the worst failure mode: if preprocessing reordered the channels,
-    every electrode would be mapped to the wrong trace and nothing else in the conversion would
-    notice. Nothing in the preprocessed file asserts the order, so it is checked here against the
-    raw recording it came from.
+    Nothing in the preprocessed file states its sample count, channel count or channel order, and
+    the conversion relies on all three: the electrode table is built from the raw channel map, and
+    a spike's sample index is an index into this recording. Three things are checked:
 
-    Compared by correlation rather than equality, because preprocessing legitimately changes the
-    samples: the phase shift moves each channel by a fraction of a sample, and masked windows are
-    replaced by interpolation. Neither changes which channel is which, so a channel that still
-    corresponds to its raw counterpart stays highly correlated with it, while a reordered one does
-    not. Only a short window is read, from the start of the recording.
+      - The sample count, which must match exactly. A length change puts every spike after it on
+        the wrong sample. Raises.
+      - The channel count, which must match too, or the traces and the electrode table describe
+        different channels. Raises.
+      - The channel order, over one second of traces from the start. Each preprocessed channel is
+        correlated against EVERY raw channel, and the best match must be its own. This catches a
+        swap of two channels as well as every channel being out of order. Warns.
 
-    Logs the result and warns on a low correlation; it does not raise, because a low value can also
-    mean the window happened to land on a masked stretch. A warning here should be investigated
-    before the conversion is trusted.
+    Order is checked by correlation, not equality, because preprocessing is supposed to change
+    the samples: the phase shift moves each channel by a fraction of a sample, and masked windows
+    are replaced by interpolation. Neither of those changes which channel is which, so a channel
+    still correlates best with its own raw channel.
 
     Parameters:
         processed_recording:
-            The preprocessed recording for one probe
+            The preprocessed recording for one probe and one session
         raw_recording:
-            The raw recording for the same probe, with the same channels in the same order
+            The raw recording for the same probe and session, untrimmed, so that sample 0 is the
+            same sample in both
         logger (Logger):
             Logger to track conversion progress
+        label (str):
+            Which probe and session this is, for the log messages
         num_samples (int):
-            How many samples to compare (default 30000, one second at 30 kHz)
+            How many samples to correlate (default 30000, one second at 30 kHz)
         min_correlation (float):
-            Warn if the median per-channel correlation is below this
+            Warn if the median channel's correlation with its own raw counterpart is below this
     """
-    comparable_samples = min(num_samples, processed_recording.get_num_samples(),
-                             raw_recording.get_num_samples())
-    if comparable_samples < 2:
-        logger.warning("Too few samples to compare the preprocessed traces against the raw ones.")
-        return
-
+    if processed_recording.get_num_samples() != raw_recording.get_num_samples():
+        logger.error(f"{label}: preprocessed recording has {processed_recording.get_num_samples()} "
+                     f"samples but the raw one has {raw_recording.get_num_samples()}")
+        raise ValueError(
+            f"{label}: the preprocessed recording has {processed_recording.get_num_samples()} "
+            f"samples but the raw recording it came from has {raw_recording.get_num_samples()}. "
+            "Preprocessing writes one sample per raw sample, and spike sample indices are indices "
+            "into this recording, so a different length puts every spike after it on the wrong "
+            "sample. Check that the preprocessed directory was built from these recordings."
+        )
     if processed_recording.get_num_channels() != raw_recording.get_num_channels():
-        logger.warning(f"Preprocessed recording has {processed_recording.get_num_channels()} channels "
-                       f"but the raw one has {raw_recording.get_num_channels()}; not comparing them.")
+        logger.error(f"{label}: preprocessed recording has {processed_recording.get_num_channels()} "
+                     f"channels but the raw one has {raw_recording.get_num_channels()}")
+        raise ValueError(
+            f"{label}: the preprocessed recording has {processed_recording.get_num_channels()} "
+            f"channels but the raw recording has {raw_recording.get_num_channels()}. The electrode "
+            "table is built from the raw channel map, so the two must describe the same channels."
+        )
+
+    comparable_samples = min(num_samples, processed_recording.get_num_samples())
+    if comparable_samples < 2:
+        logger.warning(f"{label}: too few samples to compare the preprocessed traces against the raw ones.")
         return
 
     processed_traces = processed_recording.get_traces(start_frame=0, end_frame=comparable_samples)
     raw_traces = raw_recording.get_traces(start_frame=0, end_frame=comparable_samples)
 
-    correlations = []
-    for channel_index in range(processed_traces.shape[1]):
-        processed_channel = processed_traces[:, channel_index].astype("float64")
-        raw_channel = raw_traces[:, channel_index].astype("float64")
-        # A flat channel has no correlation to measure, so it is skipped rather than counted as bad
-        if processed_channel.std() == 0 or raw_channel.std() == 0:
-            continue
-        correlations.append(float(np.corrcoef(processed_channel, raw_channel)[0, 1]))
+    # Correlate every preprocessed channel against every raw channel in one matmul: center each
+    # column and divide by its norm, so the product of two columns IS their correlation.
+    def centered_and_scaled(traces):
+        centered = traces.astype("float32") - traces.mean(axis=0, dtype="float32")
+        norms = np.linalg.norm(centered, axis=0)
+        # A flat channel has nothing to correlate. Its norm is 0, so leave the column alone and
+        # exclude it below instead of dividing by zero.
+        return centered / np.where(norms == 0, 1.0, norms), norms
 
-    if not correlations:
-        logger.warning("Every compared channel was flat; cannot check the preprocessed traces "
-                       "against the raw ones.")
+    processed_scaled, processed_norms = centered_and_scaled(processed_traces)
+    raw_scaled, raw_norms = centered_and_scaled(raw_traces)
+    correlations = processed_scaled.T @ raw_scaled
+
+    comparable = (processed_norms > 0) & (raw_norms > 0)
+    if not comparable.any():
+        logger.warning(f"{label}: every compared channel was flat; cannot check the preprocessed "
+                       "traces against the raw ones.")
         return
 
-    median_correlation = float(np.median(correlations))
-    worst_correlation = float(np.min(correlations))
-    message = (f"Preprocessed traces vs raw over {comparable_samples} samples: median per-channel "
-               f"correlation {median_correlation:.4f}, worst {worst_correlation:.4f} "
-               f"({len(correlations)} channels compared)")
-    if median_correlation < min_correlation:
+    own_correlations = np.diagonal(correlations)[comparable]
+    best_match = np.argmax(correlations, axis=1)
+    mismatched = np.flatnonzero(comparable & (best_match != np.arange(correlations.shape[0])))
+
+    median_correlation = float(np.median(own_correlations))
+    message = (f"{label}: preprocessed vs raw over {comparable_samples} samples, median channel "
+               f"correlation with its own raw channel {median_correlation:.4f}, worst "
+               f"{float(np.min(own_correlations)):.4f} ({int(comparable.sum())} channels compared)")
+
+    if len(mismatched):
+        examples = ", ".join(f"{index}->{best_match[index]}" for index in mismatched[:5])
         log_and_print(
             logger,
-            message + f". This is below {min_correlation}, which can mean the preprocessed channels "
-            "are in a different order than the raw ones - in which case every electrode is mapped "
-            "to the wrong trace. Investigate before using this file. (It can also mean the compared "
-            "window landed on a masked stretch.)",
+            message + f". {len(mismatched)} channel(s) correlate better with a DIFFERENT raw "
+            f"channel than with their own ({examples}), which means the preprocessed channels are "
+            "not in the raw order and every electrode is mapped to the wrong trace. Do not use "
+            "this file until this is explained.",
+            level="warning",
+        )
+    elif median_correlation < min_correlation:
+        log_and_print(
+            logger,
+            message + f". Every channel still matches its own raw channel best, but the median is "
+            f"below {min_correlation}, so the traces differ more than the phase shift and masking "
+            "explain. (It can also mean the compared window landed on a masked stretch.)",
             level="warning",
         )
     else:
-        log_and_print(logger, message + ". The preprocessed channels correspond to the raw ones.",
+        log_and_print(logger, message + ". Every channel matches its own raw channel best.",
                       level="info")
+
+def _session_entry(probe_stream: dict, session_label: str) -> dict | None:
+    """That session's entry in a probe's stream, or None if the probe has no such session."""
+    return next((session for session in probe_stream["sessions"]
+                 if session["session_id"] == session_label), None)
+
+
+def concat_sample_nwb_time(
+    probe_label: str,
+    session_label: str,
+    concat_sample: int,
+    session_boundaries: dict,
+    probe_start_times: dict,
+    session_hardware_starts: dict,
+    session_nwb_starts: dict,
+) -> float | None:
+    """
+    One sample index on a probe's concatenated preprocessed axis -> its time on the nwb clock.
+
+    This is exact arithmetic, and it is per session: the sample index gives a time on the
+    recording's hardware clock, and that session's hardware start and nwb start (both recorded by
+    the conversion) place it on the nwb clock. Because each session is mapped through its OWN
+    starts, the gap between recordings and any samples trimmed off either end of a session are
+    already accounted for.
+
+    Returns None if the probe has no such session in session_boundaries.
+
+    Parameters:
+        probe_label (str):
+            Which probe's axis the sample index is on
+        session_label (str):
+            Which recording the sample is in (the caller already knows, e.g. from a csv column)
+        concat_sample (int):
+            The sample index on that probe's concatenated axis
+        session_boundaries (dict):
+            The parsed session_boundaries.json (gives each probe's session ranges and sample rate)
+        probe_start_times (dict):
+            probe label -> {session label: start time on the hardware clock}
+        session_hardware_starts (dict):
+            session label -> the hardware-clock time of that session's first converted sample
+        session_nwb_starts (dict):
+            session label -> the nwb-clock time of that session's first converted sample
+    """
+    streams = session_boundaries["streams"]
+    probe_stream = streams[match_probe_key(streams, probe_label)]
+    session_entry = _session_entry(probe_stream, session_label)
+    if session_entry is None:
+        return None
+    sampling_rate = float(probe_stream["fs"])
+    hardware_time = (probe_start_times[probe_label][session_label]
+                     + (concat_sample - int(session_entry["sample_start"])) / sampling_rate)
+    return (hardware_time - session_hardware_starts[session_label]
+            + session_nwb_starts[session_label])
+
+
+def concat_samples_to_nwb_times(
+    probe_label: str,
+    concat_samples,
+    session_boundaries: dict,
+    probe_start_times: dict,
+    session_hardware_starts: dict,
+    session_nwb_starts: dict,
+):
+    """
+    Map many sample indices on one probe's concatenated axis onto the nwb clock, in bulk.
+
+    Same arithmetic as concat_sample_nwb_time, but the session is worked out FROM the sample index
+    rather than given, so this suits data that only knows its sample index - spike trains, where
+    every spike carries a sample index on its probe's own concatenated preprocessed axis and
+    nothing else.
+
+    Returns (nwb_times, session_labels), both arrays as long as concat_samples. A sample in a
+    session this conversion did not write gets NaN and "".
+
+    Parameters:
+        probe_label (str):
+            Which probe's axis the sample indices are on
+        concat_samples (array-like):
+            Sample indices on that probe's concatenated axis
+        session_boundaries, probe_start_times, session_hardware_starts, session_nwb_starts:
+            As in concat_sample_nwb_time
+    """
+    samples = np.asarray(concat_samples, dtype=np.int64)
+    nwb_times = np.full(samples.shape, np.nan, dtype=float)
+    session_labels = np.full(samples.shape, "", dtype=object)
+
+    streams = session_boundaries["streams"]
+    probe_stream = streams[match_probe_key(streams, probe_label)]
+    sampling_rate = float(probe_stream["fs"])
+
+    for session_entry in probe_stream["sessions"]:
+        session_label = session_entry["session_id"]
+        # Only the sessions this conversion actually wrote can be placed on the nwb clock
+        if (session_label not in session_nwb_starts or session_label not in session_hardware_starts
+                or session_label not in (probe_start_times.get(probe_label) or {})):
+            continue
+        sample_start = int(session_entry["sample_start"])
+        in_session = (samples >= sample_start) & (samples < int(session_entry["sample_end"]))
+        if not in_session.any():
+            continue
+        hardware_times = (probe_start_times[probe_label][session_label]
+                          + (samples[in_session] - sample_start) / sampling_rate)
+        nwb_times[in_session] = (hardware_times - session_hardware_starts[session_label]
+                                 + session_nwb_starts[session_label])
+        session_labels[in_session] = session_label
+
+    return nwb_times, session_labels
+
 
 def add_laser_events(
     nwbfile: NWBFile,
@@ -439,18 +565,11 @@ def add_laser_events(
 
     def to_nwb_time(probe_label, session_label, concat_sample):
         """One pulse's sample index on a probe's concatenated axis -> its time on the nwb clock."""
-        probe_key = match_probe_key(streams, probe_label)
-        probe_stream = streams[probe_key]
-        sampling_rate = float(probe_stream["fs"])
-        session_entry = next((session for session in probe_stream["sessions"]
-                              if session["session_id"] == session_label), None)
-        if session_entry is None:
-            return None
-        # Time on the recording's hardware clock, then placed on the nwb clock
-        hardware_time = (probe_start_times[probe_label][session_label]
-                         + (concat_sample - int(session_entry["sample_start"])) / sampling_rate)
-        return (hardware_time - session_hardware_starts[session_label]
-                + session_nwb_starts[session_label])
+        return concat_sample_nwb_time(
+            probe_label=probe_label, session_label=session_label, concat_sample=concat_sample,
+            session_boundaries=session_boundaries, probe_start_times=probe_start_times,
+            session_hardware_starts=session_hardware_starts, session_nwb_starts=session_nwb_starts,
+        )
 
     # Map every row, keeping only the probes and sessions this conversion actually wrote
     mapped_by_probe = {}

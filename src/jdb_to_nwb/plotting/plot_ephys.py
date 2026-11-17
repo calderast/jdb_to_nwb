@@ -124,9 +124,8 @@ def load_electrode_info(metadata):
                                      migrate_legacy_ephys_metadata)
     from ..utils import setup_stdout_logger
 
-    # The probe type and its implant location moved into the 'probes' list when multiple probes
-    # were supported. These helpers are called from notebooks with a freshly loaded metadata file,
-    # so migrate it here rather than requiring the caller to have done it.
+    # The probe type and its implant location live in the 'probes' list. These helpers are called
+    # from notebooks with a freshly loaded metadata file, so migrate it here.
     migrate_legacy_ephys_metadata(metadata, setup_stdout_logger("load_electrode_info"))
     probe_name = metadata["ephys"]["probes"][0]["probe_type"]
     if probe_name not in BERKE_LAB_PROBES:

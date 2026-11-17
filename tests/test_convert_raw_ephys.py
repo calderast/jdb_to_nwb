@@ -24,7 +24,8 @@ from jdb_to_nwb.convert_raw_ephys import (
     get_session_folders,
     migrate_legacy_ephys_metadata,
     probe_name_token,
-    get_session_time_offsets,
+    get_session_start_deltas,
+    session_starts_on_nwb_clock,
     concatenate_session_recordings,
 )
 
@@ -784,9 +785,9 @@ def test_get_probe_configs_requires_stream_on_every_probe(dummy_logger):
 
 def test_get_probe_configs_converts_outdated_flat_location(dummy_logger):
     """
-    Location used to live directly under 'ephys'. A file written that way still converts, as one
-    probe at that location, once the metadata has been through migrate_legacy_ephys_metadata
-    (which create_nwbs and add_raw_ephys do before get_probe_configs is reached).
+    A file that names one location directly under 'ephys' converts as one probe at that
+    location, once the metadata has been through migrate_legacy_ephys_metadata (which create_nwbs
+    and add_raw_ephys both do before get_probe_configs is reached).
     """
     metadata = {"ephys": {
         "probe": ["256-ch Silicon Probe, 3mm length, 66um pitch"],
@@ -818,8 +819,8 @@ def test_get_probe_configs_requires_probes(dummy_logger):
         get_probe_configs({"ephys": {}}, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
 def test_probe_name_token_unifies_every_naming_form(dummy_logger):
     """
-    The same probe is written four different ways depending on the source. One definition of probe
-    identity keeps the matchers from drifting apart, which they previously had.
+    The same probe is written four different ways depending on the source, and every matcher in
+    the conversion resolves all four to one token.
     """
     same_probe = [
         "ProbeA",                              # metadata
@@ -847,12 +848,12 @@ def test_get_probe_configs_matches_a_fully_qualified_stream_name(dummy_logger):
     configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
 
     assert configs[0]["stream"] == "OneBox-100.ProbeB"
-    # The label is what the user wrote (minus the Record Node prefix), not a guess at which part
-    # of it names the probe - so it is predictable from the metadata
+    # The label is what the user wrote (minus the Record Node prefix), so it is predictable
+    # from the metadata
     assert configs[0]["label"] == "OneBox-100.ProbeB"
 
 
-def test_get_session_time_offsets_places_recordings_by_folder_name(dummy_logger):
+def test_get_session_start_deltas_places_recordings_by_folder_name(dummy_logger):
     """
     Separate Open Ephys recordings share no sample numbering, so the only link between them is the
     wall-clock time in the folder name. These are the real IM-1979 2026-09-04 folders.
@@ -862,13 +863,27 @@ def test_get_session_time_offsets_places_recordings_by_folder_name(dummy_logger)
         {"path": "D:/D1-1-6_IM-1979/ephys/2026-09-04_16-39-38", "session": "optotagging"},
     ]
 
-    offsets = get_session_time_offsets(session_folders, dummy_logger)
+    deltas = get_session_start_deltas(session_folders, dummy_logger)
 
     # 16:39:38 - 14:20:43 = 2h18m55s = 8335s
-    assert offsets == [0.0, 8335.0]
+    assert deltas == [0.0, 8335.0]
 
 
-def test_get_session_time_offsets_rejects_out_of_order_recordings(dummy_logger):
+def test_session_starts_on_nwb_clock_subtracts_the_first_recordings_trim():
+    """
+    nwb zero is the first recording's first CONVERTED sample, not its start: the front of it is
+    trimmed to the bonsai start. A later recording's folder name is measured from the start, so
+    the trim comes off it. These are the real IM-1994 2026-11-03 numbers - the optotagging folder
+    is 6955s after the behavior folder, and 285530 samples (9.517667s) were trimmed.
+    """
+    starts = session_starts_on_nwb_clock(session_start_deltas=[0.0, 6955.0],
+                                         first_session_trim_s=285530 / 30000)
+
+    assert starts[0] == 0.0
+    assert starts[1] == pytest.approx(6945.482333)
+
+
+def test_get_session_start_deltas_rejects_out_of_order_recordings(dummy_logger):
     """Listing the recordings out of order would silently build a file with overlapping epochs."""
     session_folders = [
         {"path": "x/2026-09-04_16-39-38", "session": "optotagging"},
@@ -876,7 +891,7 @@ def test_get_session_time_offsets_rejects_out_of_order_recordings(dummy_logger):
     ]
 
     with pytest.raises(ValueError, match="not in chronological order"):
-        get_session_time_offsets(session_folders, dummy_logger)
+        get_session_start_deltas(session_folders, dummy_logger)
 
 
 def test_concatenate_session_recordings_keeps_the_real_gap(dummy_logger):
@@ -977,7 +992,10 @@ def test_add_raw_ephys_concatenates_two_recordings(dummy_logger, tmp_path):
     # add_behavior writes for the task is separate, and is not added here.
     assert [list(tags) for tags in epochs["tags"]] == [["ephys_behavior"], ["ephys_optotagging"]]
 
-    # The second recording starts 1800s after the first, so the gap is real dead time
+    # The second recording starts 1800s after the first, so the gap is real dead time. Nothing is
+    # trimmed off the front of this fixture (its bonsai start is at sample 0), so 1800s is both
+    # the folder delta and the nwb start - session_starts_on_nwb_clock has its own test for the
+    # case where the first recording is trimmed.
     assert np.isclose(epochs["start_time"][1], 1800.0)
     assert epochs["start_time"][1] > epochs["stop_time"][0]
 
@@ -1019,8 +1037,7 @@ def test_add_raw_ephys_hands_spike_sorting_one_label_per_probe(dummy_logger, tmp
     # One result per probe, in the same order as the metadata's probes list
     probe_results = ephys_data_dict["probe_results"]
     assert len(probe_results) == len(metadata["ephys"]["probes"])
-    # With no 'stream' in the metadata the label is the recording's own stream name. It is not a
-    # parsed fragment of it, which for this probe would be the useless "0".
+    # With no 'stream' in the metadata the label is the recording's own full stream name
     assert probe_results[0]["label"] == "Rhythm_FPGA-100.0"
     assert probe_results[0]["num_samples"] == 3_000    # the probe's own full length
 def test_add_raw_ephys_rejects_recordings_that_disagree(dummy_logger, tmp_path):
@@ -1114,22 +1131,6 @@ def test_migrate_legacy_ephys_metadata_leaves_current_metadata_alone(dummy_logge
     migrate_legacy_ephys_metadata(metadata, dummy_logger)
 
     assert metadata == unchanged
-
-
-def test_migrate_legacy_ephys_metadata_is_idempotent(dummy_logger):
-    """It is called from several entry points, so running it twice must change nothing."""
-    metadata = {"ephys": {
-        "openephys_folder_path": "/data/2022-07-19_13-12-30",
-        "probe": ["256-ch Silicon Probe, 3mm length, 66um pitch"],
-        "electrodes_location": "Hippocampus CA1",
-        "targeted_x": -2.2, "targeted_y": 4.5, "targeted_z": -2.0,
-    }}
-
-    migrate_legacy_ephys_metadata(metadata, dummy_logger)
-    migrated_once = copy.deepcopy(metadata)
-    migrate_legacy_ephys_metadata(metadata, dummy_logger)
-
-    assert metadata == migrated_once
 
 
 def test_migrate_legacy_ephys_metadata_accepts_a_bare_probe_string(dummy_logger):

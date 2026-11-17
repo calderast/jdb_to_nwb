@@ -7,6 +7,7 @@ from pynwb import NWBFile
 from .mdasortinginterface import MdaSortingInterface
 from .utils import log_and_print
 from .timestamps_alignment import align_via_interpolation
+from .convert_processed_ephys import concat_samples_to_nwb_times, match_probe_key
 
 
 def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
@@ -103,7 +104,75 @@ def align_spike_times(spike_times_s: np.ndarray, metadata: dict, logger) -> np.n
     return spike_times_s
 
 
-def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: dict, logger) -> list:
+def check_spikes_within_session_epochs(spike_times_s, spike_sessions, sample_mapping: dict,
+                                      probe_label: str, logger) -> None:
+    """
+    Check mapped spike times land inside the epoch of the recording they came from.
+
+    This is the spike equivalent of the laser-pulse agreement check: it tests the mapping against
+    something known independently, namely where the conversion actually placed each recording.
+
+    A spike can sit a little outside its epoch, because a probe's own recording is longer than
+    what was written for it - samples before the bonsai start are trimmed off the front, and
+    samples past the shortest probe are trimmed off the end. Anything further out than those
+    trims explain means the mapping is wrong. That raises instead of warning, because wrong spike
+    times look just like real ones once they are in the nwb.
+    """
+    epochs_by_session = {epoch["session"]: epoch for epoch in sample_mapping["session_epochs"]}
+    streams = sample_mapping["session_boundaries"]["streams"]
+    probe_stream = streams[match_probe_key(streams, probe_label)]
+    sampling_rate = float(probe_stream["fs"])
+
+    for session_entry in probe_stream["sessions"]:
+        session_label = session_entry["session_id"]
+        epoch = epochs_by_session.get(session_label)
+        if epoch is None:
+            continue
+        in_session = spike_sessions == session_label
+        if not in_session.any():
+            continue
+        session_spikes = spike_times_s[in_session]
+
+        # Each bound gets its own trim. A spike can sit earlier than the epoch by the front
+        # trim (the bonsai trim on the first session, plus whatever aligned this probe to the
+        # others) and later by the end trim (whatever ran past the written length).
+        own_duration = int(session_entry["n_samples"]) / sampling_rate
+        epoch_duration = epoch["stop_time"] - epoch["start_time"]
+        front_trim_s = max(0.0, sample_mapping["session_hardware_starts"][session_label]
+                           - sample_mapping["probe_start_times"][probe_label][session_label])
+        end_trim_s = max(0.0, own_duration - front_trim_s - epoch_duration)
+        one_sample = 1 / sampling_rate
+        earliest_allowed = epoch["start_time"] - front_trim_s - one_sample
+        latest_allowed = epoch["stop_time"] + end_trim_s + one_sample
+
+        outside_epoch = ((session_spikes < epoch["start_time"])
+                         | (session_spikes > epoch["stop_time"])).sum()
+        too_far = (session_spikes < earliest_allowed) | (session_spikes > latest_allowed)
+        logger.info(
+            f"'{probe_label}' session '{session_label}': {len(session_spikes)} spikes, "
+            f"{outside_epoch} outside the epoch ({epoch['start_time']:.6f}s to "
+            f"{epoch['stop_time']:.6f}s). Expected, from this probe's trims: up to "
+            f"{round(front_trim_s * sampling_rate)} samples before it (trimmed off the front) and "
+            f"{round(end_trim_s * sampling_rate)} after it (trimmed off the end)."
+        )
+        if too_far.any():
+            worst_s = max(earliest_allowed - session_spikes.min(),
+                          session_spikes.max() - latest_allowed)
+            logger.error(f"{int(too_far.sum())} spikes from '{probe_label}' session "
+                         f"'{session_label}' are outside its epoch by more than the trims explain.")
+            raise ValueError(
+                f"{int(too_far.sum())} of {len(session_spikes)} spikes from '{probe_label}' session "
+                f"'{session_label}' fall outside that session's epoch "
+                f"({epoch['start_time']:.6f}s to {epoch['stop_time']:.6f}s) by more than the "
+                f"trimmed samples could explain (worst is {worst_s:.3f}s past the allowed range, "
+                f"{round(worst_s * sampling_rate)} samples). Either the spike sample indices are "
+                "not on the concatenated axis this mapping assumes, or the session start times and "
+                "the epochs disagree about where this recording sits on the nwb clock."
+            )
+
+
+def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: dict, logger,
+                                 probe_label: str = None) -> list:
     """
     Take a sorter's spike trains and return them on the NWB clock, grouped one array per unit.
 
@@ -119,31 +188,67 @@ def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: d
     Shared by the MountainSort and Kilosort paths so both sorters are aligned identically.
     Returns a list of numpy arrays, one per unit in sorting.unit_ids order (each still time-ordered).
     """
-    # STEP 1: shift so bonsai start is time 0
-    # bonsai_start_time (seconds after ephys start that bonsai started) comes from add_raw_ephys, which
-    # sets it to time 0 for the raw ephys. If there was no raw ephys this session it is None, so we can't
-    # shift - warn and leave spike times relative to the raw recording start (bonsai_start_time = 0).
-    # But that should never really happen (if we have spikes we should also have raw ephys). 
-    bonsai_start_time = metadata.get("ephys_bonsai_start_time")
-    if bonsai_start_time is None:
-        logger.warning("No 'ephys_bonsai_start_time' (no raw ephys this session??): leaving spike times "
-                      "relative to the raw recording start, NOT shifted to bonsai start.")
-        bonsai_start_time = 0.0
-
     # to_spike_vector() returns every spike as ('sample_index', 'unit_index'), sorted by time
     spike_vector = sorting.to_spike_vector()
+    all_unit_index = spike_vector["unit_index"]
+    sample_index = spike_vector["sample_index"]
     logger.debug(f"Aligning: {len(spike_vector)} spikes | raw sample_index range "
-                 f"[{int(spike_vector['sample_index'].min())}, {int(spike_vector['sample_index'].max())}] "
-                 f"| bonsai shift = -{bonsai_start_time}s @ {sampling_frequency} Hz")
-    # Convert all spikes to seconds and apply the shift so bonsai start is time 0
-    all_spike_times_s = spike_vector["sample_index"] / sampling_frequency - bonsai_start_time
+                 f"[{int(sample_index.min())}, {int(sample_index.max())}] @ {sampling_frequency} Hz")
+
+    # STEP 1: sample indices -> seconds on the nwb clock
+    sample_mapping = metadata.get("ephys_sample_mapping")
+    if sample_mapping and probe_label:
+        # The traces came from the preprocessed files, so a spike's sample index is on this probe's
+        # OWN concatenated axis: one axis spanning every recording, trimmed differently per probe.
+        # Each spike is mapped through its own session's recorded start times, which carries the
+        # gap between recordings and this probe's trims. This is the mapping the laser pulses go
+        # through, so spikes and pulses stay in sync. See concat_samples_to_nwb_times.
+        logger.info(f"Mapping '{probe_label}' spike sample indices onto the nwb clock per session "
+                    "(preprocessed traces), the same way the laser pulses are mapped.")
+        all_spike_times_s, spike_sessions = concat_samples_to_nwb_times(
+            probe_label=probe_label,
+            concat_samples=sample_index,
+            session_boundaries=sample_mapping["session_boundaries"],
+            probe_start_times=sample_mapping["probe_start_times"],
+            session_hardware_starts=sample_mapping["session_hardware_starts"],
+            session_nwb_starts=sample_mapping["session_nwb_starts"],
+        )
+        # A spike in a recording this nwb does not contain has no place on the nwb clock, so we
+        # drop it. This happens when the preprocessed directory holds more recordings than the
+        # metadata lists: the sorting covers all of them, and the sample-count check above passes
+        # because it compares the analyzer against the whole preprocessed file.
+        unmapped = np.isnan(all_spike_times_s)
+        if unmapped.any():
+            logger.warning(f"Dropped {int(unmapped.sum())} of {len(all_spike_times_s)} '{probe_label}' "
+                           "spikes: they fall in a recording this conversion did not write. The "
+                           "sorting covers every recording in the preprocessed directory, so list "
+                           "them all in 'openephys_folder_paths' to keep these spikes.")
+            all_spike_times_s = all_spike_times_s[~unmapped]
+            spike_sessions = spike_sessions[~unmapped]
+            all_unit_index = all_unit_index[~unmapped]
+        check_spikes_within_session_epochs(all_spike_times_s, spike_sessions, sample_mapping,
+                                           probe_label, logger)
+    else:
+        # The traces came from the raw files: one recording, so the bonsai start is the only shift.
+        # bonsai_start_time (seconds after ephys start that bonsai started) comes from
+        # add_raw_ephys, which sets it to time 0 for the raw ephys. If there was no raw ephys this
+        # session it is None, so we can't shift - warn and leave spike times relative to the raw
+        # recording start (bonsai_start_time = 0). But that should never really happen (if we have
+        # spikes we should also have raw ephys).
+        bonsai_start_time = metadata.get("ephys_bonsai_start_time")
+        if bonsai_start_time is None:
+            logger.warning("No 'ephys_bonsai_start_time' (no raw ephys this session??): leaving spike times "
+                          "relative to the raw recording start, NOT shifted to bonsai start.")
+            bonsai_start_time = 0.0
+        logger.debug(f"Bonsai shift = -{bonsai_start_time}s")
+        # Spikes before the bonsai start keep their negative times - they were really recorded
+        all_spike_times_s = sample_index / sampling_frequency - bonsai_start_time
 
     # STEP 2: ground truth alignment to account for drift between clocks (applied to the whole array at once)
     all_spike_times_s = align_spike_times(all_spike_times_s, metadata, logger)
 
     # Group the flat, aligned spike-time array back into one train per unit. Sorting by unit index with a
     # STABLE sort preserves each unit's time ordering; searchsorted then gives each unit's slice boundaries.
-    all_unit_index = spike_vector["unit_index"]
     num_units = len(sorting.unit_ids)
     order = np.argsort(all_unit_index, kind="stable")
     sorted_unit_index = all_unit_index[order]
@@ -298,8 +403,8 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
     from spikeinterface.core import get_template_extremum_channel
 
     # The label and recording length come from the raw ephys conversion, matched by this probe's
-    # position in the metadata 'probes' list. They are not re-derived from the metadata here,
-    # because a probe may be named by any of the forms its Open Ephys stream goes by.
+    # position in the metadata 'probes' list, since a probe may be named by any of the forms its
+    # Open Ephys stream goes by.
     probe_results = (metadata.get("ephys_probe_results") or [])
     if probe_index < len(probe_results):
         probe_label = probe_results[probe_index]["label"]
@@ -357,7 +462,8 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
 
     # Align spike times for each unit to the nwb's ground truth clock
     # (make bonsai start time 0 and align to photometry clock if photometry exists)
-    aligned_spike_trains = aligned_spike_trains_by_unit(sorting, fs, metadata, logger)
+    aligned_spike_trains = aligned_spike_trains_by_unit(sorting, fs, metadata, logger,
+                                                       probe_label=probe_label)
 
     # Spike-train stats after alignment
     spike_counts = [len(train) for train in aligned_spike_trains]

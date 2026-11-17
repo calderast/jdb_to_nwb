@@ -166,6 +166,9 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # metadata. Spike sorting uses it to label each probe's units and to verify the sorting was
     # done on that probe's full recording.
     metadata["ephys_probe_results"] = ephys_data_dict.get("probe_results")
+    # On the preprocessed path, how to put a spike's sample index (on its probe's own concatenated
+    # axis) onto the nwb clock, per session. None on the raw path, where the bonsai shift is enough.
+    metadata["ephys_sample_mapping"] = ephys_data_dict.get("sample_mapping")
 
     # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)
