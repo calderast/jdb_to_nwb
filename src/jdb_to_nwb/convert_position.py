@@ -133,8 +133,8 @@ def calculate_velocity_acceleration(x, y, fps, pixels_per_cm):
     Calculate velocity and acceleration based on the camera fps and pixels_per_cm
     """
     # Convert pixels to cm
-    x_cm = x * pixels_per_cm
-    y_cm = y * pixels_per_cm
+    x_cm = x / pixels_per_cm
+    y_cm = y / pixels_per_cm
 
     # Calculate velocity
     velocity_x = np.gradient(x_cm) * fps

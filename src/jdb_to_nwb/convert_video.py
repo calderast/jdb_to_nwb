@@ -11,7 +11,9 @@ from pynwb.image import ImageSeries
 from pynwb.behavior import BehavioralEvents
 from ndx_franklab_novela import CameraDevice
 
-from .utils import log_and_print
+from hexmaze import get_pixels_per_cm
+
+from .utils import log_and_print, VALID_MAZES
 from hdmf.common import DynamicTable
 from .timestamps_alignment import align_via_interpolation, handle_timestamps_reset
 from .plotting.plot_combined import plot_maze_on_video_frame
@@ -41,6 +43,51 @@ def assign_pixels_per_cm(session_date):
         pixels_per_cm = 2.3
     else:
         pixels_per_cm = 2.688
+    return pixels_per_cm
+
+
+def pixels_per_cm_from_centroids(metadata: dict, logger):
+    """
+    Calculate pixels_per_cm for this session from its own hex centroids.
+
+    Needs both the 'maze' field, which says which maze's real-world measurements to scale against,
+    and a hex centroids file. Returns None if either is missing or the file cannot be used, so the
+    caller can fall back to the date-based guess.
+
+    This is better than that guess because it measures the session's own video: it picks up a camera
+    that was moved, raised, or zoomed, which a date cannot.
+    """
+    maze = metadata.get("maze")
+    centroids_file = metadata.get("video", {}).get("hex_centroids_file_path")
+    if maze is None or centroids_file is None:
+        return None
+
+    if maze not in VALID_MAZES:
+        logger.error(f"Invalid 'maze' value {maze!r} in metadata.")
+        raise ValueError(f"metadata field 'maze' must be one of {list(VALID_MAZES)}, got {maze!r}.")
+
+    try:
+        centroids_df = pd.read_csv(centroids_file)
+    except FileNotFoundError:
+        logger.warning(f"The hex centroids file '{centroids_file}' was not found, so pixels_per_cm "
+                       "could not be calculated from it.")
+        return None
+
+    if not {"hex", "x", "y"}.issubset(centroids_df.columns):
+        logger.warning(f"The hex centroids file '{centroids_file}' has columns "
+                       f"{set(centroids_df.columns)}, not the expected 'hex', 'x', 'y', so "
+                       "pixels_per_cm could not be calculated from it.")
+        return None
+
+    centroids = {int(row.hex): (float(row.x), float(row.y)) for row in centroids_df.itertuples()}
+
+    # Snap to the ideal hex grid first. Our centroids are clicked by hand, so they never sit on a
+    # perfect grid: snapping fits one uniform scale across all 49 hexes instead of averaging the
+    # clicking error. It does also discard any real camera warp, but a single conversion factor
+    # cannot represent that anyway.
+    pixels_per_cm = get_pixels_per_cm(centroids, maze=maze, snap_centroids=True)
+    logger.info(f"Calculated pixels_per_cm={pixels_per_cm:.4f} from this session's {len(centroids)} "
+                f"hex centroids, scaled against the known measurements of the {maze}.")
     return pixels_per_cm
 
 
@@ -212,15 +259,18 @@ def add_video(nwbfile: NWBFile, metadata: dict, output_video_path, logger, fig_d
     # (We assign it directly to metadata instead of metadata["video"] so 
     # the omission of the video key can still signal if we don't have video data)
 
-    # If pixels_per_cm exists in metadata, use that value
-    if "video" in metadata and "pixels_per_cm" in metadata["video"]:
-        pixels_per_cm = metadata["video"]["pixels_per_cm"]
-        logger.info(f"Assigning video pixels_per_cm={pixels_per_cm} from metadata.")
-    # Otherwise, assign it based on the date of the experiment
+    # Calculate it from this session's own hex centroids, which needs the 'maze' field
+    if (calculated := pixels_per_cm_from_centroids(metadata, logger)) is not None:
+        pixels_per_cm = calculated
+    # Otherwise fall back to guessing from the date of the experiment. This cannot tell which maze
+    # was used or whether the camera moved, so it is only right for sessions it was calibrated on.
     else:
         pixels_per_cm = assign_pixels_per_cm(metadata["datetime"])
-        logger.info("No 'pixels_per_cm' value found in video metadata.")
-        logger.info(f"Automatically assigned video pixels_per_cm={pixels_per_cm} based on date of experiment.")
+        log_and_print(logger,
+                      f"Guessed video pixels_per_cm={pixels_per_cm} from the date of the experiment. "
+                      "To calculate it from this session's own video instead, add a 'maze' field "
+                      f"({' or '.join(VALID_MAZES)}) and a 'hex_centroids_file_path'.",
+                      level="warning")
     # Add it to metadata so we can use it for position conversion if needed
     metadata["pixels_per_cm"] = pixels_per_cm
 

@@ -1,9 +1,11 @@
+import pytest
+import numpy as np
 from datetime import datetime
 from dateutil import tz
 from pynwb import NWBFile
 from pathlib import Path
 
-from jdb_to_nwb.convert_position import add_position
+from jdb_to_nwb.convert_position import add_position, calculate_velocity_acceleration
 
 
 def test_add_dlc_one_bodypart(dummy_logger):
@@ -169,3 +171,22 @@ def test_add_position_with_incomplete_metadata(capsys, dummy_logger):
     
     # Check that the correct message was printed to stdout
     assert "Video subfield 'video_timestamps_file_path' not found in metadata." in captured.out
+
+def test_velocity_acceleration():
+    """
+    Velocity and acceleration come back in cm/s and cm/s^2, not pixels.
+
+    pixels_per_cm is pixels PER cm, so pixel distances are divided by it to get cm.
+    """
+    pixels_per_cm, fps, pixels_per_frame = 2.688, 15, 10
+    # A rat moving in a straight line at a constant speed
+    x = np.arange(0, 100, pixels_per_frame, dtype=float)
+    y = np.zeros_like(x)
+
+    velocity, acceleration = calculate_velocity_acceleration(x, y, fps=fps, pixels_per_cm=pixels_per_cm)
+
+    expected_cm_per_s = pixels_per_frame / pixels_per_cm * fps
+    assert velocity == pytest.approx(expected_cm_per_s)
+    assert acceleration == pytest.approx(0, abs=1e-9)  # constant speed
+
+

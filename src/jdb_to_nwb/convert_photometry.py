@@ -1336,6 +1336,36 @@ def write_photometry_to_nwb(nwbfile, bundle, processing_results, logger):
 ############################ Add metadata to nwb ############################
 
 
+def apply_maze_device_defaults(metadata: dict, devices: dict, logger) -> None:
+    """
+    Fill in the excitation sources and photodetector from the 'maze' field, if they are not given.
+
+    The two maze rooms have fixed photometry hardware (Thorlabs LEDs in the old room, Doric in the
+    new one), so stating the maze is enough to know which devices were used. The mapping lives in
+    resources/photometry/photometry_devices.yaml beside the devices themselves.
+
+    Anything already spelled out in the metadata is left alone, so a session that used a
+    non-standard setup can still say so and is not overwritten here.
+    """
+    maze = metadata.get("maze")
+    if maze is None:
+        return
+
+    defaults = (devices.get("maze_defaults") or {}).get(maze)
+    if defaults is None:
+        logger.warning(f"No photometry device defaults for maze {maze!r} in {DEVICES_PATH.name}, so "
+                       "the excitation sources and photodetector must be given in the metadata.")
+        return
+
+    for field in ("excitation_sources", "photodetector"):
+        if field in metadata["photometry"]:
+            logger.info(f"Using the '{field}' given in the metadata rather than the {maze} default.")
+        else:
+            metadata["photometry"][field] = defaults[field]
+            logger.info(f"No '{field}' in the photometry metadata, so using the {maze} default: "
+                        f"{defaults[field]}")
+
+
 def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
     """Add photometry metadata to the NWB file.
 
@@ -1352,6 +1382,8 @@ def add_photometry_metadata(nwbfile: NWBFile, metadata: dict, logger):
 
     with open(VIRUSES_PATH, "r") as f:
         viruses = yaml.safe_load(f)
+
+    apply_maze_device_defaults(metadata, devices, logger)
 
     # Add excitation sources to the nwb
     added_excitation_sources = dict()

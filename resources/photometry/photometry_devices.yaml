@@ -61,3 +61,22 @@ photodetectors:
     detector_type: Silicon photodiode
     detected_wavelength_in_nm: 960.0 # TODO modify extension to allow range (320-1050 nm) currently peak wavelength
     description: https://neuro.doriclenses.com/products/fmc7?productoption%5BPort%20Configuration%5D=Built-in%20LED%20and%20DETECTOR
+
+# Which of the devices above each maze room uses, so we can just list `maze: old_maze` or `maze: new_maze`.
+# Anything listed explicitly in the photometry metadata wins over these defaults, so a session that used a 
+# non-standard setup can still say so (so far we never do this though).
+# Listing all of a room's excitation sources is fine: Which excitation sources get a fiber photometry table row is
+# decided per indicator by resources/photometry/photometry_mappings.yaml, so an LED that was not
+# used for the indicators in a given session is simply not referenced.
+maze_defaults:
+  old_maze:
+    excitation_sources:
+      - Thorlabs Purple LED
+      - Thorlabs Blue LED
+    photodetector: Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)
+  new_maze:
+    excitation_sources:
+      - Doric Purple LED
+      - Doric Blue LED
+      - Doric Green LED
+    photodetector: Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)

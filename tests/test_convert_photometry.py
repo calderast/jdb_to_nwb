@@ -19,6 +19,7 @@ from ndx_fiber_photometry import (
 from jdb_to_nwb.convert_photometry import (
     add_photometry,
     add_photometry_metadata,
+    apply_maze_device_defaults,
     load_labview_raw,
     load_labview_mat,
     load_pyphotometry,
@@ -43,11 +44,9 @@ def add_dummy_2_signal_dlight_metadata(metadata):
     Add values to the metadata dictionary so that the tests can run.
     Values assume recording 2 signals (dLight at 470nm and 405nm) in the old maze room (Thorlabs LEDs)
     """
-    metadata["photometry"]["excitation_sources"] = [
-        "Thorlabs Blue LED",
-        "Thorlabs Purple LED",
-    ]
-    metadata["photometry"]["photodetector"] = "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)"
+    # Setting 'maze' = 'old_maze' automatically sets the excitation sources 
+    # and photodetector for the old maze room (Thorlabs LEDs)
+    metadata["maze"] = "old_maze"
     # Bilateral fibers in NAcc, recording from right hemisphere
     metadata["photometry"]["optic_fiber_implant_sites"] = [
         {
@@ -94,12 +93,9 @@ def add_dummy_3_signal_gach_rda_metadata(metadata):
     Add values to the metadata dictionary so that the tests can run.
     Values assume recording 3 signals (gACh4h at 470nm and 405nm, rDA3m at 565nm) in the new maze room (Doric LEDs)
     """
-    metadata["photometry"]["excitation_sources"] = [
-        "Doric Purple LED",
-        "Doric Blue LED",
-        "Doric Green LED",
-    ]
-    metadata["photometry"]["photodetector"] = "Doric ilFMC7-G2 (Integrated LED Fluorescence Mini Cube 5 ports Gen.2)"
+    # Setting 'maze' = 'new_maze' automatically sets the excitation sources 
+    # and photodetector for the new maze room (Doric LEDs)
+    metadata["maze"] = "new_maze"
     # Bilateral fibers in NAcc, recording from left hemisphere
     metadata["photometry"]["optic_fiber_implant_sites"] = [
         {
@@ -1302,3 +1298,105 @@ def test_process_single_signal_gach_ratiometric(ppd_gach_rda_ref, dummy_logger):
         result["normalized"], ppd_gach_rda_ref["ratio_zscored"], atol=1e-6,
         err_msg="Z-scored ratio mismatch",
     )
+
+
+############################ Photometry devices from the maze ############################
+
+
+def load_photometry_devices():
+    """The real device list, so these tests fail if a device is renamed out from under the defaults."""
+    import yaml
+    from jdb_to_nwb.convert_photometry import DEVICES_PATH
+    with open(DEVICES_PATH) as devices_file:
+        return yaml.safe_load(devices_file)
+
+
+def test_devices_named_in_the_metadata_are_not_overwritten(dummy_logger):
+    """
+    A metadata file that already lists its devices is not messed up when it gains a 'maze' field.
+
+    Check that the Doric LEDs listed here aren't overwritten by the maze's default. 
+    We never really use a non-standard setup, but this allows a user to e.g. only specify 
+    2 out of the 3 LEDs from a room if they were only using those 2. 
+    (NOTE specifying all 3 by using the maze defaults would be fine though. Only the ones that
+    match wavelengths of indicators used are added to the photometry table anyway.)
+    """
+    metadata = {"maze": "new_maze",
+                "photometry": {"excitation_sources": ["Doric Blue LED", "Doric Purple LED"]}}
+
+    apply_maze_device_defaults(metadata, load_photometry_devices(), dummy_logger)
+
+    assert metadata["photometry"]["excitation_sources"] == ["Doric Blue LED", "Doric Purple LED"]
+    # the field that was NOT given is still filled in
+    assert metadata["photometry"]["photodetector"].startswith("Doric ilFMC7-G2")
+
+
+def test_every_device_in_the_maze_defaults_actually_exists():
+    """
+    Renaming a device in photometry_devices.yaml silently breaks the maze_defaults in that file.
+
+    maze_defaults sits at the bottom of that file and names each device as a plain string. Yaml
+    does not link those strings to the device definitions higher up, so renaming a device there
+    leaves maze_defaults pointing at a name that no longer exists. The conversion raises on an
+    unknown device name, so without this test it would only surface when somebody converted a
+    photometry session for that maze.
+    """
+    devices = load_photometry_devices()
+    known_sources = {source["name"] for source in devices["excitation_sources"]}
+    known_detectors = {detector["name"] for detector in devices["photodetectors"]}
+
+    for maze, defaults in devices["maze_defaults"].items():
+        assert set(defaults["excitation_sources"]).issubset(known_sources), maze
+        assert defaults["photodetector"] in known_detectors, maze
+
+
+def test_metadata_that_names_no_maze_still_converts(dummy_logger):
+    """
+    Metadata written before 'maze' existed lists its photometry devices explicitly
+    instead of naming 'maze'. Test that these files still work.
+
+    Both dummy helpers above now set 'maze' instead of listing hardware, and the example metadata
+    files have all moved to it too, so this is the only thing left covering the old shape.
+    """
+    test_data_dir = Path("tests/test_data/downloaded/IM-1478/07252022")
+    metadata = {
+        # no "maze" key at all
+        "photometry": {
+            "signals_mat_file_path": test_data_dir / "signals.mat",
+            "excitation_sources": ["Thorlabs Blue LED", "Thorlabs Purple LED"],
+            "photodetector": "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)",
+            "optic_fiber_implant_sites": [
+                {
+                    "optic_fiber": "Doric 0.66mm Flat 40mm Optic Fiber",
+                    "targeted_location": "NAcc",
+                    "ap_in_mm": 1.7,
+                    "ml_in_mm": 1.7,
+                    "dv_in_mm": -6.0,
+                    "recording": True,
+                },
+            ],
+            "virus_injections": [
+                {
+                    "virus_name": "dLight1.3b",
+                    "targeted_location": "NAcc",
+                    "ap_in_mm": 1.7,
+                    "ml_in_mm": 1.7,
+                    "dv_in_mm": -6.2,
+                    "volume_in_uL": 1.0,
+                    "titer_in_vg_per_mL": 2e12,
+                },
+            ],
+        },
+    }
+
+    nwbfile = NWBFile(
+        session_description="Mock session",
+        session_start_time=datetime.now(tz.tzlocal()),
+        identifier="mock_session",
+    )
+    add_photometry_metadata(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    assert "Thorlabs Blue LED" in nwbfile.devices
+    assert "Thorlabs Purple LED" in nwbfile.devices
+    assert "Doric iFMC7-G2 (7 ports Fluorescence Mini Cube - Three Fluorophores)" in nwbfile.devices
+    assert len(nwbfile.get_lab_meta_data("fiber_photometry").fiber_photometry_table) == 2
