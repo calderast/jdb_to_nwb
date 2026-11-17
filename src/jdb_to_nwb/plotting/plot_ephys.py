@@ -25,7 +25,6 @@ _NPX_GRADIENT_COLORS = ["#6a1b9a", "#1565c0", "#0277bd", "#00838f",
                         "#2e7d32", "#558b2f", "#f57f17", "#e65100", "#b71c1c"]
 
 
-
 def _draw_traces(ax, t, data_slice, elec_sorted, scale):
     """Plot sorted traces onto ax and configure y-axis labels.
 
@@ -526,34 +525,44 @@ def _load_electrical_series_window(eseries, start_frame, end_frame):
 
 def _find_contiguous_channel_groups_npx(elec_df):
     """
-    Group recording channels by shank, then split each shank into runs that are contiguous in y.
+    Group recording channels by probe and shank, then split each shank into runs contiguous in y.
 
     Contiguous means the vertical gap between consecutive channels is <= 30 um (2 electrode rows),
     which covers same-row two-column, adjacent-row, and single-column zig-zag selections. A larger gap
     marks a true break in coverage (e.g. a different bank), so it starts a new run. This mirrors
     optonpx's find_contiguous_channel_groups.
 
+    Probes are grouped separately because bilateral probes are the same model: their shanks have
+    the SAME numbers and the same site positions, so grouping by shank alone would stack two
+    probes' traces on top of each other at identical y, in one figure, with nothing to tell them
+    apart.
+
     Parameters:
-        elec_df (pd.DataFrame): One row per data column, with columns 'data_col', 'shank', 'y_um'.
+        elec_df (pd.DataFrame): One row per data column, with columns 'data_col', 'probe',
+            'shank' and 'y_um'.
 
     Returns:
-        list[tuple[int, int, pd.DataFrame]]:
-            (shank, run_index_within_shank, run_df) tuples. Each run_df is sorted by y ascending.
+        list[tuple[str, int, int, pd.DataFrame]]:
+            (probe, shank, run_index_within_shank, run_df) tuples, each run_df sorted by y
+            ascending.
     """
     groups = []
-    for shank in sorted(elec_df["shank"].unique()):
-        shank_df = elec_df[elec_df["shank"] == shank].sort_values("y_um").reset_index(drop=True)
-        if len(shank_df) == 0:
-            continue
-        ys = shank_df["y_um"].values
-        run_start = 0
-        run_index = 0
-        for i in range(1, len(shank_df)):
-            if ys[i] - ys[i - 1] > _NPX_CONTIGUOUS_MAX_GAP_UM:
-                groups.append((int(shank), run_index, shank_df.iloc[run_start:i].reset_index(drop=True)))
-                run_index += 1
-                run_start = i
-        groups.append((int(shank), run_index, shank_df.iloc[run_start:].reset_index(drop=True)))
+    for probe in sorted(elec_df["probe"].unique()):
+        probe_df = elec_df[elec_df["probe"] == probe]
+        for shank in sorted(probe_df["shank"].unique()):
+            shank_df = probe_df[probe_df["shank"] == shank].sort_values("y_um").reset_index(drop=True)
+            if len(shank_df) == 0:
+                continue
+            ys = shank_df["y_um"].values
+            run_start = 0
+            run_index = 0
+            for i in range(1, len(shank_df)):
+                if ys[i] - ys[i - 1] > _NPX_CONTIGUOUS_MAX_GAP_UM:
+                    groups.append((probe, int(shank), run_index,
+                                   shank_df.iloc[run_start:i].reset_index(drop=True)))
+                    run_index += 1
+                    run_start = i
+            groups.append((probe, int(shank), run_index, shank_df.iloc[run_start:].reset_index(drop=True)))
     return groups
 
 
@@ -573,8 +582,8 @@ def plot_neuropixels_traces(nwbfile, start_time=100.0, duration=2.0, fig_dir=Non
         fig_dir (str): Optional directory to save figures. If None, figures are not saved.
 
     Returns:
-        list[tuple[plt.Figure, int, int]]:
-            (figure, shank, run) for each figure produced. Empty if data is unavailable.
+        list[tuple[plt.Figure, str, int, int]]:
+            (figure, probe, shank, run) for each figure produced. Empty if data is unavailable.
     """
     eseries = nwbfile.acquisition["ElectricalSeries"]
     timestamps = np.array(eseries.timestamps)
@@ -601,6 +610,10 @@ def plot_neuropixels_traces(nwbfile, start_time=100.0, duration=2.0, fig_dir=Non
     elec_df = elec_df.rename(columns={
         "probe_shank": "shank", "rel_y": "y_um", "intan_channel_number": "channel_num"
     })
+    # One figure per probe and shank. An nwb converted before the electrodes table carried a
+    # 'probe' column holds one probe, so everything in it belongs to the same (unnamed) probe.
+    if "probe" not in elec_df.columns:
+        elec_df["probe"] = ""
 
     # Map each channel number to a color along the purple->red gradient (colored by channel number)
     cmap = mcolors.LinearSegmentedColormap.from_list("wide_gradient", _NPX_GRADIENT_COLORS)
@@ -610,7 +623,9 @@ def plot_neuropixels_traces(nwbfile, start_time=100.0, duration=2.0, fig_dir=Non
     recording_name = getattr(nwbfile, "session_id", "") or ""
 
     figures = []
-    for shank, run, run_df in groups:
+    for probe, shank, run, run_df in groups:
+        probe_title = f"{probe}  " if probe else ""
+        probe_suffix = f"_{probe}" if probe else ""
         # Stack this run's traces, offset vertically, colored by channel number
         n_ch = len(run_df)
         fig, ax = plt.subplots(figsize=(14, min(max(3, n_ch * 0.15), 20)))
@@ -623,16 +638,16 @@ def plot_neuropixels_traces(nwbfile, start_time=100.0, duration=2.0, fig_dir=Non
         ax.set_xlim(t[0], t[-1])
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Channel")
-        ax.set_title(f"Shank {shank}  run {run}  ({n_ch} ch, "
+        ax.set_title(f"{probe_title}Shank {shank}  run {run}  ({n_ch} ch, "
                      f"y {int(run_df['y_um'].min())}–{int(run_df['y_um'].max())} µm)  [raw]")
         if recording_name:
             fig.suptitle(recording_name, fontsize=9, color="#555555", y=1.002)
         fig.tight_layout()
 
         if fig_dir:
-            save_path = os.path.join(fig_dir, f"neuropixels_traces_sh{shank}_run{run}_raw.png")
+            save_path = os.path.join(fig_dir, f"neuropixels_traces{probe_suffix}_sh{shank}_run{run}_raw.png")
             fig.savefig(save_path, dpi=200, bbox_inches="tight")
             plt.close(fig)
-        figures.append((fig, shank, run))
+        figures.append((fig, probe, shank, run))
 
     return figures

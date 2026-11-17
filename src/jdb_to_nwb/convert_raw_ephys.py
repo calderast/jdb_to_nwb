@@ -108,6 +108,7 @@ BERKE_LAB_PROBES = {
     },
 }
 
+
 class MicrovoltsSpikeInterfaceRecordingDataChunkIterator(SpikeInterfaceRecordingDataChunkIterator):
     def __init__(self, iterator: SpikeInterfaceRecordingDataChunkIterator, conversion_factor_uv):
         self.iterator = iterator
@@ -823,6 +824,8 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
                     f"{probe_config['electrodes_location']}, ML={probe_config['targeted_x']} "
                     f"AP={probe_config['targeted_y']} DV={probe_config['targeted_z']}")
     return probe_configs
+
+
 ### Functions for combining probes and concatenating recordings
 
 def resolve_probe_stream(folder_path: Path, logger, stream_name: str = None) -> str:

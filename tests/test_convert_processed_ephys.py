@@ -56,6 +56,7 @@ def _make_processed_fixture(tmp_path, probe_samples):
     ))
     return tmp_path
 
+
 def test_open_processed_probe_sessions_splits_at_the_boundary(dummy_logger, tmp_path):
     """
     Each session must come back as its own recording, cut at the right samples and carrying its own
@@ -86,6 +87,7 @@ def test_open_processed_probe_sessions_splits_at_the_boundary(dummy_logger, tmp_
     # Conversion factor comes from the raw oebin, since the binary file carries none
     np.testing.assert_allclose(sessions["behavior"].get_channel_gains()[0], 0.195)
 
+
 def test_open_processed_probe_sessions_rejects_wrong_file_length(dummy_logger, tmp_path):
     """
     If the .dat and session_boundaries.json disagree, every sample index taken from the boundaries
@@ -104,6 +106,7 @@ def test_open_processed_probe_sessions_rejects_wrong_file_length(dummy_logger, t
             session_start_times={},
             logger=dummy_logger,
         )
+
 
 def test_add_raw_ephys_writes_preprocessed_traces(dummy_logger, tmp_path):
     """
@@ -174,6 +177,7 @@ def test_add_raw_ephys_writes_preprocessed_traces(dummy_logger, tmp_path):
     # The timeline still comes from raw: one epoch for the recording
     assert len(nwbfile.epochs.to_dataframe()) == 1
 
+
 def test_verify_processed_matches_raw_accepts_a_phase_shift(dummy_logger, caplog):
     """
     Preprocessing is supposed to change the samples: the NP2.0 phase shift moves each channel by a
@@ -208,6 +212,7 @@ def test_verify_processed_matches_raw_accepts_a_phase_shift(dummy_logger, caplog
                                      num_samples=num_samples)
 
     assert not [record for record in caplog.records if record.levelno >= logging.WARNING]
+
 
 def test_verify_processed_matches_raw_catches_reordered_channels(dummy_logger, caplog):
     """

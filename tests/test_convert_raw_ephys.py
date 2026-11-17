@@ -318,7 +318,7 @@ def test_add_electrode_data_neuropixels(dummy_logger):
     ]
     assert list(electrodes["electrode_name"]) == expected_electrode_names
     # Columns that are constant across all electrodes for Neuropixels
-    assert not electrodes["bad_channel"].any()  # no impedance file, so no channels marked bad
+    # (bad_channel is not: it is checked against the bad_channels argument above)
     assert list(electrodes["filtering"]) == ["hw filtering"] * 384
     assert list(electrodes["location"]) == ["Hippocampus CA1"] * 384
     assert list(electrodes["ref_elect_id"]) == [-1] * 384
@@ -1038,6 +1038,8 @@ def test_add_raw_ephys_concatenates_two_recordings(dummy_logger, tmp_path):
 
     # Each probe's reported length covers every recording it was sorted across
     assert samples_per_recording > 0
+
+
 def test_add_raw_ephys_hands_spike_sorting_one_label_per_probe(dummy_logger, tmp_path):
     """
     The raw ephys conversion and the spike sorting must agree on what each probe is called, or the
@@ -1071,6 +1073,8 @@ def test_add_raw_ephys_hands_spike_sorting_one_label_per_probe(dummy_logger, tmp
     # With no 'stream' in the metadata the label is the recording's own full stream name
     assert probe_results[0]["label"] == "Rhythm_FPGA-100.0"
     assert probe_results[0]["num_samples"] == 3_000    # the probe's own full length
+
+
 def test_add_raw_ephys_rejects_recordings_that_disagree(dummy_logger, tmp_path):
     """
     One ElectricalSeries has one channel count, one sample rate and one conversion factor. If two

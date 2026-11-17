@@ -215,6 +215,7 @@ def open_processed_probe_sessions(
                 f"sessions {list(session_recordings)}")
     return session_recordings
 
+
 def get_processed_session_recordings(
     processed_ephys_path: Path,
     session_boundaries: dict,
@@ -311,6 +312,7 @@ def get_processed_session_recordings(
         session_timestamps.append(timestamps)
 
     return session_recordings, session_timestamps, num_samples_by_probe, sessions_by_probe
+
 
 def verify_processed_matches_raw(processed_recording, raw_recording, logger, label: str,
                                  num_samples: int = 30_000, min_correlation: float = 0.9) -> None:
@@ -425,6 +427,7 @@ def verify_processed_matches_raw(processed_recording, raw_recording, logger, lab
     else:
         log_and_print(logger, message + ". Every channel matches its own raw channel best.",
                       level="info")
+
 
 def concat_sample_nwb_time(
     probe_label: str,
