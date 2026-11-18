@@ -14,6 +14,7 @@ from pynwb import NWBFile
 
 from jdb_to_nwb.convert_raw_ephys import add_raw_ephys
 from jdb_to_nwb.convert_processed_ephys import (
+    get_processed_session_recordings,
     open_processed_probe_sessions,
     read_kilosort_bad_channels,
     read_session_boundaries,
@@ -86,6 +87,43 @@ def test_open_processed_probe_sessions_splits_at_the_boundary(dummy_logger, tmp_
     assert sessions["optotagging"].get_traces(start_frame=0, end_frame=1)[0][0] == 1000
     # Conversion factor comes from the raw oebin, since the binary file carries none
     np.testing.assert_allclose(sessions["behavior"].get_channel_gains()[0], 0.195)
+
+
+def test_get_processed_session_recordings_combines_two_probes(dummy_logger, tmp_path):
+    """
+    Two probes must combine into one recording per session on the preprocessed path.
+
+    The preprocessed traces are flat binaries opened with no probe geometry attached, so the site
+    offset that keeps two Neuropixels probes from landing on top of each other has nothing to move
+    - and asking a recording for a probe it does not have raises rather than returning None.
+    """
+    processed = _make_processed_fixture(tmp_path, {"probeA": (1000, 500), "probeB": (1003, 498)})
+    session_boundaries = read_session_boundaries(processed, dummy_logger)
+
+    session_recordings, session_timestamps, num_samples_by_probe, _sessions_by_probe = (
+        get_processed_session_recordings(
+            processed_ephys_path=processed,
+            session_boundaries=session_boundaries,
+            probe_streams_by_label={"ProbeA": "OneBox-100.ProbeA", "ProbeB": "OneBox-100.ProbeB"},
+            session_labels=["behavior", "optotagging"],
+            # The probes start a different amount apart in each recording, as the real ones do
+            probe_start_times={"ProbeA": {"behavior": 0.0, "optotagging": 500.0},
+                               "ProbeB": {"behavior": 0.001, "optotagging": 500.002}},
+            conversion_factor_uv=0.195,
+            samples_to_remove=0,
+            logger=dummy_logger,
+        ))
+
+    # One recording per session, holding both probes' channels
+    assert [recording.get_num_channels() for recording in session_recordings] == [8, 8]
+    # ProbeB starts 0.001s (30 samples at 30 kHz) later in 'behavior', so ProbeA loses its first
+    # 30 samples and the shorter probe then sets the common length. 0.002s (60 samples) in
+    # 'optotagging', where ProbeA is the shorter one afterwards
+    assert [recording.get_num_samples() for recording in session_recordings] == [970, 440]
+    assert [len(timestamps) for timestamps in session_timestamps] == [970, 440]
+    # Each probe's own full length across both sessions, which the spike sorting guard checks
+    # against the analyzer - not the trimmed length that went into the ElectricalSeries
+    assert num_samples_by_probe == {"ProbeA": 1500, "ProbeB": 1501}
 
 
 def test_open_processed_probe_sessions_rejects_wrong_file_length(dummy_logger, tmp_path):

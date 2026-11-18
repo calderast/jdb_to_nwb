@@ -225,7 +225,12 @@ def source_script_version(logger=None) -> str:
     The installed version comes from the package metadata, which is written when the package is
     installed. An editable install does not rewrite it, so on a working copy that has moved on
     since `pip install -e .` it names an old commit. `git describe` in the package directory says
-    what the code actually is right now, so it wins when this is a git checkout.
+    what the code actually is right now, so it wins when this is a git checkout OF THIS PROJECT.
+
+    That last part matters: an installed copy lives in site-packages, which may itself sit inside
+    some unrelated git repository, and `git describe` would then answer for THAT repository and
+    record a version this converter never had. So the repository is only believed when its top
+    level is this project, which is the case for the editable install this is meant to cover.
 
     Parameters:
         logger (Logger):
@@ -233,6 +238,10 @@ def source_script_version(logger=None) -> str:
     """
     package_dir = Path(__file__).resolve().parent
     try:
+        git_top_level = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=package_dir, capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
         described = subprocess.run(
             ["git", "describe", "--tags", "--dirty", "--always"],
             cwd=package_dir, capture_output=True, text=True, timeout=10, check=True,
@@ -241,6 +250,16 @@ def source_script_version(logger=None) -> str:
         if logger:
             logger.debug(f"Not a git checkout, or git is unavailable ({error}); using the "
                          f"installed version {__version__}.")
+        return __version__
+
+    # This file is <repo>/src/jdb_to_nwb/utils.py, so our own checkout's top level is two
+    # directories up. Any other answer is some repository we merely happen to be installed inside
+    project_root = package_dir.parent.parent
+    if Path(git_top_level).resolve() != project_root:
+        if logger:
+            logger.debug(f"{package_dir} is inside the git repository at {git_top_level}, which is "
+                         f"not this project ({project_root}); using the installed version "
+                         f"{__version__}.")
         return __version__
 
     # The installed version embeds the describe output when it was built from a checkout, so only

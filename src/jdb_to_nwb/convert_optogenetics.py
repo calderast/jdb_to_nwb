@@ -17,6 +17,7 @@ from pynwb import NWBFile
 from pynwb.epoch import TimeIntervals
 
 from .utils import log_and_print
+from .timestamps_alignment import align_via_interpolation
 from .convert_raw_ephys import probe_name_token
 from .convert_processed_ephys import (
     concat_sample_nwb_time,
@@ -159,6 +160,8 @@ def add_laser_events(
     session_hardware_starts: dict,
     session_nwb_starts: dict,
     logger,
+    metadata: dict = None,
+    ephys_visit_times=None,
 ) -> None:
     """
     Write the optotagging laser pulses to the nwb as a TimeIntervals table, on the nwb clock.
@@ -282,6 +285,36 @@ def add_laser_events(
             event["masked_on_probes"] = ",".join(
                 condition_info["masked_conditions"].get((laser, condition["condition"]), [])
             )
+
+    # The mapping above puts the pulses on the ephys clock. When photometry is the ground truth,
+    # the ElectricalSeries timestamps and the spike times are then interpolated onto the photometry
+    # clock, so the pulses have to make the same move. The same two visit-time arrays are used, so
+    # the pulses go through the same interpolation the traces did. This is the same STEP 2 the
+    # spike times get in align_spike_times, for the same reason.
+    if (metadata or {}).get("ground_truth_time_source") == "photometry":
+        ground_truth_visit_times = metadata.get("ground_truth_visit_times")
+        # Interpolation needs both sets of sync pulses. If either is missing or empty the pulses
+        # stay on the ephys clock, which is what the spike times do in the same situation
+        if ephys_visit_times is None or len(ephys_visit_times) == 0 or not ground_truth_visit_times:
+            logger.warning("Ground truth is photometry, but the ephys and/or photometry port-visit "
+                           "times needed to interpolate are missing or empty. Leaving laser event "
+                           "times on the ephys clock (NOT aligned to photometry).")
+        else:
+            log_and_print(logger, "Ground truth is photometry: interpolating laser event times "
+                          "onto the photometry clock using port visits.", level="info")
+            # Both edges of every pulse in one call, so a pulse's start and stop are interpolated
+            # by the same function and cannot cross
+            pulse_edges = [event[edge] for event in reference_events
+                           for edge in ("start_time", "stop_time")]
+            aligned_edges = align_via_interpolation(label="laser event",
+                                                   unaligned_timestamps=pulse_edges,
+                                                   unaligned_visit_times=ephys_visit_times,
+                                                   ground_truth_visit_times=ground_truth_visit_times,
+                                                   logger=logger)
+            for event, start_time, stop_time in zip(reference_events, aligned_edges[0::2],
+                                                    aligned_edges[1::2]):
+                event["start_time"] = float(start_time)
+                event["stop_time"] = float(stop_time)
 
     # One row per physical pulse, from the first probe
     laser_events_table = TimeIntervals(

@@ -190,6 +190,31 @@ def test_units_from_a_second_probe_must_write_the_same_columns(dummy_logger, tmp
                              [c for c in nwbfile.units.colnames if c != "spike_times"], dummy_logger)
 
 
+def test_spikes_from_several_raw_recordings_are_refused(dummy_logger, tmp_path):
+    """
+    Spike times taken straight from the raw recordings cannot span more than one of them.
+
+    A spike's sample index counts samples that were recorded; the dead time between two recordings
+    was not recorded, so shifting by the bonsai start alone places every spike after the first
+    recording early by the length of the gap. Nothing about the result looks wrong - the sorting
+    even passes the length check, because a probe's length is summed over the recordings it was
+    sorted across - so this has to be refused rather than written.
+    """
+    metadata, nwbfile = _kilosort_bombcell_fixture(tmp_path)
+    # What add_raw_ephys reports after joining two recordings on the RAW path: no sample mapping,
+    # which only the preprocessed path produces
+    metadata["ephys_num_recordings"] = 2
+    metadata["ephys_sample_mapping"] = None
+
+    with pytest.raises(ValueError, match="joins 2 Open Ephys recordings"):
+        add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # One recording is the case this path is for, and still converts
+    metadata["ephys_num_recordings"] = 1
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+    assert len(nwbfile.units) == 3
+
+
 def test_add_spikes_with_incomplete_metadata(dummy_logger, capsys):
     """
     Test that the add_spikes function responds appropriately to missing or incomplete metadata.

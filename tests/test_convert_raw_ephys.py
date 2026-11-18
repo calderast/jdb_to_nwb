@@ -22,6 +22,7 @@ from jdb_to_nwb.convert_raw_ephys import (
     resolve_probe_stream,
     get_probe_configs,
     get_session_folders,
+    match_channel_maps_to_probes,
     migrate_legacy_ephys_metadata,
     probe_name_token,
     get_session_start_deltas,
@@ -821,6 +822,96 @@ def test_get_probe_configs_requires_a_location_per_probe(dummy_logger):
 
     with pytest.raises(ValueError, match="is missing"):
         get_probe_configs(metadata, {"OneBox-100.ProbeA": "a.dat"}, dummy_logger)
+
+
+@pytest.mark.parametrize("stream_in_metadata", [
+    None,                                  # allowed when the recording holds one probe
+    "ProbeA",                              # as the metadata files we ship write it
+    "probeA",                              # as the preprocessing pipeline writes it
+    "OneBox-100.ProbeA",                   # the full Open Ephys stream name
+    "Record Node 101#OneBox-100.ProbeA",   # as SpikeInterface reports it
+])
+def test_match_channel_maps_to_probes_accepts_every_form_of_a_probe_name(dummy_logger,
+                                                                         stream_in_metadata):
+    """
+    Every form of a probe's name must find that probe's channel map.
+
+    settings.xml keys the channel maps by the NP_PROBE's stream name ("ProbeA"), while the label a
+    probe carries through the conversion is whatever the metadata called it - or the full stream
+    name, when the metadata leaves 'stream' out of a single-probe recording. Looking the channel
+    map up by that label meant only one of these spellings worked and the rest raised "No channel
+    map", although all of them are documented as allowed.
+    """
+    probe_entry = {"probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "NAcc",
+                   "targeted_x": 1.8, "targeted_y": 1.7, "targeted_z": -6.5}
+    if stream_in_metadata is not None:
+        probe_entry["stream"] = stream_in_metadata
+    metadata = {"ephys": {"probes": [probe_entry]}}
+    probe_configs = get_probe_configs(metadata, {"OneBox-100.ProbeA": "a.dat"}, dummy_logger)
+
+    channel_maps = match_channel_maps_to_probes(probe_configs=probe_configs,
+                                                channel_map={"ProbeA": "ProbeA channel map"},
+                                                logger=dummy_logger)
+
+    # Whatever the probe ended up labelled, it is pointed at the one channel map in settings.xml
+    assert channel_maps == {probe_configs[0]["label"]: "ProbeA"}
+
+
+def test_match_channel_maps_to_probes_gives_each_probe_its_own_map(dummy_logger):
+    """Two probes named in different forms must each get their OWN channel map, not each other's."""
+    metadata = {"ephys": {"probes": [
+        {"stream": "OneBox-100.ProbeB", "probe_type": "Neuropixels 2.0 (4-shank)",
+         "electrodes_location": "Right NAc", "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+        {"stream": "probeA", "probe_type": "Neuropixels 2.0 (4-shank)",
+         "electrodes_location": "Left NAc", "targeted_x": -1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+    probe_configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+    channel_maps = match_channel_maps_to_probes(
+        probe_configs=probe_configs,
+        channel_map={"ProbeA": "ProbeA channel map", "ProbeB": "ProbeB channel map"},
+        logger=dummy_logger,
+    )
+
+    # Keyed by the labels the metadata gave, each pointing at its own probe's map
+    assert channel_maps == {"OneBox-100.ProbeB": "ProbeB", "probeA": "ProbeA"}
+
+
+def test_match_channel_maps_to_probes_rejects_a_probe_with_no_channel_map(dummy_logger):
+    """
+    A probe whose NP_PROBE is missing from settings.xml has no channel map, and converting it
+    would describe its electrodes from another probe's geometry. The error names the stream.
+    """
+    metadata = {"ephys": {"probes": [
+        {"stream": "ProbeB", "probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "NAcc",
+         "targeted_x": 1.8, "targeted_y": 1.7, "targeted_z": -6.5},
+    ]}}
+    probe_configs = get_probe_configs(metadata, {"OneBox-100.ProbeB": "b.dat"}, dummy_logger)
+
+    with pytest.raises(ValueError, match="No channel map for probe stream"):
+        match_channel_maps_to_probes(probe_configs=probe_configs,
+                                     channel_map={"ProbeA": "ProbeA channel map"},
+                                     logger=dummy_logger)
+
+
+def test_get_probe_configs_rejects_two_probes_on_one_stream(dummy_logger):
+    """
+    Two entries resolving to the same stream describe one probe twice. Its channels would enter
+    the ElectricalSeries once but its electrodes twice, which only shows up much later as a
+    mismatch between the electrode count and the channel count.
+    """
+    metadata = {"ephys": {"probes": [
+        {"stream": "ProbeA", "probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "Left NAc",
+         "targeted_x": -1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+        # The same probe, spelled the other way: both name OneBox-100.ProbeA
+        {"stream": "OneBox-100.ProbeA", "probe_type": "Neuropixels 2.0 (4-shank)",
+         "electrodes_location": "Right NAc", "targeted_x": 1.9, "targeted_y": 1.7, "targeted_z": 7.3},
+    ]}}
+    probe_file_paths = {"OneBox-100.ProbeA": "a.dat", "OneBox-100.ProbeB": "b.dat"}
+
+    with pytest.raises(ValueError, match="resolves to the stream"):
+        get_probe_configs(metadata, probe_file_paths, dummy_logger)
 
 
 def test_get_probe_configs_requires_probes(dummy_logger):

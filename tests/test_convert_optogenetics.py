@@ -266,3 +266,78 @@ def test_add_laser_events_rejects_a_power_that_is_not_in_mw(dummy_logger, tmp_pa
 
     with pytest.raises(ValueError, match="is not in mW"):
         _add_events(tmp_path, dummy_logger)
+
+
+def test_laser_events_are_moved_onto_the_photometry_clock(dummy_logger, tmp_path):
+    """
+    When photometry is the ground truth the pulses must make the same move the traces make.
+
+    The ElectricalSeries timestamps and the spike times are interpolated from the ephys clock onto
+    the photometry clock, using the port visits both streams recorded. Leaving the laser pulses
+    behind would drift them away from the very traces they were recorded alongside, while the
+    table goes on saying it is on the series' clock.
+    """
+    fs = 30000.0
+    processed = _laser_fixture(tmp_path, fs=fs)
+    boundaries = json.loads((processed / "session_boundaries.json").read_text())
+    offset = PROBE_OFFSET_SAMPLES / fs
+
+    # Port visits as the two streams recorded them: photometry reads 2s later throughout, so the
+    # interpolation between them is a straight 2s shift and the expected times are exact
+    metadata = {
+        "ground_truth_time_source": "photometry",
+        "ground_truth_visit_times": [102.0, 202.0, 302.0],
+    }
+    ephys_visit_times = [100.0, 200.0, 300.0]
+
+    nwbfile = NWBFile(session_description="Mock session", identifier="mock_session",
+                      session_start_time=datetime.now(tz.tzlocal()))
+    add_laser_events(
+        nwbfile=nwbfile,
+        processed_ephys_path=processed,
+        session_boundaries=boundaries,
+        probe_start_times={"ProbeA": {"behavior": 0.0, "optotagging": 500.0},
+                           "ProbeB": {"behavior": -offset, "optotagging": 500.0 - offset}},
+        session_hardware_starts={"behavior": 0.0, "optotagging": 500.0},
+        session_nwb_starts={"behavior": 0.0, "optotagging": 452.0},
+        logger=dummy_logger,
+        metadata=metadata,
+        ephys_visit_times=ephys_visit_times,
+    )
+
+    laser_events = nwbfile.intervals["laser_events"].to_dataframe()
+    # The same two pulses as on the ephys clock (452.0 + 30/fs and 452.0 + 120/fs), each 2s later
+    assert laser_events["start_time"][0] == pytest.approx(454.0 + 30 / fs)
+    assert laser_events["start_time"][1] == pytest.approx(454.0 + 120 / fs)
+    # A pulse keeps its 10-sample length: both edges go through the same interpolation
+    assert laser_events["stop_time"][0] - laser_events["start_time"][0] == pytest.approx(10 / fs)
+
+
+def test_laser_events_stay_on_the_ephys_clock_without_photometry(dummy_logger, tmp_path):
+    """
+    With no photometry, ephys IS the ground truth and the pulses are already on its clock, so
+    nothing should move them. This is the case every optotagging session so far has been.
+    """
+    fs = 30000.0
+    processed = _laser_fixture(tmp_path, fs=fs)
+    boundaries = json.loads((processed / "session_boundaries.json").read_text())
+    offset = PROBE_OFFSET_SAMPLES / fs
+
+    nwbfile = NWBFile(session_description="Mock session", identifier="mock_session",
+                      session_start_time=datetime.now(tz.tzlocal()))
+    add_laser_events(
+        nwbfile=nwbfile,
+        processed_ephys_path=processed,
+        session_boundaries=boundaries,
+        probe_start_times={"ProbeA": {"behavior": 0.0, "optotagging": 500.0},
+                           "ProbeB": {"behavior": -offset, "optotagging": 500.0 - offset}},
+        session_hardware_starts={"behavior": 0.0, "optotagging": 500.0},
+        session_nwb_starts={"behavior": 0.0, "optotagging": 452.0},
+        logger=dummy_logger,
+        metadata={"ground_truth_time_source": "ephys",
+                  "ground_truth_visit_times": [100.0, 200.0, 300.0]},
+        ephys_visit_times=[100.0, 200.0, 300.0],
+    )
+
+    laser_events = nwbfile.intervals["laser_events"].to_dataframe()
+    assert laser_events["start_time"][0] == pytest.approx(452.0 + 30 / fs)

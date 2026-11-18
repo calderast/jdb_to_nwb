@@ -231,7 +231,29 @@ def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: d
         check_spikes_within_session_epochs(all_spike_times_s, spike_sessions, sample_mapping,
                                            probe_label, logger)
     else:
-        # The traces came from the raw files: one recording, so the bonsai start is the only shift.
+        # The traces came from the raw files, so a spike's sample index is only a count of
+        # recorded samples - it says nothing about when each recording started. Two recordings
+        # joined end to end ('behavior' then 'optotagging') have a gap between them that was never
+        # recorded, so that count cannot express it, and every spike in the second recording would
+        # land early by the length of the gap. The branch above does not have this problem: it
+        # places each spike using its own recording's start time. So a session like that has to be
+        # converted from the preprocessed files, not the raw ones.
+        num_recordings = metadata.get("ephys_num_recordings") or 1
+        if num_recordings > 1:
+            logger.error(f"Cannot place spike times: {num_recordings} raw recordings were joined "
+                         "and there is no per-recording sample mapping.")
+            raise ValueError(
+                f"This session joins {num_recordings} Open Ephys recordings, but its spike times "
+                "come straight from the raw recordings, where nothing records the dead time "
+                "between them. Every spike after the first recording would be placed earlier than "
+                "it happened, by the length of the gap. Run the sorting through the preprocessing "
+                "pipeline and give 'processed_ephys_path', which carries each recording's own "
+                "start time, or convert one recording at a time."
+            )
+
+        # One recording, so the bonsai start is the only shift. (With two probes it also ignores
+        # the few samples one probe is trimmed by to line up with the other - under a millisecond,
+        # unlike the gap above, and the two probes are sorted separately anyway.)
         # bonsai_start_time (seconds after ephys start that bonsai started) comes from
         # add_raw_ephys, which sets it to time 0 for the raw ephys. If there was no raw ephys this
         # session it is None, so we can't shift - warn and leave spike times relative to the raw

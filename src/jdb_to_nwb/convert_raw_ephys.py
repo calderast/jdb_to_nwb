@@ -511,6 +511,50 @@ def probe_label_for_stream(stream: str) -> str:
     return str(stream).split("#")[-1]
 
 
+def match_channel_maps_to_probes(probe_configs: list, channel_map: dict, logger) -> dict:
+    """
+    Give each probe the key of its own channel map, matching by probe name token.
+
+    The channel maps read out of settings.xml are keyed by the NP_PROBE's stream name ("ProbeA"),
+    while a probe's LABEL is whatever form the metadata named it in: "ProbeA", "probeA", the full
+    "OneBox-100.ProbeA", or - when the metadata leaves 'stream' out of a single-probe recording -
+    the stream's own name. All of those forms are documented as allowed.
+
+    Matching is on each probe's RESOLVED STREAM rather than its label, since the stream is the
+    recording's own name for the probe and the label is only what someone chose to call it.
+
+    Parameters:
+        probe_configs (list):
+            The probes being converted, from get_probe_configs ("stream" and "label" per probe)
+        channel_map (dict):
+            Channel maps from get_channel_map_neuropixels, keyed by NP_PROBE stream name
+        logger (Logger):
+            Logger to track conversion progress
+
+    Returns:
+        dict: probe label -> the key of that probe's channel map
+    """
+    channel_map_key_by_label = {}
+    for probe_config in probe_configs:
+        matches = [key for key in channel_map
+                   if probe_name_token(key) == probe_name_token(probe_config["stream"])]
+        if len(matches) == 1:
+            channel_map_key_by_label[probe_config["label"]] = matches[0]
+        elif matches:
+            logger.error(f"Probe stream '{probe_config['stream']}' matches channel maps {matches}")
+            raise ValueError(f"Probe stream '{probe_config['stream']}' matches {len(matches)} "
+                             f"channel maps {matches} from settings.xml, not 1.")
+
+    missing_channel_maps = [config["stream"] for config in probe_configs
+                            if config["label"] not in channel_map_key_by_label]
+    if missing_channel_maps:
+        logger.error(f"No channel map for probe stream(s) {missing_channel_maps}. "
+                     f"settings.xml gave channel maps for {list(channel_map)}.")
+        raise ValueError(f"No channel map for probe stream(s) {missing_channel_maps}. "
+                         f"settings.xml gave channel maps for {list(channel_map)}.")
+    return channel_map_key_by_label
+
+
 def _reject_conflicting_forms(logger, old_form: str, new_form: str, why: str) -> None:
     """
     Raise because the metadata gives both the old and the new form of one field.
@@ -802,6 +846,18 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
             "targeted_z": probe_entry["targeted_z"],
         })
 
+    # Two entries naming the same stream describe one probe twice: its channels would enter the
+    # ElectricalSeries once (the streams are collected by name) but its electrodes twice
+    streams_listed = [config["stream"] for config in probe_configs]
+    repeated_streams = sorted({stream for stream in streams_listed
+                               if streams_listed.count(stream) > 1})
+    if repeated_streams:
+        logger.error(f"More than one probe entry resolves to stream(s) {repeated_streams}")
+        raise ValueError(f"More than one probe in 'probes' resolves to the stream(s) "
+                         f"{repeated_streams}. Each probe must name a different Open Ephys stream "
+                         "(the names given are matched loosely, so 'ProbeA' and 'OneBox-100.ProbeA' "
+                         "are the same stream).")
+
     # One conversion handles one kind of probe: the Berke and Neuropixels paths read different
     # files and find port visits in different places, so a mix of types cannot be converted together
     probe_types = {config["probe_type"] for config in probe_configs}
@@ -979,12 +1035,20 @@ def combine_probe_recordings(recordings_by_stream: dict, logger, session_label: 
 
         # SpikeInterface refuses to aggregate recordings whose channel locations overlap, and
         # every Neuropixels probe has the same site positions. See PROBE_LOCATION_OFFSET_UM.
+        # Only the RAW recordings carry geometry: the preprocessed traces are a flat binary opened
+        # as a BinaryRecordingExtractor with no probe attached, and with no site positions there is
+        # nothing to collide and nothing to move. get_probe() raises rather than returning None,
+        # so ask first.
         if probe_index > 0:
-            probe = recording.get_probe()
-            probe.move([probe_index * PROBE_LOCATION_OFFSET_UM, 0.0])
-            # set_probe returns a new recording in spikeinterface < 0.105, but modifies the
-            # recording in place and returns None from 0.105 on, so keep whichever we get.
-            recording = recording.set_probe(probe) or recording
+            if recording.has_probe():
+                probe = recording.get_probe()
+                probe.move([probe_index * PROBE_LOCATION_OFFSET_UM, 0.0])
+                # set_probe returns a new recording in spikeinterface < 0.105, but modifies the
+                # recording in place and returns None from 0.105 on, so keep whichever we get.
+                recording = recording.set_probe(probe) or recording
+            else:
+                logger.debug(f"'{stream}'{session_note} has no probe geometry attached, so there "
+                             "are no site positions to offset (expected for preprocessed traces).")
 
         aligned_recordings.append(recording)
         combined_channel_ids.extend(f"{stream}_{channel_id}" for channel_id in recording.channel_ids)
@@ -2411,11 +2475,12 @@ def add_raw_ephys(
     probe_locations_by_label = {config["label"]: config for config in probe_configs}
     multiple_probes = len(probe_configs) > 1
 
-    for stream_name, continuous_dat_file_path in probe_streams_to_convert.items():
-        logger.info(f"Found probe continuous.dat for '{stream_name}' at {continuous_dat_file_path}")
+    for stream_name, stream_dat_file_path in probe_streams_to_convert.items():
+        logger.info(f"Found probe continuous.dat for '{stream_name}' at {stream_dat_file_path}")
 
     logger.info("Adding probe(s)...")
     probe_objs_by_label = {}
+    probe_metadata_by_label = {}
     for probe_index, probe_label in enumerate(probe_labels):
         probe_config = probe_locations_by_label[probe_label]
         # Only suffix the device name when there is more than one probe, so single-probe nwb files
@@ -2431,6 +2496,7 @@ def add_raw_ephys(
                          f"'{probe_config['stream']}'"),
         )
         probe_objs_by_label[probe_label] = probe_obj
+        probe_metadata_by_label[probe_label] = probe_metadata
 
     # Read recording params (channel count, sample rate, conversion factor) from structure.oebin.
     # This works the same for Berke lab probes and Neuropixels. Every probe sharing one
@@ -2478,12 +2544,17 @@ def add_raw_ephys(
     #   port_visits_* describe the continuous.dat file/channel/rate that the port visit pulses live on
     #   pulse_high_threshold is the raw int16 value above which the port visit channel is considered "high"
     #   exclude_channel_names are neural channels to drop from the ElectricalSeries (Berke ECoG screws)
-    if probe_metadata["name"] in BERKE_LAB_PROBES:
-        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Berke Lab custom probe.", level="info")
+    # Every probe in one conversion is the same type (get_probe_configs rejects a mix), so the
+    # first probe's own metadata decides which branch runs
+    first_probe_metadata = probe_metadata_by_label[probe_labels[0]]
+    if first_probe_metadata["name"] in BERKE_LAB_PROBES:
+        log_and_print(logger, f"Processing '{first_probe_metadata['name']}' as a Berke Lab custom "
+                      "probe.", level="info")
 
         # The one probe this recording holds - get_probe_configs rejects a Berke recording that
         # lists more than one, because everything below is built for a single probe
         berke_probe_label = probe_labels[0]
+        berke_dat_file_path = probe_streams_to_convert[probe_configs[0]["stream"]]
 
         # Berke Lab probes require a per-session impedance file (used to mark bad channels)
         if "impedance_file_path" not in metadata["ephys"]:
@@ -2495,7 +2566,7 @@ def add_raw_ephys(
 
         # For Berke Lab probes, port visits are recorded on ADC1, which lives in the same continuous.dat
         # as the neural data channels (256 "CH" + 8 "ADC" = 264 total channels)
-        port_visits_dat_file_path = continuous_dat_file_path
+        port_visits_dat_file_path = berke_dat_file_path
         port_visits_total_channels = total_channels
         port_visits_sample_rate = oebin_params["sample_rate"]
         port_visits_channel_num = 256  # Port visits are recorded on ADC1, aka channel 256 (zero-indexed)
@@ -2509,7 +2580,7 @@ def add_raw_ephys(
                                     nwbfile=nwbfile,
                                     filtering_info=filtering_info,
                                     metadata=metadata,
-                                    probe_metadata=probe_metadata,
+                                    probe_metadata=first_probe_metadata,
                                     probe_obj=probe_objs_by_label[berke_probe_label],
                                     probe_location=probe_locations_by_label[berke_probe_label],
                                     logger=logger,
@@ -2520,7 +2591,8 @@ def add_raw_ephys(
         exclude_channel_names = [row["open_ephys_channel_string"] for row in excluded_channels]
 
     else:
-        log_and_print(logger, f"Processing '{probe_metadata['name']}' as a Neuropixels probe.", level="info")
+        log_and_print(logger, f"Processing '{first_probe_metadata['name']}' as a Neuropixels probe.",
+                      level="info")
 
         # For Neuropixels (OneBox), port visits are recorded on a SEPARATE OneBox-ADC stream (its own
         # continuous.dat), not in the probe's continuous.dat. Find that ADC stream and read its params.
@@ -2556,12 +2628,8 @@ def add_raw_ephys(
         channel_map = get_channel_map_neuropixels(settings_file_path=settings_file_path,
                                                   logger=logger, fig_dir=fig_dir,
                                                   probe_stream_names=np_probe_names)
-        missing_channel_maps = [label for label in probe_labels if label not in channel_map]
-        if missing_channel_maps:
-            logger.error(f"No channel map for probe stream(s) {missing_channel_maps}. "
-                         f"settings.xml gave channel maps for {list(channel_map)}.")
-            raise ValueError(f"No channel map for probe stream(s) {missing_channel_maps}. "
-                             f"settings.xml gave channel maps for {list(channel_map)}.")
+        channel_map_key_by_label = match_channel_maps_to_probes(
+            probe_configs=probe_configs, channel_map=channel_map, logger=logger)
 
         # Which channels Kilosort ignored, so Spyglass leaves them out of its sort groups.
         # Imported here because convert_processed_ephys imports from this module.
@@ -2577,7 +2645,7 @@ def add_raw_ephys(
         for probe_label in probe_labels:
             add_electrode_data_neuropixels(
                 nwbfile=nwbfile,
-                channel_info=channel_map[probe_label],
+                channel_info=channel_map[channel_map_key_by_label[probe_label]],
                 filtering_info=filtering_info,
                 probe_obj=probe_objs_by_label[probe_label],
                 probe_location=probe_locations_by_label[probe_label],
@@ -2861,6 +2929,10 @@ def add_raw_ephys(
             session_hardware_starts=sample_mapping["session_hardware_starts"],
             session_nwb_starts=sample_mapping["session_nwb_starts"],
             logger=logger,
+            # So the pulses get the same interpolation onto the ground truth clock that the
+            # ElectricalSeries timestamps got just above
+            metadata=metadata,
+            ephys_visit_times=ephys_visit_times,
         )
 
     # Save the raw Open Ephys settings.xml and structure.oebin as AssociatedFiles
@@ -2935,4 +3007,8 @@ def add_raw_ephys(
         # How to map a sample index on a probe's concatenated preprocessed axis onto the nwb clock.
         # None on the raw path, where a spike's sample index is simply offset by the bonsai trim.
         "sample_mapping": sample_mapping,
+        # How many recordings were joined end to end - today always 'behavior' and 'optotagging'.
+        # Spike sorting needs it because the raw path has no per-recording sample mapping to place
+        # a spike with (see aligned_spike_trains_by_unit).
+        "num_recordings": len(session_folders),
     }
