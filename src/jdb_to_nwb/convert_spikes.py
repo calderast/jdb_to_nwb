@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from math import isclose
 from pathlib import Path
 
 from pynwb import NWBFile
@@ -267,16 +268,25 @@ def create_units_table(nwbfile: NWBFile, sampling_rate: float, description: str,
     when the table is created. Spike times come to us as sample indices, so one sample IS the
     resolution, and the waveform means are averages of samples at that same rate.
 
-    Does nothing if the table already exists, since this runs once per probe and every probe's
-    units go in the one table. Call it after the electrodes table is written, which is what a
-    unit's 'electrodes' reference points into.
+    Only the first probe makes the table, since this runs once per probe and every probe's units
+    go in the one table; a later probe just has its sampling rate checked against it. Call it
+    after the electrodes table is written, which is what a unit's 'electrodes' reference points
+    into.
     """
-    if nwbfile.units is not None:
-        logger.debug("Units table already exists (an earlier probe made it); not remaking it.")
-        return
-
     # float because the metadata may give the rate as an int, which pynwb rejects
     sampling_rate = float(sampling_rate)
+    if nwbfile.units is not None:
+        # The table carries ONE resolution, already written by the first probe, so a probe whose
+        # sorting ran at a different rate would have its spike times described by the wrong number
+        if isclose(nwbfile.units.waveform_rate, sampling_rate, rel_tol=1e-6):
+            logger.debug("Units table already exists (an earlier probe made it); not remaking it.")
+        else:
+            logger.warning(f"The Units table says {nwbfile.units.waveform_rate} Hz, from the first probe "
+                           f"converted, but this probe's sorting is {sampling_rate} Hz, so its spike times "
+                           "are described by the wrong resolution. Was each probe sorted from the same "
+                           "recording?")
+        return
+
     logger.debug(f"Creating the Units table at {sampling_rate} Hz "
                  f"(resolution {1 / sampling_rate:.3e}s, one sample)")
     nwbfile.units = Units(
@@ -287,6 +297,37 @@ def create_units_table(nwbfile: NWBFile, sampling_rate: float, description: str,
         # The table the 'electrodes' column points into. Units resolves this through the nwbfile
         # anyway, but only once a unit with electrodes has been added, with a warning if it can't.
         electrode_table=nwbfile.electrodes,
+    )
+
+
+def check_unit_columns_match(nwbfile: NWBFile, probe_label: str, column_names: list, logger) -> None:
+    """
+    Check that this probe writes the same unit columns as the probes already in the Units table.
+
+    Every probe's units go in the one table, so a column one probe fills and another cannot is not
+    just a hole: add_unit has no value to put there and fails inside hdmf with "'NoneType' object
+    is not iterable", naming nothing. Probes come out this way when their analyzers were computed
+    differently - one without the 'templates' extension, or without a quality metric - so say
+    which columns differ while we still know.
+    """
+    if len(nwbfile.units) == 0:
+        return
+
+    already_written = set(nwbfile.units.colnames) - {"spike_times"}
+    ours = set(column_names)
+    if already_written == ours:
+        return
+
+    cannot_fill = sorted(already_written - ours)
+    nowhere_to_put = sorted(ours - already_written)
+    logger.error(f"Unit columns for {probe_label} do not match the table: missing {cannot_fill}, "
+                 f"extra {nowhere_to_put}")
+    raise ValueError(
+        f"The units of {probe_label} do not have the same columns as the units already in this nwb. "
+        f"Written by an earlier probe but empty for {probe_label}: {cannot_fill}. Present for "
+        f"{probe_label} but empty for the earlier probes: {nowhere_to_put}. Every probe's units share "
+        "one table, so every probe must carry the same per-unit information. Compute the same "
+        "extensions and quality metrics for every probe's sorting analyzer, then convert again."
     )
 
 
@@ -684,10 +725,12 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
                                       [int(unit_id) for unit_id in unit_ids])
 
     # Register all the present columns, then add each unit
-    all_column_names = list(unit_columns.keys()) + (["waveform_mean"] if templates is not None else [])
+    waveform_column_names = ["waveform_mean", "electrodes", "electrode_group"] if templates is not None else []
+    all_column_names = list(unit_columns.keys()) + waveform_column_names
     logger.debug(f"Writing {len(all_column_names)} metadata columns (+ spike_times) to nwb units table: "
                  f"{all_column_names}")
     create_units_table(nwbfile, fs, "Units spike sorted with Kilosort4 and classified by BombCell", logger)
+    check_unit_columns_match(nwbfile, probe_label, all_column_names, logger)
     # This runs once per probe, so only declare each column the first time
     existing_unit_columns = set(nwbfile.units.colnames)
     for name, (description, _values) in unit_columns.items():

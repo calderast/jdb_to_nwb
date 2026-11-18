@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 from dateutil import tz
@@ -5,7 +6,7 @@ import numpy as np
 import pytest
 from pynwb import NWBFile
 
-from jdb_to_nwb.convert_spikes import add_spikes
+from jdb_to_nwb.convert_spikes import add_spikes, check_unit_columns_match, create_units_table
 
 MOUNTAINSORT_MDA_PATH = Path("tests/test_data/processed_ephys/firings.mda")
 
@@ -146,6 +147,47 @@ def test_add_kilosort_bombcell_spikes_rejects_a_sorting_of_another_recording(dum
 
     with pytest.raises(ValueError, match="does not match the full raw ephys recording"):
         add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+
+def test_a_probe_sorted_at_another_rate_is_reported(dummy_logger, caplog):
+    """
+    The Units table carries one resolution, written by the first probe converted, so a second
+    probe sorted at a different rate has its spike times described by the wrong number. The table
+    cannot hold two, so the only honest thing is to say so.
+    """
+    nwbfile = NWBFile(session_description="Mock session", identifier="mock_session",
+                      session_start_time=datetime.now(tz.tzlocal()))
+    create_units_table(nwbfile, 30_000, "Units spike sorted with Kilosort4", dummy_logger)
+
+    with caplog.at_level(logging.WARNING):
+        create_units_table(nwbfile, 25_000, "Units spike sorted with Kilosort4", dummy_logger)
+
+    assert nwbfile.units.resolution == 1 / 30_000   # the first probe's, unchanged
+    assert [record for record in caplog.records
+            if "25000.0 Hz" in record.message and record.levelno >= logging.WARNING]
+
+
+def test_units_from_a_second_probe_must_write_the_same_columns(dummy_logger, tmp_path):
+    """
+    Every probe's units go in the one Units table, so a second probe that cannot fill a column the
+    first one wrote - an analyzer computed without the 'templates' extension, say - has to be
+    caught here. add_unit would otherwise fail inside hdmf with "'NoneType' object is not
+    iterable", naming neither the probe nor the column, part way through a conversion.
+    """
+    metadata, nwbfile = _kilosort_bombcell_fixture(tmp_path)
+    add_spikes(nwbfile=nwbfile, metadata=metadata, logger=dummy_logger)
+
+    # What the second probe would offer if its analyzer had no templates computed
+    from_templates = {"waveform_mean", "peak_electrode", "electrodes", "electrode_group"}
+    without_templates = [column for column in nwbfile.units.colnames
+                         if column != "spike_times" and column not in from_templates]
+
+    with pytest.raises(ValueError, match="peak_electrode"):
+        check_unit_columns_match(nwbfile, "ProbeB", without_templates, dummy_logger)
+
+    # The same columns are fine, which is what every real two-probe session has
+    check_unit_columns_match(nwbfile, "ProbeB",
+                             [c for c in nwbfile.units.colnames if c != "spike_times"], dummy_logger)
 
 
 def test_add_spikes_with_incomplete_metadata(dummy_logger, capsys):
