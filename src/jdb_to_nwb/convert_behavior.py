@@ -347,6 +347,7 @@ def align_data_to_visits(trial_data, block_data, metadata, logger):
             unaligned_visit_times=arduino_matched,
             ground_truth_visit_times=ground_truth_visit_times,
             logger=logger,
+            label="unmatched arduino visit",
         )
 
         # Unmatched visits are always at the start or end (if we missed a pulse in the middle we have 
@@ -889,7 +890,7 @@ def add_behavior(nwbfile: NWBFile, metadata: dict, logger, fig_dir=None):
     )
     task = DynamicTable(
         name="task_0",
-        description="",
+        description="Hex maze task",
         columns=[
             task_name,
             task_description,

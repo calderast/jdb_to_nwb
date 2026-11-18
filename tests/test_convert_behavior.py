@@ -49,7 +49,7 @@ def test_convert_behavior(dummy_logger):
     task = tasks_module.data_interfaces["task_0"]
     assert isinstance(task, DynamicTable)
     assert task.name == "task_0"
-    assert task.description == ""
+    assert task.description == "Hex maze task"
 
     # Check if the task metadata columns were added correctly
     for val in task.columns:

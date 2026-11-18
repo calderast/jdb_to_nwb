@@ -1,8 +1,12 @@
+import subprocess
+from pathlib import Path
+
 import pytest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from jdb_to_nwb.utils import to_datetime
+from jdb_to_nwb import utils
+from jdb_to_nwb.utils import source_script_version, to_datetime
 from jdb_to_nwb.convert import check_required_metadata, set_default_metadata
 
 
@@ -181,3 +185,40 @@ def test_to_datetime_all_cases():
         elif expected is ValueError:
             with pytest.raises(ValueError):
                 to_datetime(input_val)
+
+
+def _git_repo_with_a_tag(repo_root: Path, package_dir: Path) -> None:
+    """A git repository with one tagged commit, holding a file where package_dir says it is."""
+    package_dir.mkdir(parents=True)
+    (package_dir / "utils.py").write_text("# stand-in for this module\n")
+    for command in (["git", "init", "-q"], ["git", "add", "-A"],
+                    ["git", "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-qm", "initial"],
+                    ["git", "tag", "v9.9.9"]):
+        subprocess.run(command, cwd=repo_root, check=True, capture_output=True)
+
+
+def test_source_script_version_uses_git_describe_in_this_project(dummy_logger, tmp_path, monkeypatch):
+    """
+    A checkout of THIS project is what `git describe` is consulted for: an editable install does
+    not rewrite the installed version, so the working copy's own description is what it really is.
+    """
+    # The repository top level is two directories above the package, as it is in this project
+    package_dir = tmp_path / "src" / "jdb_to_nwb"
+    _git_repo_with_a_tag(tmp_path, package_dir)
+    monkeypatch.setattr(utils, "__file__", str(package_dir / "utils.py"))
+
+    assert source_script_version(dummy_logger) == "v9.9.9"
+
+
+def test_source_script_version_ignores_an_unrelated_enclosing_repo(dummy_logger, tmp_path, monkeypatch):
+    """
+    An installed (non-editable) copy sits in site-packages, which may itself be inside somebody
+    else's git repository. `git describe` answers for THAT repository, so believing it would record
+    an unrelated project's version as the version of the code that did the conversion.
+    """
+    # The package is somewhere inside the repository, but the repository is not this project
+    package_dir = tmp_path / "some_env" / "lib" / "site-packages" / "jdb_to_nwb"
+    _git_repo_with_a_tag(tmp_path, package_dir)
+    monkeypatch.setattr(utils, "__file__", str(package_dir / "utils.py"))
+
+    assert source_script_version(dummy_logger) == utils.__version__

@@ -8,11 +8,11 @@ import shutil
 from pynwb import NWBFile, NWBHDF5IO
 from pynwb.file import Subject
 
-from . import __version__
-from .utils import to_datetime, setup_logger, log_and_print, add_associated_file
+from .utils import (to_datetime, setup_logger, log_and_print, add_associated_file,
+                    source_script_version)
 from .convert_video import add_video
 from .convert_position import add_position
-from .convert_raw_ephys import add_raw_ephys
+from .convert_raw_ephys import add_raw_ephys, migrate_legacy_ephys_metadata
 from .convert_spikes import add_spikes
 from .convert_behavior import add_behavior
 from .convert_photometry import add_photometry
@@ -108,7 +108,8 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     logger = setup_logger("conversion_log", info_log_file, warning_log_file, debug_log_file)
 
     log_and_print(logger, f"Starting conversion for session_id {session_id}", level="info")
-    log_and_print(logger, f"Using source script jdb_to_nwb {__version__}", level="info")
+    source_script = f"jdb_to_nwb {source_script_version(logger)}"
+    log_and_print(logger, f"Using source script {source_script}", level="info")
 
     # Save a copy of the metadata file to the logging directory
     metadata_copy_file_path = Path(log_dir) / f"{session_id}_metadata.yaml"
@@ -119,6 +120,10 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
 
     # Set default lab, institution, and experiment_description if unspecified
     set_default_metadata(metadata, logger)
+
+    # Rewrite ephys metadata written before multiple probes and multiple recordings were supported
+    # into the current shape, so every converter below reads one shape
+    migrate_legacy_ephys_metadata(metadata=metadata, logger=logger)
 
     # Parse subject metadata
     subject = Subject(**metadata["subject"])
@@ -138,7 +143,7 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
         virus=metadata.get("virus"),
         notes=metadata.get("notes"),
         keywords=metadata.get("keywords"),
-        source_script="jdb_to_nwb " + __version__,
+        source_script=source_script,
         source_script_file_name="convert.py",
     )
 
@@ -158,8 +163,16 @@ def create_nwbs(metadata_file_path: Path, output_nwb_dir: Path):
     # bonsai start time (seconds after ephys started) is used to align spike sorting output to the
     # same clock as the raw ephys (bonsai start = time 0). None if there was no raw ephys.
     metadata["ephys_bonsai_start_time"] = ephys_data_dict.get("bonsai_start_time")
-    # Total samples in the full raw recording, used to verify spike sorting was done on the full recording.
-    metadata["ephys_num_samples"] = ephys_data_dict.get("num_samples")
+    # One entry per probe (label + full recording length), in the same order as the 'probes'
+    # metadata. Spike sorting uses it to label each probe's units and to verify the sorting was
+    # done on that probe's full recording.
+    metadata["ephys_probe_results"] = ephys_data_dict.get("probe_results")
+    # On the preprocessed path, how to put a spike's sample index (on its probe's own concatenated
+    # axis) onto the nwb clock, per session. None on the raw path, where the bonsai shift is enough.
+    metadata["ephys_sample_mapping"] = ephys_data_dict.get("sample_mapping")
+    # How many recordings were joined into the ElectricalSeries, which decides whether a spike's
+    # sample index can be placed by the bonsai shift alone
+    metadata["ephys_num_recordings"] = ephys_data_dict.get("num_recordings")
 
     # Add behavior. Aligns port visits to photometry (if it exists) or ephys (if it exists and photometry doesn't)
     behavior_data_dict = add_behavior(nwbfile=nwbfile, metadata=metadata, logger=logger, fig_dir=fig_dir)

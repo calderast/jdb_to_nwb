@@ -1,12 +1,15 @@
 import numpy as np
 import pandas as pd
+from math import isclose
 from pathlib import Path
 
 from pynwb import NWBFile
+from pynwb.misc import Units
 
 from .mdasortinginterface import MdaSortingInterface
 from .utils import log_and_print
 from .timestamps_alignment import align_via_interpolation
+from .convert_processed_ephys import concat_samples_to_nwb_times, match_probe_key
 
 
 def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
@@ -23,10 +26,25 @@ def add_spikes(nwbfile: NWBFile, metadata: dict, logger):
     if "ephys" not in metadata:
         return
 
+    # The ephys metadata is in its current shape by now: create_nwbs normalizes an older file
+    # (where 'sorting_analyzer_path' sat directly under 'ephys') before any converter runs.
     ephys = metadata["ephys"]
 
-    if "sorting_analyzer_path" in ephys:
-        add_kilosort_bombcell_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
+    # Each probe is sorted on its own channels, so each has its own analyzer
+    probe_entries = ephys.get("probes") or []
+    probes_with_sorting = [
+        (probe_index, probe) for probe_index, probe in enumerate(probe_entries)
+        if probe.get("sorting_analyzer_path")
+    ]
+    if probes_with_sorting:
+        for probe_index, probe in probes_with_sorting:
+            add_kilosort_bombcell_spikes(
+                nwbfile=nwbfile,
+                metadata=metadata,
+                probe=probe,
+                probe_index=probe_index,
+                logger=logger,
+            )
     elif "mountain_sort_output_file_path" in ephys and "sampling_frequency" in ephys:
         add_mountainsort_spikes(nwbfile=nwbfile, metadata=metadata, logger=logger)
     else:
@@ -79,6 +97,7 @@ def align_spike_times(spike_times_s: np.ndarray, metadata: dict, logger) -> np.n
             unaligned_visit_times=ephys_visit_times,
             ground_truth_visit_times=ground_truth_visit_times,
             logger=logger,
+            label="spike",
         ))
 
     # Ground truth is ephys (no photometry): spikes are already on the ground truth clock
@@ -88,7 +107,75 @@ def align_spike_times(spike_times_s: np.ndarray, metadata: dict, logger) -> np.n
     return spike_times_s
 
 
-def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: dict, logger) -> list:
+def check_spikes_within_session_epochs(spike_times_s, spike_sessions, sample_mapping: dict,
+                                      probe_label: str, logger) -> None:
+    """
+    Check mapped spike times land inside the epoch of the recording they came from.
+
+    This is the spike equivalent of the laser-pulse agreement check: it tests the mapping against
+    something known independently, namely where the conversion actually placed each recording.
+
+    A spike can sit a little outside its epoch, because a probe's own recording is longer than
+    what was written for it - samples before the bonsai start are trimmed off the front, and
+    samples past the shortest probe are trimmed off the end. Anything further out than those
+    trims explain means the mapping is wrong. That raises instead of warning, because wrong spike
+    times look just like real ones once they are in the nwb.
+    """
+    epochs_by_session = {epoch["session"]: epoch for epoch in sample_mapping["session_epochs"]}
+    streams = sample_mapping["session_boundaries"]["streams"]
+    probe_stream = streams[match_probe_key(streams, probe_label)]
+    sampling_rate = float(probe_stream["fs"])
+
+    for session_entry in probe_stream["sessions"]:
+        session_label = session_entry["session_id"]
+        epoch = epochs_by_session.get(session_label)
+        if epoch is None:
+            continue
+        in_session = spike_sessions == session_label
+        if not in_session.any():
+            continue
+        session_spikes = spike_times_s[in_session]
+
+        # Each bound gets its own trim. A spike can sit earlier than the epoch by the front
+        # trim (the bonsai trim on the first session, plus whatever aligned this probe to the
+        # others) and later by the end trim (whatever ran past the written length).
+        own_duration = int(session_entry["n_samples"]) / sampling_rate
+        epoch_duration = epoch["stop_time"] - epoch["start_time"]
+        front_trim_s = max(0.0, sample_mapping["session_hardware_starts"][session_label]
+                           - sample_mapping["probe_start_times"][probe_label][session_label])
+        end_trim_s = max(0.0, own_duration - front_trim_s - epoch_duration)
+        one_sample = 1 / sampling_rate
+        earliest_allowed = epoch["start_time"] - front_trim_s - one_sample
+        latest_allowed = epoch["stop_time"] + end_trim_s + one_sample
+
+        outside_epoch = ((session_spikes < epoch["start_time"])
+                         | (session_spikes > epoch["stop_time"])).sum()
+        too_far = (session_spikes < earliest_allowed) | (session_spikes > latest_allowed)
+        logger.info(
+            f"'{probe_label}' session '{session_label}': {len(session_spikes)} spikes, "
+            f"{outside_epoch} outside the epoch ({epoch['start_time']:.6f}s to "
+            f"{epoch['stop_time']:.6f}s). Expected, from this probe's trims: up to "
+            f"{round(front_trim_s * sampling_rate)} samples before it (trimmed off the front) and "
+            f"{round(end_trim_s * sampling_rate)} after it (trimmed off the end)."
+        )
+        if too_far.any():
+            worst_s = max(earliest_allowed - session_spikes.min(),
+                          session_spikes.max() - latest_allowed)
+            logger.error(f"{int(too_far.sum())} spikes from '{probe_label}' session "
+                         f"'{session_label}' are outside its epoch by more than the trims explain.")
+            raise ValueError(
+                f"{int(too_far.sum())} of {len(session_spikes)} spikes from '{probe_label}' session "
+                f"'{session_label}' fall outside that session's epoch "
+                f"({epoch['start_time']:.6f}s to {epoch['stop_time']:.6f}s) by more than the "
+                f"trimmed samples could explain (worst is {worst_s:.3f}s past the allowed range, "
+                f"{round(worst_s * sampling_rate)} samples). Either the spike sample indices are "
+                "not on the concatenated axis this mapping assumes, or the session start times and "
+                "the epochs disagree about where this recording sits on the nwb clock."
+            )
+
+
+def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: dict, logger,
+                                 probe_label: str = None) -> list:
     """
     Take a sorter's spike trains and return them on the NWB clock, grouped one array per unit.
 
@@ -104,37 +191,166 @@ def aligned_spike_trains_by_unit(sorting, sampling_frequency: float, metadata: d
     Shared by the MountainSort and Kilosort paths so both sorters are aligned identically.
     Returns a list of numpy arrays, one per unit in sorting.unit_ids order (each still time-ordered).
     """
-    # STEP 1: shift so bonsai start is time 0
-    # bonsai_start_time (seconds after ephys start that bonsai started) comes from add_raw_ephys, which
-    # sets it to time 0 for the raw ephys. If there was no raw ephys this session it is None, so we can't
-    # shift - warn and leave spike times relative to the raw recording start (bonsai_start_time = 0).
-    # But that should never really happen (if we have spikes we should also have raw ephys). 
-    bonsai_start_time = metadata.get("ephys_bonsai_start_time")
-    if bonsai_start_time is None:
-        logger.warning("No 'ephys_bonsai_start_time' (no raw ephys this session??): leaving spike times "
-                      "relative to the raw recording start, NOT shifted to bonsai start.")
-        bonsai_start_time = 0.0
-
     # to_spike_vector() returns every spike as ('sample_index', 'unit_index'), sorted by time
     spike_vector = sorting.to_spike_vector()
+    all_unit_index = spike_vector["unit_index"]
+    sample_index = spike_vector["sample_index"]
     logger.debug(f"Aligning: {len(spike_vector)} spikes | raw sample_index range "
-                 f"[{int(spike_vector['sample_index'].min())}, {int(spike_vector['sample_index'].max())}] "
-                 f"| bonsai shift = -{bonsai_start_time}s @ {sampling_frequency} Hz")
-    # Convert all spikes to seconds and apply the shift so bonsai start is time 0
-    all_spike_times_s = spike_vector["sample_index"] / sampling_frequency - bonsai_start_time
+                 f"[{int(sample_index.min())}, {int(sample_index.max())}] @ {sampling_frequency} Hz")
+
+    # STEP 1: sample indices -> seconds on the nwb clock
+    sample_mapping = metadata.get("ephys_sample_mapping")
+    if sample_mapping and probe_label:
+        # The traces came from the preprocessed files, so a spike's sample index is on this probe's
+        # OWN concatenated axis: one axis spanning every recording, trimmed differently per probe.
+        # Mapping each spike through its own session's recorded start times carries the gap between
+        # recordings and this probe's trims. See concat_samples_to_nwb_times.
+        logger.info(f"Mapping '{probe_label}' spike sample indices onto the nwb clock per session "
+                    "(preprocessed traces), the same way the laser pulses are mapped.")
+        all_spike_times_s, spike_sessions = concat_samples_to_nwb_times(
+            probe_label=probe_label,
+            concat_samples=sample_index,
+            session_boundaries=sample_mapping["session_boundaries"],
+            probe_start_times=sample_mapping["probe_start_times"],
+            session_hardware_starts=sample_mapping["session_hardware_starts"],
+            session_nwb_starts=sample_mapping["session_nwb_starts"],
+        )
+        # A spike in a recording this nwb does not contain has no place on the nwb clock, so we
+        # drop it. This happens when the preprocessed directory holds more recordings than the
+        # metadata lists: the sorting covers all of them, and the sample-count check above passes
+        # because it compares the analyzer against the whole preprocessed file.
+        unmapped = np.isnan(all_spike_times_s)
+        if unmapped.any():
+            logger.warning(f"Dropped {int(unmapped.sum())} of {len(all_spike_times_s)} '{probe_label}' "
+                           "spikes: they fall in a recording this conversion did not write. The "
+                           "sorting covers every recording in the preprocessed directory, so list "
+                           "them all in 'openephys_folder_paths' to keep these spikes.")
+            all_spike_times_s = all_spike_times_s[~unmapped]
+            spike_sessions = spike_sessions[~unmapped]
+            all_unit_index = all_unit_index[~unmapped]
+        check_spikes_within_session_epochs(all_spike_times_s, spike_sessions, sample_mapping,
+                                           probe_label, logger)
+    else:
+        # The traces came from the raw files, so a spike's sample index is only a count of
+        # recorded samples - it says nothing about when each recording started. Two recordings
+        # joined end to end ('behavior' then 'optotagging') have a gap between them that was never
+        # recorded, so that count cannot express it, and every spike in the second recording would
+        # land early by the length of the gap. The branch above does not have this problem: it
+        # places each spike using its own recording's start time. So a session like that has to be
+        # converted from the preprocessed files, not the raw ones.
+        num_recordings = metadata.get("ephys_num_recordings") or 1
+        if num_recordings > 1:
+            logger.error(f"Cannot place spike times: {num_recordings} raw recordings were joined "
+                         "and there is no per-recording sample mapping.")
+            raise ValueError(
+                f"This session joins {num_recordings} Open Ephys recordings, but its spike times "
+                "come straight from the raw recordings, where nothing records the dead time "
+                "between them. Every spike after the first recording would be placed earlier than "
+                "it happened, by the length of the gap. Run the sorting through the preprocessing "
+                "pipeline and give 'processed_ephys_path', which carries each recording's own "
+                "start time, or convert one recording at a time."
+            )
+
+        # One recording, so the bonsai start is the only shift. (With two probes it also ignores
+        # the few samples one probe is trimmed by to line up with the other - under a millisecond,
+        # unlike the gap above, and the two probes are sorted separately anyway.)
+        # bonsai_start_time (seconds after ephys start that bonsai started) comes from
+        # add_raw_ephys, which sets it to time 0 for the raw ephys. If there was no raw ephys this
+        # session it is None, so we can't shift - warn and leave spike times relative to the raw
+        # recording start (bonsai_start_time = 0). But that should never really happen (if we have
+        # spikes we should also have raw ephys).
+        bonsai_start_time = metadata.get("ephys_bonsai_start_time")
+        if bonsai_start_time is None:
+            logger.warning("No 'ephys_bonsai_start_time' (no raw ephys this session??): leaving spike times "
+                          "relative to the raw recording start, NOT shifted to bonsai start.")
+            bonsai_start_time = 0.0
+        logger.debug(f"Bonsai shift = -{bonsai_start_time}s")
+        # Spikes before the bonsai start keep their negative times - they were really recorded
+        all_spike_times_s = sample_index / sampling_frequency - bonsai_start_time
 
     # STEP 2: ground truth alignment to account for drift between clocks (applied to the whole array at once)
     all_spike_times_s = align_spike_times(all_spike_times_s, metadata, logger)
 
     # Group the flat, aligned spike-time array back into one train per unit. Sorting by unit index with a
     # STABLE sort preserves each unit's time ordering; searchsorted then gives each unit's slice boundaries.
-    all_unit_index = spike_vector["unit_index"]
     num_units = len(sorting.unit_ids)
     order = np.argsort(all_unit_index, kind="stable")
     sorted_unit_index = all_unit_index[order]
     sorted_spike_times = all_spike_times_s[order]
     unit_boundaries = np.searchsorted(sorted_unit_index, np.arange(num_units + 1))
     return [sorted_spike_times[unit_boundaries[i]:unit_boundaries[i + 1]] for i in range(num_units)]
+
+
+def create_units_table(nwbfile: NWBFile, sampling_rate: float, description: str, logger) -> None:
+    """
+    Create the nwb's Units table, so it can say what its spike times' resolution is.
+
+    NWBFile.add_unit makes the table on demand, but only with a name and a description
+    ("Autogenerated by NWBFile"); resolution, waveform_rate and electrode_table can only be set
+    when the table is created. Spike times come to us as sample indices, so one sample IS the
+    resolution, and the waveform means are averages of samples at that same rate.
+
+    Only the first probe makes the table, since this runs once per probe and every probe's units
+    go in the one table; a later probe just has its sampling rate checked against it. Call it
+    after the electrodes table is written, which is what a unit's 'electrodes' reference points
+    into.
+    """
+    # float because the metadata may give the rate as an int, which pynwb rejects
+    sampling_rate = float(sampling_rate)
+    if nwbfile.units is not None:
+        # The table carries ONE resolution, already written by the first probe, so a probe whose
+        # sorting ran at a different rate would have its spike times described by the wrong number
+        if isclose(nwbfile.units.waveform_rate, sampling_rate, rel_tol=1e-6):
+            logger.debug("Units table already exists (an earlier probe made it); not remaking it.")
+        else:
+            logger.warning(f"The Units table says {nwbfile.units.waveform_rate} Hz, from the first probe "
+                           f"converted, but this probe's sorting is {sampling_rate} Hz, so its spike times "
+                           "are described by the wrong resolution. Was each probe sorted from the same "
+                           "recording?")
+        return
+
+    logger.debug(f"Creating the Units table at {sampling_rate} Hz "
+                 f"(resolution {1 / sampling_rate:.3e}s, one sample)")
+    nwbfile.units = Units(
+        name="units",
+        description=description,
+        resolution=1 / sampling_rate,
+        waveform_rate=sampling_rate,
+        # The table the 'electrodes' column points into. Units resolves this through the nwbfile
+        # anyway, but only once a unit with electrodes has been added, with a warning if it can't.
+        electrode_table=nwbfile.electrodes,
+    )
+
+
+def check_unit_columns_match(nwbfile: NWBFile, probe_label: str, column_names: list, logger) -> None:
+    """
+    Check that this probe writes the same unit columns as the probes already in the Units table.
+
+    Every probe's units go in the one table, so a column one probe fills and another cannot is not
+    just a hole: add_unit has no value to put there and fails inside hdmf with "'NoneType' object
+    is not iterable", naming nothing. Probes come out this way when their analyzers were computed
+    differently - one without the 'templates' extension, or without a quality metric - so say
+    which columns differ while we still know.
+    """
+    if len(nwbfile.units) == 0:
+        return
+
+    already_written = set(nwbfile.units.colnames) - {"spike_times"}
+    ours = set(column_names)
+    if already_written == ours:
+        return
+
+    cannot_fill = sorted(already_written - ours)
+    nowhere_to_put = sorted(ours - already_written)
+    logger.error(f"Unit columns for {probe_label} do not match the table: missing {cannot_fill}, "
+                 f"extra {nowhere_to_put}")
+    raise ValueError(
+        f"The units of {probe_label} do not have the same columns as the units already in this nwb. "
+        f"Written by an earlier probe but empty for {probe_label}: {cannot_fill}. Present for "
+        f"{probe_label} but empty for the earlier probes: {nowhere_to_put}. Every probe's units share "
+        "one table, so every probe must carry the same per-unit information. Compute the same "
+        "extensions and quality metrics for every probe's sorting analyzer, then convert again."
+    )
 
 
 def add_mountainsort_spikes(nwbfile: NWBFile, metadata: dict, logger):
@@ -160,6 +376,7 @@ def add_mountainsort_spikes(nwbfile: NWBFile, metadata: dict, logger):
     # (make bonsai start time 0 and align to photometry clock if photometry exists)
     aligned_spike_trains = aligned_spike_trains_by_unit(sorting, sampling_frequency, metadata, logger)
 
+    create_units_table(nwbfile, sampling_frequency, "Units spike sorted with MountainSort", logger)
     nwbfile.add_unit_column(name="unit_name", description="The MountainSort unit id")
     for unit_id, spike_times in zip(unit_ids, aligned_spike_trains):
         nwbfile.add_unit(spike_times=spike_times, unit_name=str(unit_id))
@@ -252,7 +469,51 @@ def verify_analyzer_phy_correspondence(sorting, analyzer_path: Path, phy_group_b
                        "so phy_group labels may be wrong. Check that the analyzer was built from this Phy output.")
 
 
-def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
+def electrode_rows_by_channel(nwbfile, probe_label: str, logger) -> dict:
+    """
+    This probe's channel number -> the row it sits on in the nwb electrodes table.
+
+    Every Neuropixels probe numbers its channels CH0..CH383, so a channel number alone does not
+    identify an electrode in a file with two probes. The electrodes table carries the probe each
+    row belongs to, so the row is looked up by probe AND channel. Call this after the raw ephys
+    conversion has written that table; without it there is nothing to look up and it raises.
+    """
+    if nwbfile.electrodes is None:
+        logger.error("No electrodes table to look up peak electrodes in.")
+        raise ValueError("No electrodes table in the nwb, so a unit's peak electrode cannot be "
+                         "located. Raw ephys must be converted before spike sorting.")
+
+    electrodes = nwbfile.electrodes.to_dataframe()
+    # A single-probe file (Berke lab) has no 'probe' column, and every row is that one probe
+    if "probe" in electrodes.columns:
+        on_this_probe = electrodes["probe"] == probe_label
+    else:
+        on_this_probe = pd.Series(True, index=electrodes.index)
+
+    # A row is identified by its POSITION in the table, which is what a reference into electrodes
+    # uses. to_dataframe() indexes by the electrode id, so enumerate instead of using the index.
+    rows_by_channel = {
+        int(channel): position
+        for position, (channel, is_this_probe)
+        in enumerate(zip(electrodes["intan_channel_number"], on_this_probe))
+        if is_this_probe
+    }
+
+    if not rows_by_channel:
+        found = (sorted(set(electrodes["probe"])) if "probe" in electrodes.columns
+                 else "no probe column")
+        logger.error(f"No electrodes table rows for probe '{probe_label}'; the table has {found}")
+        raise ValueError(f"No electrodes in this nwb belong to probe '{probe_label}', so its units "
+                         "have no electrode to point at. Check that the probe labels in the "
+                         "metadata match the ones the raw ephys conversion wrote.")
+    logger.debug(f"'{probe_label}' has {len(rows_by_channel)} electrodes table rows "
+                 f"(channels {min(rows_by_channel)}..{max(rows_by_channel)} -> rows "
+                 f"{min(rows_by_channel.values())}..{max(rows_by_channel.values())})")
+    return rows_by_channel
+
+
+def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, probe: dict,
+                                 probe_index: int, logger):
     """
     Add Kilosort4 + BombCell spike sorting output to the NWB file as a Units table.
 
@@ -264,7 +525,7 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
           properties - 'bc_unitType' (BombCell class), 'KSLabel' (Kilosort auto label), 'original_cluster_id'
           (the source Phy/Kilosort cluster id), plus the numeric cluster_info metrics BombCell computed.
         - the 'quality_metrics' extension (SpikeInterface per-unit metrics).
-        - the 'templates' extension (per-unit average waveform) -> peak-channel waveform + peak_channel_id.
+        - the 'templates' extension (per-unit average waveform) -> peak-channel waveform + peak_electrode.
       Phy's MANUAL curation labels are NOT stored in the analyzer. They live in a 'cluster_group.tsv'
       file sitting next to analyzer.zarr, mapped to units by original_cluster_id -> 'phy_group'.
 
@@ -281,8 +542,20 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     import spikeinterface as si  # local import; heavy dependency only needed when spikes are present
     from spikeinterface.core import get_template_extremum_channel
 
-    log_and_print(logger, "Adding Kilosort4 spikes...", level="info")
-    analyzer_path = Path(metadata["ephys"]["sorting_analyzer_path"])
+    # The label and recording length come from the raw ephys conversion, matched by this probe's
+    # position in the metadata 'probes' list, since a probe may be named by any of the forms its
+    # Open Ephys stream goes by. Raw ephys is always converted first - it is the only source of the
+    # channel map, the port visits and the probe start times - so these are always here.
+    probe_results = (metadata.get("ephys_probe_results") or [])
+    if probe_index >= len(probe_results):
+        logger.error(f"No raw ephys result for probe {probe_index}; got {len(probe_results)}")
+        raise ValueError(f"No raw ephys was converted for probe {probe_index + 1} of the metadata "
+                         "'probes' list, so there is nothing to tell which probe these units are "
+                         "from or to check the sorting against. Convert the raw ephys too.")
+    probe_label = probe_results[probe_index]["label"]
+    recording_num_samples = probe_results[probe_index]["num_samples"]
+    log_and_print(logger, f"Adding Kilosort4 spikes for '{probe_label}'...", level="info")
+    analyzer_path = Path(probe["sorting_analyzer_path"])
     logger.debug(f"Found Kilosort/BombCell spikes from SortingAnalyzer at {analyzer_path}")
 
     analyzer = si.load_sorting_analyzer(analyzer_path)
@@ -300,35 +573,30 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
     logger.debug(f"Sorting property keys ({len(sorting.get_property_keys())}): "
                  f"{list(sorting.get_property_keys())}")
 
-    # Verify the sorting was actually done on this session's full recording before we do anything with it.
-    # The analyzer retains its recording's total sample count (even though it is recordingless), which
-    # must match the raw ephys we converted for this session. If they differ, the spike sample indices
-    # index a different (or cropped) recording, so aligning them to this session's clock would be silently wrong.
-    # ephys_num_samples is set by add_raw_ephys; if it is absent (no raw ephys this session) 
-    # we can't do this check, so we warn and continue.
-    recording_num_samples = metadata.get("ephys_num_samples")
-    if recording_num_samples is None:
-        logger.warning("No 'ephys_num_samples' in metadata (raw ephys not converted this session?); cannot "
-                       "verify the spike sorting was done on this session's full recording.")
-    else:
-        analyzer_num_samples = analyzer.get_num_samples()
-        logger.debug(f"analyzer={analyzer_num_samples} samples vs full raw ephys={recording_num_samples} samples "
-                     f"(diff={analyzer_num_samples - recording_num_samples})")
-        if analyzer_num_samples != recording_num_samples:
-            raise ValueError(
-                "Spike sorting does not match the full raw ephys recording for this session! The SortingAnalyzer "
-                f"at {analyzer_path} was computed on a recording of {analyzer_num_samples} samples "
-                f"({analyzer_num_samples / fs:.1f}s), but this session's raw ephys recording has "
-                f"{recording_num_samples} samples ({recording_num_samples / fs:.1f}s). The spike times would "
-                "be aligned to the wrong recording. Check that 'sorting_analyzer_path' points to the sorting "
-                "for this session's 'openephys_folder_path'."
-            )
-        log_and_print(logger, f"Verified spike sorting matches this session's recording "
-                      f"({recording_num_samples} samples).", level="info")
+    # Verify the sorting was done on this session's full recording before we do anything with it.
+    # The analyzer retains its recording's total sample count (even though it is recordingless),
+    # which must match the raw ephys we converted. If they differ, the spike sample indices index a
+    # different (or cropped) recording, so aligning them to this session's clock would be wrong
+    # with nothing to show it.
+    analyzer_num_samples = analyzer.get_num_samples()
+    logger.debug(f"analyzer={analyzer_num_samples} samples vs full raw ephys={recording_num_samples} samples "
+                 f"(diff={analyzer_num_samples - recording_num_samples})")
+    if analyzer_num_samples != recording_num_samples:
+        raise ValueError(
+            "Spike sorting does not match the full raw ephys recording for this session! The SortingAnalyzer "
+            f"at {analyzer_path} was computed on a recording of {analyzer_num_samples} samples "
+            f"({analyzer_num_samples / fs:.1f}s), but this session's raw ephys recording has "
+            f"{recording_num_samples} samples ({recording_num_samples / fs:.1f}s). The spike times would "
+            f"be aligned to the wrong recording. Check that the 'sorting_analyzer_path' for "
+            f"'{probe_label}' points to the sorting for this session's recording."
+        )
+    log_and_print(logger, f"Verified spike sorting matches this session's recording "
+                  f"({recording_num_samples} samples).", level="info")
 
     # Align spike times for each unit to the nwb's ground truth clock
     # (make bonsai start time 0 and align to photometry clock if photometry exists)
-    aligned_spike_trains = aligned_spike_trains_by_unit(sorting, fs, metadata, logger)
+    aligned_spike_trains = aligned_spike_trains_by_unit(sorting, fs, metadata, logger,
+                                                       probe_label=probe_label)
 
     # Spike-train stats after alignment
     spike_counts = [len(train) for train in aligned_spike_trains]
@@ -426,34 +694,70 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
                          f"(shape {prop_values.shape}).")
             cluster_info_skipped.append(prop)
             continue
-        values = pd.to_numeric(pd.Series(prop_values), errors="coerce").to_numpy(dtype="float64")
-        unit_columns[prop] = (f"BombCell/Kilosort per-unit metric (from cluster_info): {prop}", values)
+        # Some cluster_info properties are text, not numbers ('quality' holds "good" / "mua").
+        # Coercing those to a number makes the whole column NaN and loses the labels, so a
+        # property whose every value is non-numeric is written as text instead.
+        prop_series = pd.Series(prop_values)
+        numeric = pd.to_numeric(prop_series, errors="coerce")
+        not_a_number = int((numeric.isna() & prop_series.notna()).sum())
+        if not_a_number == len(prop_series) and len(prop_series):
+            values = prop_series.astype(str).to_numpy()
+            unit_columns[prop] = (f"BombCell/Kilosort per-unit label (from cluster_info): {prop}", values)
+        else:
+            if not_a_number:
+                logger.warning(f"{not_a_number} of {len(prop_series)} values of '{prop}' are not "
+                               "numbers; they are NaN in that column.")
+            values = numeric.to_numpy(dtype="float64")
+            unit_columns[prop] = (f"BombCell/Kilosort per-unit metric (from cluster_info): {prop}", values)
         cluster_info_added.append(prop)
     logger.debug(f"Added {len(cluster_info_added)} BombCell/Kilosort metric columns: {cluster_info_added}")
     if cluster_info_skipped:
         logger.debug(f"Skipped {len(cluster_info_skipped)} non-scalar properties: {cluster_info_skipped}")
 
-    # Peak-channel waveform + channel id (optional 'templates' extension)
+    # Peak-channel waveform + the electrode it was on (optional 'templates' extension)
     if analyzer.has_extension("templates"):
         templates = analyzer.get_extension("templates").get_data()  # (num_units, num_samples, num_channels)
         peak_channel_index = get_template_extremum_channel(analyzer, outputs="index")  # unit_id -> channel index
         channel_ids = analyzer.channel_ids
-        unit_columns["peak_channel_id"] = ("Recording channel id with the largest-amplitude template for this unit",
-                                           [str(channel_ids[peak_channel_index[uid]]) for uid in unit_ids])
-        peak_idxs = [int(peak_channel_index[uid]) for uid in unit_ids]
+        electrode_rows = electrode_rows_by_channel(nwbfile, probe_label, logger)
+        # channel_ids[index] is the channel NUMBER; the index is its position in the analyzer,
+        # which is not the same thing because Kilosort drops bad channels from the sorting.
+        peak_channels = [int(channel_ids[peak_channel_index[uid]]) for uid in unit_ids]
+        peak_electrode_rows = [electrode_rows[channel] for channel in peak_channels]
+        unit_columns["peak_electrode"] = (
+            "Row in this nwb's electrodes table for the electrode with the largest-amplitude "
+            "template for this unit. Found by this unit's probe and peak channel number, so it "
+            "points at that probe's own electrodes.",
+            peak_electrode_rows,
+        )
         logger.debug(f"Templates extension shape {templates.shape} (units, samples, channels); peak channel "
-                     f"index range {min(peak_idxs)}..{max(peak_idxs)} across {len(set(peak_idxs))} distinct channels")
+                     f"numbers {min(peak_channels)}..{max(peak_channels)} across "
+                     f"{len(set(peak_channels))} distinct channels -> electrode rows "
+                     f"{min(peak_electrode_rows)}..{max(peak_electrode_rows)}")
     else:
         templates = None
-        logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_channel_id'. "
+        logger.warning("Analyzer has no 'templates' extension; skipping 'waveform_mean' and 'peak_electrode'. "
                        "(Was compute('templates') run on this analyzer?)")
 
+    # Which probe each unit came from, and its id in that probe's own sorting. The nwb assigns the
+    # row ids: both probes have Kilosort cluster ids starting at 0, so the sorter's id cannot be the
+    # row id without colliding.
+    unit_columns["probe"] = ("The probe this unit was sorted from", [probe_label] * num_units)
+    unit_columns["sorter_unit_id"] = ("This unit's id in its own probe's sorting (Kilosort cluster id)",
+                                      [int(unit_id) for unit_id in unit_ids])
+
     # Register all the present columns, then add each unit
-    all_column_names = list(unit_columns.keys()) + (["waveform_mean"] if templates is not None else [])
+    waveform_column_names = ["waveform_mean", "electrodes", "electrode_group"] if templates is not None else []
+    all_column_names = list(unit_columns.keys()) + waveform_column_names
     logger.debug(f"Writing {len(all_column_names)} metadata columns (+ spike_times) to nwb units table: "
                  f"{all_column_names}")
+    create_units_table(nwbfile, fs, "Units spike sorted with Kilosort4 and classified by BombCell", logger)
+    check_unit_columns_match(nwbfile, probe_label, all_column_names, logger)
+    # This runs once per probe, so only declare each column the first time
+    existing_unit_columns = set(nwbfile.units.colnames)
     for name, (description, _values) in unit_columns.items():
-        nwbfile.add_unit_column(name=name, description=description)
+        if name not in existing_unit_columns:
+            nwbfile.add_unit_column(name=name, description=description)
 
     for i, unit_id in enumerate(unit_ids):
         add_unit_kwargs = {name: values[i] for name, (_description, values) in unit_columns.items()}
@@ -461,7 +765,12 @@ def add_kilosort_bombcell_spikes(nwbfile: NWBFile, metadata: dict, logger):
             # Waveform mean on the unit's peak channel (1D over samples)
             peak_idx = peak_channel_index[unit_id]
             add_unit_kwargs["waveform_mean"] = templates[i, :, peak_idx].astype("float64")
-        nwbfile.add_unit(id=int(unit_id), spike_times=aligned_spike_trains[i], **add_unit_kwargs)
+            # The peak electrode again, in the form NWB defines for it: 'electrodes' is a real
+            # reference into the electrodes table and 'electrode_group' is that electrode's shank.
+            # This is also what says which electrode waveform_mean was measured on.
+            add_unit_kwargs["electrodes"] = [peak_electrode_rows[i]]
+            add_unit_kwargs["electrode_group"] = nwbfile.electrodes["group"][peak_electrode_rows[i]]
+        nwbfile.add_unit(spike_times=aligned_spike_trains[i], **add_unit_kwargs)
 
     log_and_print(logger, f"Added {num_units} units to the NWB Units table "
                   f"({len(all_column_names)} metadata columns + spike_times).", level="info")
