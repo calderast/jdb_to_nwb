@@ -18,7 +18,7 @@ from pynwb.epoch import TimeIntervals
 
 from .utils import log_and_print
 from .timestamps_alignment import align_via_interpolation
-from .convert_raw_ephys import probe_name_token
+from .convert_raw_ephys import probe_names_match
 from .convert_processed_ephys import (
     concat_sample_nwb_time,
     match_probe_key,
@@ -212,7 +212,7 @@ def add_laser_events(
     skipped_sessions = set()
     for _row_index, row in laser_events.iterrows():
         probe_label = next((label for label in probe_start_times
-                            if probe_name_token(label) == probe_name_token(row["probe"])), None)
+                            if probe_names_match(label, row["probe"])), None)
         if probe_label is None:
             continue
         if row["session"] not in session_nwb_starts:

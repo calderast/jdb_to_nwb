@@ -499,29 +499,57 @@ def probe_name_token(name: str) -> str:
     return str(name).split("#")[-1].split(".")[-1].lower()
 
 
+def probe_names_match(one_name: str, other_name: str) -> bool:
+    """Whether two of the names a probe goes by refer to the same probe. See probe_name_token."""
+    return probe_name_token(one_name) == probe_name_token(other_name)
+
+
+def match_one_probe_name(name: str, candidates, what: str, logger=None) -> str:
+    """
+    The one candidate that names the same probe as `name`.
+
+    Every place a probe's name has to be matched against names from somewhere else goes through
+    here: the metadata's 'stream' against the recording's streams, a probe's stream against the
+    channel maps in settings.xml, a probe against the preprocessing pipeline's own keys. Requiring
+    exactly one match is what makes the loose matching safe.
+
+    `what` names the thing being searched, for the error ("probe stream", "channel map").
+    """
+    matches = [candidate for candidate in candidates if probe_names_match(candidate, name)]
+    if len(matches) != 1:
+        message = (f"Expected exactly one {what} matching '{name}', found {matches} among "
+                   f"{sorted(candidates)}")
+        if logger:
+            logger.error(message)
+        raise ValueError(message + ".")
+    return matches[0]
+
+
 def probe_label_for_stream(stream: str) -> str:
     """
     The name a probe is called by in the nwb: its electrode groups, its 'probe' electrode column,
     and the 'probe' column on its units.
 
-    It is the stream name with Open Ephys's Record Node prefix removed, so
-    "Record Node 101#OneBox-100.ProbeA" becomes "OneBox-100.ProbeA". Never a fragment of that,
-    which would label a Berke probe "0" - that is probe_name_token's job, and it is for matching.
+    It is derived from the RECORDING's name for the stream and never from the spelling the metadata
+    happened to use, so one session converts to the same names whether its metadata said "ProbeA",
+    "probeA", "OneBox-100.ProbeA" or left 'stream' out altogether. The nwb then describes the
+    recording rather than somebody's typing.
+
+    A OneBox stream ends in the probe's own name, which is what Open Ephys, settings.xml and the
+    preprocessing pipeline all call it, so "Record Node 101#OneBox-100.ProbeA" is "ProbeA". Other
+    processors end in a stream INDEX instead ("Rhythm_FPGA-100.0"), which is no name for a probe,
+    so those keep the whole stream name. probe_name_token does the matching.
     """
-    return str(stream).split("#")[-1]
+    stream = str(stream).split("#")[-1]
+    last_component = stream.split(".")[-1]
+    return stream if last_component.isdigit() else last_component
 
 
 def match_channel_maps_to_probes(probe_configs: list, channel_map: dict, logger) -> dict:
     """
-    Give each probe the key of its own channel map, matching by probe name token.
+    Give each probe the key of its own channel map (settings.xml keys them by NP_PROBE stream name).
 
-    The channel maps read out of settings.xml are keyed by the NP_PROBE's stream name ("ProbeA"),
-    while a probe's LABEL is whatever form the metadata named it in: "ProbeA", "probeA", the full
-    "OneBox-100.ProbeA", or - when the metadata leaves 'stream' out of a single-probe recording -
-    the stream's own name. All of those forms are documented as allowed.
-
-    Matching is on each probe's RESOLVED STREAM rather than its label, since the stream is the
-    recording's own name for the probe and the label is only what someone chose to call it.
+    Matched on each probe's RESOLVED STREAM, which is the recording's own name for it.
 
     Parameters:
         probe_configs (list):
@@ -534,25 +562,11 @@ def match_channel_maps_to_probes(probe_configs: list, channel_map: dict, logger)
     Returns:
         dict: probe label -> the key of that probe's channel map
     """
-    channel_map_key_by_label = {}
-    for probe_config in probe_configs:
-        matches = [key for key in channel_map
-                   if probe_name_token(key) == probe_name_token(probe_config["stream"])]
-        if len(matches) == 1:
-            channel_map_key_by_label[probe_config["label"]] = matches[0]
-        elif matches:
-            logger.error(f"Probe stream '{probe_config['stream']}' matches channel maps {matches}")
-            raise ValueError(f"Probe stream '{probe_config['stream']}' matches {len(matches)} "
-                             f"channel maps {matches} from settings.xml, not 1.")
-
-    missing_channel_maps = [config["stream"] for config in probe_configs
-                            if config["label"] not in channel_map_key_by_label]
-    if missing_channel_maps:
-        logger.error(f"No channel map for probe stream(s) {missing_channel_maps}. "
-                     f"settings.xml gave channel maps for {list(channel_map)}.")
-        raise ValueError(f"No channel map for probe stream(s) {missing_channel_maps}. "
-                         f"settings.xml gave channel maps for {list(channel_map)}.")
-    return channel_map_key_by_label
+    return {
+        config["label"]: match_one_probe_name(config["stream"], channel_map,
+                                              "channel map from settings.xml", logger)
+        for config in probe_configs
+    }
 
 
 def _reject_conflicting_forms(logger, old_form: str, new_form: str, why: str) -> None:
@@ -816,14 +830,7 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
                                  f"{sorted(probe_file_paths)}, so the probe must name its 'stream'.")
             stream = next(iter(probe_file_paths))
         else:
-            matches = [name for name in probe_file_paths
-                       if probe_name_token(name) == probe_name_token(requested_stream)]
-            if len(matches) != 1:
-                logger.error(f"Expected one probe stream matching '{requested_stream}', found "
-                             f"{matches} among {sorted(probe_file_paths)}")
-                raise ValueError(f"Expected one probe stream matching '{requested_stream}', found "
-                                 f"{matches} among {sorted(probe_file_paths)}.")
-            stream = matches[0]
+            stream = match_one_probe_name(requested_stream, probe_file_paths, "probe stream", logger)
 
         missing_fields = [
             field for field in
@@ -837,8 +844,8 @@ def get_probe_configs(metadata: dict, probe_file_paths: dict, logger) -> list:
 
         probe_configs.append({
             "stream": stream,
-            # What the metadata called it, or the recording's own stream name
-            "label": probe_label_for_stream(requested_stream or stream),
+            # From the resolved stream, so every spelling of a probe's name gives one label
+            "label": probe_label_for_stream(stream),
             "probe_type": probe_entry["probe_type"],
             "electrodes_location": probe_entry["electrodes_location"],
             "targeted_x": probe_entry["targeted_x"],
@@ -921,15 +928,9 @@ def resolve_probe_stream(folder_path: Path, logger, stream_name: str = None) -> 
                              "was requested. Specify which probe(s) to convert in the ephys metadata.")
         return probe_streams[0]
 
-    # Match on the shared probe token so every form of the name resolves to the same stream
-    matches = [s for s in probe_streams if probe_name_token(s) == probe_name_token(stream_name)]
-    if len(matches) != 1:
-        logger.error(f"Expected exactly one probe stream matching '{stream_name}', found {matches} "
-                     f"among {probe_streams}")
-        raise ValueError(f"Expected exactly one probe stream matching '{stream_name}', found {matches} "
-                         f"among {probe_streams}")
-    logger.debug(f"Resolved requested probe stream '{stream_name}' to Open Ephys stream '{matches[0]}'")
-    return matches[0]
+    stream = match_one_probe_name(stream_name, probe_streams, "probe stream", logger)
+    logger.debug(f"Resolved requested probe stream '{stream_name}' to Open Ephys stream '{stream}'")
+    return stream
 
 
 def combine_probe_recordings(recordings_by_stream: dict, logger, session_label: str = None):

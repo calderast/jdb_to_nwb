@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from .utils import log_and_print
-from .convert_raw_ephys import combine_probe_recordings, probe_name_token
+from .convert_raw_ephys import combine_probe_recordings, match_one_probe_name
 
 try:
     from spikeinterface.extractors.extractor_classes import BinaryRecordingExtractor
@@ -37,11 +37,7 @@ def match_probe_key(available_keys, probe_label: str) -> str:
     The pipeline writes "probeA"/"probeB" (folders and session_boundaries.json keys) while Open
     Ephys calls the same probe "ProbeA"/"ProbeB", so names are compared as probe tokens.
     """
-    matches = [key for key in available_keys if probe_name_token(key) == probe_name_token(probe_label)]
-    if len(matches) != 1:
-        raise ValueError(f"Expected exactly one entry for probe '{probe_label}', found {matches} "
-                         f"among {list(available_keys)}")
-    return matches[0]
+    return match_one_probe_name(probe_label, available_keys, "entry for this probe")
 
 
 def read_preprocessing_json(processed_ephys_path: Path, logger) -> dict | None:

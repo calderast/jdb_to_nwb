@@ -874,8 +874,8 @@ def test_match_channel_maps_to_probes_gives_each_probe_its_own_map(dummy_logger)
         logger=dummy_logger,
     )
 
-    # Keyed by the labels the metadata gave, each pointing at its own probe's map
-    assert channel_maps == {"OneBox-100.ProbeB": "ProbeB", "probeA": "ProbeA"}
+    # One label per probe whichever way the metadata spelled it, each pointing at its own map
+    assert channel_maps == {"ProbeB": "ProbeB", "ProbeA": "ProbeA"}
 
 
 def test_match_channel_maps_to_probes_rejects_a_probe_with_no_channel_map(dummy_logger):
@@ -889,7 +889,7 @@ def test_match_channel_maps_to_probes_rejects_a_probe_with_no_channel_map(dummy_
     ]}}
     probe_configs = get_probe_configs(metadata, {"OneBox-100.ProbeB": "b.dat"}, dummy_logger)
 
-    with pytest.raises(ValueError, match="No channel map for probe stream"):
+    with pytest.raises(ValueError, match="one channel map from settings.xml matching 'OneBox-100.ProbeB'"):
         match_channel_maps_to_probes(probe_configs=probe_configs,
                                      channel_map={"ProbeA": "ProbeA channel map"},
                                      logger=dummy_logger)
@@ -912,6 +912,44 @@ def test_get_probe_configs_rejects_two_probes_on_one_stream(dummy_logger):
 
     with pytest.raises(ValueError, match="resolves to the stream"):
         get_probe_configs(metadata, probe_file_paths, dummy_logger)
+
+
+@pytest.mark.parametrize("stream_in_metadata", [
+    None, "ProbeA", "probeA", "OneBox-100.ProbeA", "Record Node 101#OneBox-100.ProbeA",
+])
+def test_get_probe_configs_labels_a_probe_the_same_however_it_was_spelled(dummy_logger,
+                                                                          stream_in_metadata):
+    """
+    The label names the probe's electrode groups, its device, and the 'probe' column on its
+    electrodes and its units, so it must describe the RECORDING rather than the metadata's
+    spelling - otherwise two conversions of one session disagree about what its probes are called.
+    """
+    probe_entry = {"probe_type": "Neuropixels 2.0 (4-shank)", "electrodes_location": "NAcc",
+                   "targeted_x": 1.8, "targeted_y": 1.7, "targeted_z": -6.5}
+    if stream_in_metadata is not None:
+        probe_entry["stream"] = stream_in_metadata
+    metadata = {"ephys": {"probes": [probe_entry]}}
+
+    configs = get_probe_configs(metadata, {"OneBox-100.ProbeA": "a.dat"}, dummy_logger)
+
+    assert configs[0]["stream"] == "OneBox-100.ProbeA"
+    assert configs[0]["label"] == "ProbeA"
+
+
+def test_get_probe_configs_keeps_the_whole_stream_name_for_a_berke_probe(dummy_logger):
+    """
+    A Berke stream ends in a stream INDEX, not a probe name, so "Rhythm_FPGA-100.0" cannot be
+    shortened to "0". Those sessions keep the names they have always had.
+    """
+    metadata = {"ephys": {"probes": [
+        {"probe_type": "256-ch Silicon Probe, 3mm length, 66um pitch",
+         "electrodes_location": "Hippocampus CA1",
+         "targeted_x": 2.2, "targeted_y": 4.5, "targeted_z": -2.0},
+    ]}}
+
+    configs = get_probe_configs(metadata, {"Rhythm_FPGA-100.0": "a.dat"}, dummy_logger)
+
+    assert configs[0]["label"] == "Rhythm_FPGA-100.0"
 
 
 def test_get_probe_configs_requires_probes(dummy_logger):
@@ -970,9 +1008,9 @@ def test_get_probe_configs_matches_a_fully_qualified_stream_name(dummy_logger):
     configs = get_probe_configs(metadata, probe_file_paths, dummy_logger)
 
     assert configs[0]["stream"] == "OneBox-100.ProbeB"
-    # The label is what the user wrote (minus the Record Node prefix), so it is predictable
-    # from the metadata
-    assert configs[0]["label"] == "OneBox-100.ProbeB"
+    # The label comes from the recording's name for the stream, so the Record Node prefix and the
+    # processor are not carried into the nwb's names
+    assert configs[0]["label"] == "ProbeB"
 
 
 def test_get_session_start_deltas_places_recordings_by_folder_name(dummy_logger):
