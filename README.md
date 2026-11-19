@@ -17,7 +17,7 @@ pip install -e .
 
 0. Run an experiment with the hex maze. This generates various files (arduino text, arduino timestamps, behavior video, video timestamps, and potentially ephys or photometry files if you were recording those). You will then need to manually generate some files (record the maze configuration(s) you used in a text file, run DeepLabCut on the behavior video if you want position tracking, get the centroids of each hex in video pixel coordinates using the notebook at `resources/Get_Hex_centroids.ipynb`). See `metadata_fully_explained.yaml` and `FAQs.md` for more description of all of the files you need.
 
-1. Open one of the example metadata files in a text editor (`metadata_example_Jose.yaml` for Jose's experiments, or `metadata_example_Tim.yaml` for Tim / Yang-Sun / Stephanie's experiments). Update the paths to point to your data files for this session and update the metadata for your experiment. See `metadata_fully_explained.yaml` for an explanation of all metadata fields.
+1. Open one of the example metadata files in a text editor (`metadata_example_Jose.yaml` for Jose's experiments, or `metadata_example_Tim.yaml` for Tim / Yang-Sun / Stephanie's experiments). Update the paths to point to your data files for this session and update the metadata for your experiment. See `metadata_fully_explained.yaml` for an explanation of all metadata fields. If you have many sessions to write metadata for at once, see [Generating metadata for a whole data directory](#generating-metadata-for-a-whole-data-directory) below instead of writing each one by hand.
 
 2. Run the conversion to generate an NWB file (replace `output_dir` with your desired output directory).
 The nwb file will be automatically named based on the animal name and date (i.e. `rat_date.nwb`):
@@ -26,6 +26,21 @@ jdb_to_nwb metadata_example.yaml output_dir
 ```
 
 3. Sub-directories for associated figures and conversion log files will be created alongside the nwb file in `output_dir`. Check that there are no warnings or errors in the `warning` log file and that all figures look as expected. It's also a good idea to read through the `info` log file to check that everything makes sense based on your experimental setup. If you are not sure if the conversion was successful (or just want to double check), you can send the `debug` log file to Stephanie to make sure.
+
+## Generating metadata for a whole data directory
+
+If your data is organized as `<root>/<rat>/<date>/<that session's files>`, `jdb_to_nwb-metadata` will
+write the missing per-session metadata files for you. You fill in one `rat_metadata.yaml` per rat
+(subject, surgery, virus, implant sites, probes) and it finds the date and the data file paths for
+each session by looking in the date folders. Nothing is guessed, and nothing on disk is overwritten.
+
+```bash
+jdb_to_nwb-metadata /path/to/OptoRats             # report what it would do. writes nothing
+jdb_to_nwb-metadata /path/to/OptoRats --write     # write it
+```
+
+See **[GENERATING_METADATA.md](GENERATING_METADATA.md)** for the full walkthrough: the filenames it
+looks for, a worked example with two rats, and what to do when a session is skipped.
 
 ## Downloading test data (Developers only)
 
